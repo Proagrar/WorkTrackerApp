@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1C4592" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WorkTracker" />
+  <title>WorkTracker — Proagrar</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="app-page">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-brand">
+      <img src="icons/icon.svg" alt="" width="30" height="30" aria-hidden="true" />
+      <span class="header-title">WorkTracker</span>
+    </div>
+    <div class="header-user">
+      <span id="operatorName" class="header-name">—</span>
+      <button id="logoutBtn" class="btn btn-ghost-white btn-sm">Odjava</button>
+    </div>
+  </header>
+
+  <!-- ── Main ───────────────────────────────────────────────── -->
+  <main class="app-main">
+
+    <section class="greeting-section">
+      <p id="greeting" class="greeting"></p>
+      <p class="greeting-sub">Danes, <span id="todayDate"></span></p>
+    </section>
+
+    <!-- Summary cards -->
+    <section class="stats-section" aria-label="Povzetek">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span id="statTotal" class="stat-value">—</span>
+          <span class="stat-label">Skupaj vpisov</span>
+        </div>
+        <div class="stat-card">
+          <span id="statToday" class="stat-value">—</span>
+          <span class="stat-label">Ur danes</span>
+        </div>
+        <div class="stat-card">
+          <span id="statGerk" class="stat-value">—</span>
+          <span class="stat-label">GERK polj</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Log list -->
+    <section class="logs-section">
+      <div class="section-header">
+        <h2 class="section-title">Delovna evidenca</h2>
+        <div class="view-toggle" role="group" aria-label="Način prikaza">
+          <button id="viewCardsBtn" class="view-btn" title="Kartice">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+              <rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <button id="viewListBtn" class="view-btn" title="Seznam">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+              <line x1="1" y1="3.5" x2="14" y2="3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="1" y1="7.5" x2="14" y2="7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="1" y1="11.5" x2="14" y2="11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="logsList" class="logs-list" role="list">
+        <div class="state-loading">
+          <div class="spinner"></div>
+          <p>Nalaganje...</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── FAB ────────────────────────────────────────────────── -->
+  <button id="addBtn" class="fab" aria-label="Dodaj nov vpis">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <line x1="14" y1="4" x2="14" y2="24" stroke="white" stroke-width="3" stroke-linecap="round"/>
+      <line x1="4" y1="14" x2="24" y2="14" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <!-- ── Add / Edit Modal ────────────────────────────────────── -->
+  <div id="formModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-sheet">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="modalTitle" class="modal-title">Nov vpis</h3>
+        <button id="modalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="workLogForm" class="work-form" novalidate>
+        <input type="hidden" id="editId" />
+
+        <div class="field">
+          <label class="field-label" for="workDate">Datum dela</label>
+          <input class="field-input" type="date" id="workDate" required />
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="startHour">Začetek</label>
+            <div class="time-wrap">
+              <select class="field-input field-select" id="startHour" required>
+                <option value="">—</option>
+              </select>
+              <span class="time-sep">:</span>
+              <select class="field-input field-select time-min" id="startMin" required>
+                <option value="">—</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="endHour">Konec</label>
+            <div class="time-wrap">
+              <select class="field-input field-select" id="endHour" required>
+                <option value="">—</option>
+              </select>
+              <span class="time-sep">:</span>
+              <select class="field-input field-select time-min" id="endMin" required>
+                <option value="">—</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="gerkNumber">GERK številka <span class="required">*</span></label>
+          <div class="gerk-wrap">
+            <input
+              class="field-input"
+              type="text"
+              id="gerkNumber"
+              placeholder="npr. 1234567 ali ime parcele"
+              autocomplete="off"
+              required
+            />
+            <ul id="gerkSuggestions" class="gerk-suggestions" hidden></ul>
+          </div>
+          <p id="gerkHint" class="field-hint" hidden></p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="description">Opis dela</label>
+          <textarea
+            class="field-input field-textarea"
+            id="description"
+            rows="3"
+            placeholder="Kratek opis opravljenega dela..."
+          ></textarea>
+        </div>
+
+        <div id="locationStatus" class="location-badge" hidden></div>
+        <div id="formError"   class="alert alert-error"   hidden role="alert"></div>
+        <div id="formSuccess" class="alert alert-success" hidden role="status"></div>
+
+        <div class="form-actions">
+          <button type="button" id="cancelBtn" class="btn btn-secondary btn-flex">Prekliči</button>
+          <button type="submit" id="saveBtn"   class="btn btn-primary   btn-flex">
+            <span class="btn-label">Shrani</span>
+            <span class="btn-spinner" hidden aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Delete Confirm ──────────────────────────────────────── -->
+  <div id="deleteModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+    <div class="modal-sheet modal-sheet-compact">
+      <div class="modal-head">
+        <h3 id="deleteTitle" class="modal-title">Izbriši vpis?</h3>
+      </div>
+      <p class="dialog-body">To dejanje je trajno in ga ni mogoče razveljaviti.</p>
+      <div class="form-actions">
+        <button id="deleteCancelBtn"  class="btn btn-secondary btn-flex">Prekliči</button>
+        <button id="deleteConfirmBtn" class="btn btn-danger    btn-flex">Izbriši</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+
+</body>
+</html>
