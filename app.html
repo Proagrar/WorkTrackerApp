@@ -112,65 +112,58 @@
       <form id="workLogForm" class="work-form" novalidate>
         <input type="hidden" id="editId" />
 
+        <!-- Date -->
         <div class="field">
           <label class="field-label" for="workDate">Datum dela</label>
           <input class="field-input" type="date" id="workDate" required />
         </div>
 
+        <!-- Durations -->
         <div class="field-row">
           <div class="field">
-            <label class="field-label" for="startHour">Začetek</label>
+            <label class="field-label">Trajanje dela <span class="required">*</span></label>
             <div class="time-wrap">
-              <select class="field-input field-select" id="startHour" required>
-                <option value="">—</option>
-              </select>
-              <span class="time-sep">:</span>
-              <select class="field-input field-select time-min" id="startMin" required>
-                <option value="">—</option>
-              </select>
+              <select class="field-input field-select" id="workHour" required></select>
+              <span class="time-sep">h</span>
+              <select class="field-input field-select time-min" id="workMin" required></select>
+              <span class="time-sep">min</span>
             </div>
           </div>
           <div class="field">
-            <label class="field-label" for="endHour">Konec</label>
+            <label class="field-label">Čas na poti</label>
             <div class="time-wrap">
-              <select class="field-input field-select" id="endHour" required>
-                <option value="">—</option>
-              </select>
-              <span class="time-sep">:</span>
-              <select class="field-input field-select time-min" id="endMin" required>
-                <option value="">—</option>
-              </select>
+              <select class="field-input field-select" id="roadHour"></select>
+              <span class="time-sep">h</span>
+              <select class="field-input field-select time-min" id="roadMin"></select>
+              <span class="time-sep">min</span>
             </div>
           </div>
         </div>
 
+        <!-- GERKs -->
         <div class="field">
-          <label class="field-label" for="gerkNumber">GERK številka <span class="required">*</span></label>
-          <div class="gerk-wrap">
-            <input
-              class="field-input"
-              type="text"
-              id="gerkNumber"
-              placeholder="npr. 1234567 ali ime parcele"
-              autocomplete="off"
-              required
-            />
-            <ul id="gerkSuggestions" class="gerk-suggestions" hidden></ul>
-          </div>
-          <p id="gerkHint" class="field-hint" hidden></p>
+          <label class="field-label">GERKI <span class="required">*</span></label>
+          <div id="gerksList"></div>
+          <button type="button" id="addGerkBtn" class="btn-add-gerk">+ Dodaj GERK</button>
         </div>
 
+        <!-- Tractor -->
         <div class="field">
-          <label class="field-label" for="description">Opis dela</label>
+          <label class="field-label" for="tractor">Traktor</label>
+          <input class="field-input" type="text" id="tractor" placeholder="npr. Fendt 724" autocomplete="off" />
+        </div>
+
+        <!-- Notes -->
+        <div class="field">
+          <label class="field-label" for="description">Opombe</label>
           <textarea
             class="field-input field-textarea"
             id="description"
-            rows="3"
-            placeholder="Kratek opis opravljenega dela..."
+            rows="2"
+            placeholder="Kratek opis..."
           ></textarea>
         </div>
 
-        <div id="locationStatus" class="location-badge" hidden></div>
         <div id="formError"   class="alert alert-error"   hidden role="alert"></div>
         <div id="formSuccess" class="alert alert-success" hidden role="status"></div>
 

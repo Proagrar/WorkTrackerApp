@@ -6,8 +6,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ── State ──────────────────────────────────────────────────────
 let currentUser = null;
 let logs        = [];
-let pendingDeleteId = null;
 let fields      = [];
+let pendingDeleteId = null;
 let viewMode    = 'compact';
 
 // ── DOM refs ───────────────────────────────────────────────────
@@ -24,25 +24,24 @@ const statTotal = document.getElementById('statTotal');
 const statToday = document.getElementById('statToday');
 const statGerk  = document.getElementById('statGerk');
 
-const formModal    = document.getElementById('formModal');
-const modalTitle   = document.getElementById('modalTitle');
-const modalClose   = document.getElementById('modalClose');
-const workLogForm  = document.getElementById('workLogForm');
-const editIdInput  = document.getElementById('editId');
-const workDateInput= document.getElementById('workDate');
-const startHourSel = document.getElementById('startHour');
-const startMinSel  = document.getElementById('startMin');
-const endHourSel   = document.getElementById('endHour');
-const endMinSel    = document.getElementById('endMin');
-const gerkInput          = document.getElementById('gerkNumber');
-const gerkSuggestionsEl  = document.getElementById('gerkSuggestions');
-const gerkHintEl         = document.getElementById('gerkHint');
-const descInput          = document.getElementById('description');
-const locationEl   = document.getElementById('locationStatus');
-const formError    = document.getElementById('formError');
-const formSuccess  = document.getElementById('formSuccess');
-const saveBtn      = document.getElementById('saveBtn');
-const cancelBtn    = document.getElementById('cancelBtn');
+const formModal   = document.getElementById('formModal');
+const modalTitle  = document.getElementById('modalTitle');
+const modalClose  = document.getElementById('modalClose');
+const workLogForm = document.getElementById('workLogForm');
+const editIdInput = document.getElementById('editId');
+const workDateInput = document.getElementById('workDate');
+const workHourSel = document.getElementById('workHour');
+const workMinSel  = document.getElementById('workMin');
+const roadHourSel = document.getElementById('roadHour');
+const roadMinSel  = document.getElementById('roadMin');
+const gerksListEl = document.getElementById('gerksList');
+const addGerkBtn  = document.getElementById('addGerkBtn');
+const tractorInput = document.getElementById('tractor');
+const descInput   = document.getElementById('description');
+const formError   = document.getElementById('formError');
+const formSuccess = document.getElementById('formSuccess');
+const saveBtn     = document.getElementById('saveBtn');
+const cancelBtn   = document.getElementById('cancelBtn');
 
 const deleteModal      = document.getElementById('deleteModal');
 const deleteCancelBtn  = document.getElementById('deleteCancelBtn');
@@ -51,40 +50,37 @@ const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
 // ── Session guard ──────────────────────────────────────────────
 async function initAuth() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    window.location.replace('index.html');
-    return false;
-  }
+  if (!session) { window.location.replace('index.html'); return false; }
   currentUser = session.user;
-
-  supabase.auth.onAuthStateChange((_event, s) => {
+  supabase.auth.onAuthStateChange((_e, s) => {
     if (!s) window.location.replace('index.html');
   });
-
   return true;
 }
 
-// ── Time selects — split hour / minute ────────────────────────
+// ── Duration selects ───────────────────────────────────────────
 function buildTimeOptions() {
-  for (const sel of [startHourSel, endHourSel]) {
-    for (let h = 0; h < 24; h++) {
-      const v = String(h).padStart(2, '0');
-      sel.appendChild(new Option(v, v));
-    }
+  for (const sel of [workHourSel, roadHourSel]) {
+    for (let h = 0; h <= 23; h++) sel.appendChild(new Option(String(h), String(h)));
   }
-  for (const sel of [startMinSel, endMinSel]) {
-    for (const m of ['00', '15', '30', '45']) {
-      sel.appendChild(new Option(m, m));
-    }
+  for (const sel of [workMinSel, roadMinSel]) {
+    for (const m of ['00', '15', '30', '45']) sel.appendChild(new Option(m, m));
   }
+  workHourSel.value = '0'; workMinSel.value = '00';
+  roadHourSel.value = '0'; roadMinSel.value = '00';
 }
 
-function getTimeValue(hourSel, minSel) {
-  if (hourSel.value === '' || minSel.value === '') return '';
-  return `${hourSel.value}:${minSel.value}`;
+function getDurationMins(hourSel, minSel) {
+  return (parseInt(hourSel.value, 10) || 0) * 60 + (parseInt(minSel.value, 10) || 0);
 }
 
-// ── Date / time helpers ────────────────────────────────────────
+function setDurationSels(hourSel, minSel, totalMins) {
+  const mins = totalMins || 0;
+  hourSel.value = String(Math.floor(mins / 60));
+  minSel.value  = String(mins % 60).padStart(2, '0');
+}
+
+// ── Date helpers ───────────────────────────────────────────────
 const MONTHS_SL = ['jan','feb','mar','apr','maj','jun','jul','avg','sep','okt','nov','dec'];
 
 function fmtDate(iso) {
@@ -92,16 +88,8 @@ function fmtDate(iso) {
   return `${parseInt(d, 10)}. ${MONTHS_SL[parseInt(m, 10) - 1]} ${y}`;
 }
 
-function fmtTime(t) { return t.slice(0, 5); }
-
-function minutesBetween(start, end) {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  return (eh * 60 + em) - (sh * 60 + sm);
-}
-
 function fmtDuration(mins) {
-  if (mins <= 0) return '0h';
+  if (!mins || mins <= 0) return '0h';
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
@@ -112,6 +100,13 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 function fmtTodayLong() {
   const d = new Date();
   return `${d.getDate()}. ${MONTHS_SL[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function isEditable(log) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  cutoff.setHours(0, 0, 0, 0);
+  return new Date(log.work_date) >= cutoff;
 }
 
 // ── Greeting ───────────────────────────────────────────────────
@@ -129,10 +124,13 @@ function updateStats() {
   const today = todayISO();
   const todayMins = logs
     .filter(l => l.work_date === today)
-    .reduce((sum, l) => sum + minutesBetween(fmtTime(l.start_time), fmtTime(l.end_time)), 0);
+    .reduce((sum, l) => sum + (l.work_duration || 0), 0);
   statToday.textContent = fmtDuration(todayMins);
 
-  statGerk.textContent = new Set(logs.map(l => l.gerk_number)).size;
+  const allGerks = new Set(
+    logs.flatMap(l => (l.work_log_gerks || []).map(g => g.gerk_code))
+  );
+  statGerk.textContent = allGerks.size;
 }
 
 // ── Load logs ──────────────────────────────────────────────────
@@ -145,10 +143,10 @@ async function loadLogs() {
 
   const { data, error } = await supabase
     .from('work_logs')
-    .select('*')
+    .select('*, work_log_gerks(*)')
     .eq('operator_id', currentUser.id)
     .order('work_date', { ascending: false })
-    .order('start_time', { ascending: false });
+    .order('created_at', { ascending: false });
 
   if (error) {
     logsList.innerHTML = `<div class="state-empty"><p>Napaka pri nalaganju. Poskusite znova.</p></div>`;
@@ -160,7 +158,7 @@ async function loadLogs() {
   updateStats();
 }
 
-// ── Render logs ────────────────────────────────────────────────
+// ── Render ─────────────────────────────────────────────────────
 function renderLogs() {
   syncViewToggle();
   if (logs.length === 0) {
@@ -177,30 +175,32 @@ function renderLogs() {
 function renderLogsCards() {
   logsList.className = 'logs-list';
   logsList.innerHTML = logs.map(log => {
-    const start = fmtTime(log.start_time);
-    const end   = fmtTime(log.end_time);
-    const mins  = minutesBetween(start, end);
-    const descEl = log.description
+    const gerks = log.work_log_gerks || [];
+    const gerkBadges = gerks.map(g =>
+      `<span class="log-gerk-badge">${escHtml(g.gerk_code)}</span>`
+    ).join('') || '<span class="log-gerk-badge">—</span>';
+    const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
+    const haStr = totalHa > 0 ? ` · ${totalHa.toFixed(2)} ha` : '';
+    const road = log.road_duration > 0
+      ? `<div class="log-row"><span class="log-icon">🚗</span><span>Pot: ${fmtDuration(log.road_duration)}</span></div>` : '';
+    const tractor = log.tractor
+      ? `<div class="log-row"><span class="log-icon">🚜</span><span>${escHtml(log.tractor)}</span></div>` : '';
+    const desc = log.description
       ? `<div class="log-row"><span class="log-desc">${escHtml(log.description)}</span></div>` : '';
+    const editable = isEditable(log);
     return `
       <div class="log-card" role="listitem">
         <div class="log-card-top">
           <span class="log-date">${fmtDate(log.work_date)}</span>
-          <span class="log-duration">${fmtDuration(mins)}</span>
+          <span class="log-duration">${fmtDuration(log.work_duration)}</span>
         </div>
         <div class="log-card-body">
-          <div class="log-row">
-            <span class="log-icon">⏱</span>
-            <span class="log-time-text">${start} – ${end}</span>
-          </div>
-          <div class="log-row">
-            <span class="log-gerk-label">GERK</span>
-            <span class="log-gerk-badge">${escHtml(log.gerk_number)}</span>
-          </div>
-          ${descEl}
+          <div class="log-row">${gerkBadges}${haStr ? `<span class="log-ha-text">${haStr}</span>` : ''}</div>
+          ${road}${tractor}${desc}
         </div>
         <div class="log-card-actions">
-          <button class="btn-outline" data-action="edit" data-id="${log.id}">Uredi</button>
+          <button class="btn-outline" data-action="edit" data-id="${log.id}"
+            ${editable ? '' : 'disabled title="Starejše od 7 dni"'}>Uredi</button>
           <button class="btn-danger-outline" data-action="delete" data-id="${log.id}">Izbriši</button>
         </div>
       </div>`;
@@ -216,30 +216,44 @@ function renderLogsCompact() {
   const header = `
     <div class="lc-header" aria-hidden="true">
       <span>Datum</span>
-      <span>Čas</span>
-      <span>GERK</span>
-      <span>Ur</span>
+      <span>Trajanje</span>
+      <span>GERKI</span>
+      <span>Ha</span>
       <span></span>
     </div>`;
+
   const rows = logs.map(log => {
-    const start = fmtTime(log.start_time);
-    const end   = fmtTime(log.end_time);
-    const mins  = minutesBetween(start, end);
-    const desc  = log.description
-      ? `<p class="lc-desc-row">${escHtml(log.description)}</p>` : '';
+    const gerks = log.work_log_gerks || [];
+    const gerkCodes = gerks.map(g => escHtml(g.gerk_code)).join(', ') || '—';
+    const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
+    const haStr = totalHa > 0 ? totalHa.toFixed(2) : '—';
+    const editable = isEditable(log);
+
+    const extras = [
+      log.road_duration > 0 ? `Pot: ${fmtDuration(log.road_duration)}` : null,
+      log.tractor ? `Traktor: ${escHtml(log.tractor)}` : null,
+      log.description ? escHtml(log.description) : null,
+    ].filter(Boolean);
+    const extraRow = extras.length
+      ? `<p class="lc-desc-row">${extras.join(' · ')}</p>` : '';
+
     return `
       <div class="log-compact" role="listitem">
         <span class="lc-date">${fmtDate(log.work_date)}</span>
-        <span class="lc-time">${start}–${end}</span>
-        <span class="lc-gerk">${escHtml(log.gerk_number)}</span>
-        <span class="lc-dur">${fmtDuration(mins)}</span>
+        <span class="lc-dur">${fmtDuration(log.work_duration)}</span>
+        <span class="lc-gerk">${gerkCodes}</span>
+        <span class="lc-ha">${haStr}</span>
         <div class="lc-actions">
-          <button class="lc-btn" data-action="edit" data-id="${log.id}" title="Uredi">${EDIT_ICON}</button>
+          <button class="lc-btn${editable ? '' : ' lc-btn--locked'}"
+            data-action="edit" data-id="${log.id}"
+            title="${editable ? 'Uredi' : 'Starejše od 7 dni'}"
+            ${editable ? '' : 'disabled'}>${EDIT_ICON}</button>
           <button class="lc-btn lc-btn--danger" data-action="delete" data-id="${log.id}" title="Izbriši">${DEL_ICON}</button>
         </div>
-        ${desc}
+        ${extraRow}
       </div>`;
   }).join('');
+
   logsList.innerHTML = header + rows;
   wireLogButtons();
 }
@@ -249,27 +263,15 @@ function syncViewToggle() {
   viewListBtn?.classList.toggle('active',  viewMode === 'compact');
 }
 
-viewCardsBtn?.addEventListener('click', () => {
-  viewMode = 'cards';
-  localStorage.setItem('wt-view', viewMode);
-  renderLogs();
-});
-
-viewListBtn?.addEventListener('click', () => {
-  viewMode = 'compact';
-  localStorage.setItem('wt-view', viewMode);
-  renderLogs();
-});
+viewCardsBtn?.addEventListener('click', () => { viewMode = 'cards';   renderLogs(); });
+viewListBtn?.addEventListener('click',  () => { viewMode = 'compact'; renderLogs(); });
 
 function escHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Load known fields (GERK autocomplete) ─────────────────────
+// ── GERK autocomplete ──────────────────────────────────────────
 async function loadFields() {
   const { data } = await supabase
     .from('FIELD')
@@ -288,11 +290,7 @@ async function loadFields() {
         customer: activeLink?.CUSTOMER?.FULL_NAME ?? null,
       };
     })
-    .filter(f => {
-      if (seen.has(f.code)) return false;
-      seen.add(f.code);
-      return true;
-    });
+    .filter(f => { if (seen.has(f.code)) return false; seen.add(f.code); return true; });
 }
 
 function filterFields(query) {
@@ -301,95 +299,143 @@ function filterFields(query) {
   return fields
     .filter(f =>
       f.code.toLowerCase().includes(q) ||
-      (f.name && f.name.toLowerCase().includes(q)) ||
+      (f.name     && f.name.toLowerCase().includes(q)) ||
       (f.customer && f.customer.toLowerCase().includes(q))
     )
     .slice(0, 8);
 }
 
-function renderSuggestions(matches) {
-  if (!matches.length) { gerkSuggestionsEl.hidden = true; return; }
-  gerkSuggestionsEl.innerHTML = matches.map(f => {
-    const metaParts = [f.name, f.customer, f.area ? `${f.area} ha` : null].filter(Boolean);
+function attachGerkAutocomplete(inputEl, suggestionsEl, hintEl, onSelect) {
+  inputEl.addEventListener('input', () => {
+    hintEl.hidden = true;
+    showSuggestionsInto(suggestionsEl, filterFields(inputEl.value.trim()));
+  });
+  inputEl.addEventListener('focus', () => {
+    if (inputEl.value.trim()) showSuggestionsInto(suggestionsEl, filterFields(inputEl.value.trim()));
+  });
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => { suggestionsEl.hidden = true; }, 150);
+  });
+  suggestionsEl.addEventListener('mousedown', e => {
+    const item = e.target.closest('.gerk-suggestion-item');
+    if (!item) return;
+    const code = item.dataset.code;
+    inputEl.value = code;
+    suggestionsEl.hidden = true;
+    const f = fields.find(f => f.code === code);
+    if (f) {
+      const parts = [f.name, f.customer, f.area ? `${f.area} ha` : null].filter(Boolean);
+      if (parts.length) { hintEl.textContent = parts.join(' · '); hintEl.hidden = false; }
+      if (onSelect) onSelect(f);
+    }
+  });
+}
+
+function showSuggestionsInto(suggestionsEl, matches) {
+  if (!matches.length) { suggestionsEl.hidden = true; return; }
+  suggestionsEl.innerHTML = matches.map(f => {
+    const meta = [f.name, f.customer, f.area ? `${f.area} ha` : null].filter(Boolean);
     return `
-    <li class="gerk-suggestion-item" data-code="${escHtml(f.code)}">
-      <span class="gerk-suggestion-code">${escHtml(f.code)}</span>
-      ${metaParts.length ? `<span class="gerk-suggestion-meta">${escHtml(metaParts.join(' · '))}</span>` : ''}
-    </li>`;
+      <li class="gerk-suggestion-item" data-code="${escHtml(f.code)}">
+        <span class="gerk-suggestion-code">${escHtml(f.code)}</span>
+        ${meta.length ? `<span class="gerk-suggestion-meta">${escHtml(meta.join(' · '))}</span>` : ''}
+      </li>`;
   }).join('');
-  gerkSuggestionsEl.hidden = false;
+  suggestionsEl.hidden = false;
 }
 
-function selectSuggestion(code) {
-  gerkInput.value = code;
-  gerkSuggestionsEl.hidden = true;
-  showGerkHint(code);
-}
+function addGerkRow(code = '', hectares = '') {
+  const row = document.createElement('div');
+  row.className = 'gerk-row';
+  row.innerHTML = `
+    <div class="gerk-wrap">
+      <input type="text" class="field-input gerk-code-input"
+             placeholder="GERK številka ali ime" autocomplete="off">
+      <ul class="gerk-suggestions" hidden></ul>
+      <p class="field-hint gerk-hint" hidden></p>
+    </div>
+    <input type="number" class="field-input gerk-ha-input"
+           placeholder="ha" step="0.0001" min="0" max="9999">
+    <button type="button" class="gerk-remove-btn" aria-label="Odstrani">✕</button>`;
 
-function showGerkHint(code) {
-  const f = fields.find(f => f.code === code);
-  const parts = [f?.name, f?.customer, f?.area ? `${f.area} ha` : null].filter(Boolean);
-  if (parts.length) {
-    gerkHintEl.textContent = parts.join(' · ');
-    gerkHintEl.hidden = false;
-  } else {
-    gerkHintEl.hidden = true;
+  const codeInput    = row.querySelector('.gerk-code-input');
+  const haInput      = row.querySelector('.gerk-ha-input');
+  const suggestionsEl = row.querySelector('.gerk-suggestions');
+  const hintEl       = row.querySelector('.gerk-hint');
+  const removeBtn    = row.querySelector('.gerk-remove-btn');
+
+  codeInput.value = code;
+  if (hectares !== '' && hectares != null) haInput.value = hectares;
+
+  if (code) {
+    const f = fields.find(f => f.code === code);
+    if (f) {
+      const parts = [f.name, f.customer, f.area ? `${f.area} ha` : null].filter(Boolean);
+      if (parts.length) { hintEl.textContent = parts.join(' · '); hintEl.hidden = false; }
+    }
   }
+
+  attachGerkAutocomplete(codeInput, suggestionsEl, hintEl, f => {
+    if (f.area != null && !haInput.value) haInput.value = f.area;
+  });
+
+  removeBtn.addEventListener('click', () => {
+    row.remove();
+    if (!gerksListEl.querySelector('.gerk-row')) addGerkRow();
+  });
+
+  gerksListEl.appendChild(row);
+  return codeInput;
 }
 
-gerkInput.addEventListener('input', () => {
-  gerkHintEl.hidden = true;
-  renderSuggestions(filterFields(gerkInput.value.trim()));
+function getFormGerks() {
+  return Array.from(gerksListEl.querySelectorAll('.gerk-row')).map(row => ({
+    code:     row.querySelector('.gerk-code-input').value.trim(),
+    hectares: row.querySelector('.gerk-ha-input').value
+              ? parseFloat(row.querySelector('.gerk-ha-input').value) : null,
+  })).filter(g => g.code);
+}
+
+addGerkBtn.addEventListener('click', () => {
+  const input = addGerkRow();
+  input.focus();
 });
 
-gerkInput.addEventListener('focus', () => {
-  const val = gerkInput.value.trim();
-  if (val) renderSuggestions(filterFields(val));
-});
-
-gerkInput.addEventListener('blur', () => {
-  setTimeout(() => { gerkSuggestionsEl.hidden = true; }, 150);
-});
-
-gerkSuggestionsEl.addEventListener('mousedown', (e) => {
-  const item = e.target.closest('.gerk-suggestion-item');
-  if (item) selectSuggestion(item.dataset.code);
-});
-
-// ── Modal helpers ──────────────────────────────────────────────
+// ── Modal ──────────────────────────────────────────────────────
 function openModal(title, prefill = null) {
   modalTitle.textContent = title;
   workLogForm.reset();
   editIdInput.value = '';
   hideFormFeedback();
-  locationEl.hidden = true;
-  gerkHintEl.hidden = true;
-  gerkSuggestionsEl.hidden = true;
-
   workDateInput.value = todayISO();
+  workHourSel.value = '0'; workMinSel.value = '00';
+  roadHourSel.value = '0'; roadMinSel.value = '00';
+  gerksListEl.innerHTML = '';
 
   if (prefill) {
-    editIdInput.value      = prefill.id;
-    workDateInput.value    = prefill.work_date;
-    const [sh, sm] = fmtTime(prefill.start_time).split(':');
-    startHourSel.value = sh; startMinSel.value = sm;
-    const [eh, em] = fmtTime(prefill.end_time).split(':');
-    endHourSel.value = eh; endMinSel.value = em;
-    gerkInput.value        = prefill.gerk_number;
-    descInput.value        = prefill.description ?? '';
-    showGerkHint(prefill.gerk_number);
+    editIdInput.value = prefill.id;
+    workDateInput.value = prefill.work_date;
+    setDurationSels(workHourSel, workMinSel, prefill.work_duration);
+    setDurationSels(roadHourSel, roadMinSel, prefill.road_duration);
+    tractorInput.value = prefill.tractor || '';
+    descInput.value    = prefill.description || '';
+    const gerks = prefill.work_log_gerks || [];
+    if (gerks.length) {
+      gerks.forEach(g => addGerkRow(g.gerk_code, g.hectares ?? ''));
+    } else {
+      addGerkRow();
+    }
+  } else {
+    addGerkRow();
   }
 
   formModal.hidden = false;
   document.body.style.overflow = 'hidden';
-  gerkInput.focus();
 }
 
 function closeModal() {
   formModal.hidden = true;
   document.body.style.overflow = '';
-  gerkSuggestionsEl.hidden = true;
-  gerkHintEl.hidden = true;
 }
 
 function hideFormFeedback() {
@@ -398,15 +444,15 @@ function hideFormFeedback() {
 }
 
 function showFormError(msg) {
-  formError.textContent   = msg;
-  formError.hidden        = false;
-  formSuccess.hidden      = true;
+  formError.textContent = msg;
+  formError.hidden = false;
+  formSuccess.hidden = true;
 }
 
 function showFormSuccess(msg) {
   formSuccess.textContent = msg;
-  formSuccess.hidden      = false;
-  formError.hidden        = true;
+  formSuccess.hidden = false;
+  formError.hidden = true;
 }
 
 function setSaveLoading(on) {
@@ -416,101 +462,77 @@ function setSaveLoading(on) {
   saveBtn.querySelector('.btn-spinner').hidden = !on;
 }
 
-// ── Geolocation ────────────────────────────────────────────────
-function captureLocation() {
-  return new Promise((resolve) => {
-    if (!('geolocation' in navigator)) {
-      return resolve({ status: 'location_unavailable', lat: null, lng: null, accuracy: null, ts: null });
-    }
-
-    locationEl.textContent = '📍 Pridobivanje lokacije...';
-    locationEl.hidden = false;
-
-    navigator.geolocation.getCurrentPosition(
-      ({ coords, timestamp }) => resolve({
-        status:   'captured',
-        lat:      coords.latitude,
-        lng:      coords.longitude,
-        accuracy: coords.accuracy,
-        ts:       new Date(timestamp).toISOString(),
-      }),
-      () => resolve({ status: 'permission_denied', lat: null, lng: null, accuracy: null, ts: null }),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  });
-}
-
-// ── Save log ───────────────────────────────────────────────────
-workLogForm.addEventListener('submit', async (e) => {
+// ── Save ───────────────────────────────────────────────────────
+workLogForm.addEventListener('submit', async e => {
   e.preventDefault();
   hideFormFeedback();
 
-  const isEdit     = !!editIdInput.value;
-  const workDate   = workDateInput.value;
-  const startTime  = getTimeValue(startHourSel, startMinSel);
-  const endTime    = getTimeValue(endHourSel, endMinSel);
-  const gerkNumber = gerkInput.value.trim();
-  const description= descInput.value.trim();
+  const isEdit       = !!editIdInput.value;
+  const workDate     = workDateInput.value;
+  const workDuration = getDurationMins(workHourSel, workMinSel);
+  const roadDuration = getDurationMins(roadHourSel, roadMinSel);
+  const gerkRows     = getFormGerks();
 
-  if (!workDate)    return showFormError('Izberite datum dela.');
-  if (!startTime)   return showFormError('Izberite čas začetka.');
-  if (!endTime)     return showFormError('Izberite čas konca.');
-  if (endTime <= startTime) return showFormError('Čas konca mora biti poznejši od časa začetka.');
-  if (!gerkNumber)  return showFormError('Vnesite GERK številko.');
-  const knownField = fields.find(f => f.code === gerkNumber);
-  if (!knownField && !/^\d{7}$/.test(gerkNumber))
-    return showFormError('GERK številka mora vsebovati točno 7 številk.');
+  if (!workDate)        return showFormError('Izberite datum dela.');
+  if (workDuration <= 0) return showFormError('Vnesite trajanje dela.');
+  if (!gerkRows.length)  return showFormError('Dodajte vsaj en GERK.');
+
+  for (const g of gerkRows) {
+    const known = fields.find(f => f.code === g.code);
+    if (!known && !/^\d{7}$/.test(g.code))
+      return showFormError(`Neveljaven GERK: "${g.code}" (mora biti 7-mestna številka).`);
+  }
 
   setSaveLoading(true);
 
-  let locationFields = {};
-  if (!isEdit) {
-    const loc = await captureLocation();
-    locationFields = {
-      latitude:             loc.lat,
-      longitude:            loc.lng,
-      location_accuracy:    loc.accuracy,
-      location_captured_at: loc.ts,
-      location_status:      loc.status,
-    };
-    locationEl.textContent = loc.status === 'captured'
-      ? '📍 Lokacija zajeta'
-      : '📍 Lokacija ni bila dostopna';
-    locationEl.hidden = false;
-  }
+  const logPayload = {
+    work_date:     workDate,
+    work_duration: workDuration,
+    road_duration: roadDuration || null,
+    tractor:       tractorInput.value.trim() || null,
+    description:   descInput.value.trim()    || null,
+  };
 
-  let error;
+  let workLogId;
+  let saveError;
 
   if (isEdit) {
-    ({ error } = await supabase
+    const { error } = await supabase
       .from('work_logs')
-      .update({
-        work_date:   workDate,
-        start_time:  startTime,
-        end_time:    endTime,
-        gerk_number: gerkNumber,
-        description: description || null,
-      })
+      .update(logPayload)
       .eq('id', editIdInput.value)
-      .eq('operator_id', currentUser.id));
+      .eq('operator_id', currentUser.id);
+    saveError = error;
+    workLogId = editIdInput.value;
   } else {
-    ({ error } = await supabase
+    const { data, error } = await supabase
       .from('work_logs')
-      .insert({
-        operator_id:  currentUser.id,
-        work_date:    workDate,
-        start_time:   startTime,
-        end_time:     endTime,
-        gerk_number:  gerkNumber,
-        description:  description || null,
-        ...locationFields,
-      }));
+      .insert({ ...logPayload, operator_id: currentUser.id })
+      .select('id')
+      .single();
+    saveError = error;
+    workLogId = data?.id;
   }
+
+  if (saveError) {
+    setSaveLoading(false);
+    showFormError('Napaka pri shranjevanju. Preverite podatke in poskusite znova.');
+    return;
+  }
+
+  // Replace GERK lines
+  if (isEdit) {
+    await supabase.from('work_log_gerks').delete().eq('work_log_id', workLogId);
+  }
+
+  const { error: gerkError } = await supabase
+    .from('work_log_gerks')
+    .insert(gerkRows.map(g => ({ work_log_id: workLogId, gerk_code: g.code, hectares: g.hectares })));
 
   setSaveLoading(false);
 
-  if (error) {
-    showFormError('Napaka pri shranjevanju. Preverite podatke in poskusite znova.');
+  if (gerkError) {
+    showFormError('Napaka pri shranjevanju GERKOV.');
     return;
   }
 
@@ -519,7 +541,7 @@ workLogForm.addEventListener('submit', async (e) => {
   setTimeout(closeModal, 1000);
 });
 
-// ── Wire log action buttons after every render ────────────────
+// ── Wire buttons ───────────────────────────────────────────────
 function wireLogButtons() {
   logsList.querySelectorAll('[data-action="edit"]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -538,18 +560,14 @@ function wireLogButtons() {
 
 deleteConfirmBtn.addEventListener('click', async () => {
   if (!pendingDeleteId) return;
-
   deleteConfirmBtn.disabled = true;
-
   const { error } = await supabase
     .from('work_logs')
     .delete()
     .eq('id', pendingDeleteId)
     .eq('operator_id', currentUser.id);
-
   deleteConfirmBtn.disabled = false;
   closeDeleteModal();
-
   if (!error) await loadLogs();
 });
 
@@ -561,7 +579,6 @@ function closeDeleteModal() {
   document.body.style.overflow = '';
 }
 
-// ── Event wiring ───────────────────────────────────────────────
 logoutBtn.addEventListener('click', async () => {
   await supabase.auth.signOut();
   window.location.replace('index.html');
@@ -571,15 +588,10 @@ addBtn.addEventListener('click', () => openModal('Nov vpis'));
 modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
 
-formModal.addEventListener('click', (e) => {
-  if (e.target === formModal) closeModal();
-});
-deleteModal.addEventListener('click', (e) => {
-  if (e.target === deleteModal) closeDeleteModal();
-});
+formModal.addEventListener('click', e => { if (e.target === formModal) closeModal(); });
+deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
 
-// Close modal on Escape key
-document.addEventListener('keydown', (e) => {
+document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (!formModal.hidden)   closeModal();
     if (!deleteModal.hidden) closeDeleteModal();
@@ -592,7 +604,7 @@ async function boot() {
   if (!authed) return;
 
   buildTimeOptions();
-  loadFields(); // non-blocking — suggestions appear once loaded
+  loadFields();
 
   const { data: profile } = await supabase
     .from('profiles')

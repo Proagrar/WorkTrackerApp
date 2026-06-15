@@ -126,6 +126,54 @@ input, select, textarea { font-family: inherit; }
 
 .login-form { display: flex; flex-direction: column; gap: 16px; }
 
+.oauth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-oauth {
+  width: 100%;
+  height: 52px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: .9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-oauth:hover { background: var(--background); border-color: var(--blue-800); }
+.btn-oauth:active { transform: scale(.97); }
+
+.btn-oauth--facebook {
+  background: #1877F2;
+  border-color: #1877F2;
+  color: #fff;
+}
+.btn-oauth--facebook:hover { background: #166FE5; border-color: #166FE5; }
+
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: .8125rem;
+}
+.oauth-divider::before,
+.oauth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 
 /* ============================================================
    FORM FIELDS (shared)
@@ -726,7 +774,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ============================================================
    COMPACT TABLE VIEW
-   columns: date(72px) | time(82px) | gerk(1fr) | dur(40px) | actions(58px)
+   columns: date(80px) | duration(55px) | gerks(1fr) | ha(50px) | actions(58px)
    ============================================================ */
 .logs-list--compact {
   gap: 0;
@@ -740,7 +788,7 @@ input, select, textarea { font-family: inherit; }
 .lc-header,
 .log-compact {
   display: grid;
-  grid-template-columns: 72px 82px 1fr 40px 58px;
+  grid-template-columns: 80px 55px 1fr 50px 58px;
   column-gap: 8px;
   padding: 0 14px;
   align-items: center;
@@ -779,8 +827,9 @@ input, select, textarea { font-family: inherit; }
   text-overflow: ellipsis;
 }
 
-.lc-time {
-  font-size: .8125rem;
+.lc-ha {
+  font-size: .75rem;
+  font-weight: 600;
   color: var(--text-secondary);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -824,7 +873,9 @@ input, select, textarea { font-family: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .lc-btn:hover { background: var(--border-light); color: var(--text-primary); }
-.lc-btn--danger:hover { background: var(--error-bg); color: var(--danger); }
+.lc-btn--danger:hover  { background: var(--error-bg); color: var(--danger); }
+.lc-btn--locked        { opacity: .35; cursor: not-allowed; }
+.lc-btn--locked:hover  { background: transparent; color: var(--text-muted); }
 
 .lc-desc-row {
   grid-column: 1 / -1;
@@ -836,6 +887,76 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+
+/* ============================================================
+   GERK ROWS (multi-GERK entry)
+   ============================================================ */
+.gerk-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.gerk-row .gerk-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.gerk-ha-input {
+  width: 80px;
+  flex-shrink: 0;
+  padding-right: 10px;
+  -moz-appearance: textfield;
+}
+.gerk-ha-input::-webkit-inner-spin-button,
+.gerk-ha-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+.gerk-remove-btn {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.gerk-remove-btn:hover {
+  background: var(--error-bg);
+  color: var(--danger);
+  border-color: #FECACA;
+}
+
+.btn-add-gerk {
+  width: 100%;
+  height: 44px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--blue-800);
+  font-size: .875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-add-gerk:hover {
+  background: var(--blue-50);
+  border-color: var(--blue-700);
+}
+
+.log-ha-text {
+  font-size: .8125rem;
+  color: var(--text-secondary);
 }
 
 

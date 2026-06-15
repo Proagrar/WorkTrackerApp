@@ -3,59 +3,59 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ── Redirect if already authenticated ─────────────────────────
+const errorEl = document.getElementById('loginError');
+
+// Redirect if already authenticated
 supabase.auth.getSession().then(({ data: { session } }) => {
   if (session) window.location.replace('app.html');
 });
 
-// ── DOM refs ───────────────────────────────────────────────────
-const form      = document.getElementById('loginForm');
-const emailEl   = document.getElementById('email');
-const passwordEl= document.getElementById('password');
-const errorEl   = document.getElementById('loginError');
+document.getElementById('googleBtn').addEventListener('click', () => signInWith('google'));
+document.getElementById('facebookBtn').addEventListener('click', () => signInWith('facebook'));
+
+async function signInWith(provider) {
+  errorEl.hidden = true;
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: new URL('app.html', window.location.href).href },
+  });
+  if (error) {
+    errorEl.textContent = 'Prijava ni uspela. Poskusite znova.';
+    errorEl.hidden = false;
+  }
+}
+
+const loginForm = document.getElementById('loginForm');
 const loginBtn  = document.getElementById('loginBtn');
 
-// ── Submit ─────────────────────────────────────────────────────
-form.addEventListener('submit', async (e) => {
+loginForm.addEventListener('submit', async e => {
   e.preventDefault();
-
-  const email    = emailEl.value.trim();
-  const password = passwordEl.value;
-
+  const email    = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
   if (!email || !password) {
-    showError('Vnesite e-pošto in geslo.');
+    errorEl.textContent = 'Vnesite e-pošto in geslo.';
+    errorEl.hidden = false;
     return;
   }
-
-  setLoading(true);
-  hideError();
+  errorEl.hidden = true;
+  loginBtn.disabled = true;
+  loginBtn.querySelector('.btn-label').hidden = true;
+  loginBtn.querySelector('.btn-spinner').hidden = false;
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
+  loginBtn.disabled = false;
+  loginBtn.querySelector('.btn-label').hidden = false;
+  loginBtn.querySelector('.btn-spinner').hidden = true;
+
   if (error) {
-    setLoading(false);
-    showError(error.message === 'Invalid login credentials'
+    errorEl.textContent = error.message === 'Invalid login credentials'
       ? 'Napačna e-pošta ali geslo.'
-      : error.message);
-    passwordEl.value = '';
-    passwordEl.focus();
+      : error.message;
+    errorEl.hidden = false;
+    document.getElementById('password').value = '';
     return;
   }
 
   window.location.replace('app.html');
 });
-
-function showError(msg) {
-  errorEl.textContent = msg;
-  errorEl.hidden = false;
-}
-
-function hideError() {
-  errorEl.hidden = true;
-}
-
-function setLoading(on) {
-  loginBtn.disabled = on;
-  loginBtn.querySelector('.btn-label').hidden = on;
-  loginBtn.querySelector('.btn-spinner').hidden = !on;
-}
