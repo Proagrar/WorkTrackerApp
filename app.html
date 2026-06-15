@@ -37,20 +37,31 @@
       <p class="greeting-sub">Danes, <span id="todayDate"></span></p>
     </section>
 
+    <!-- Month navigation -->
+    <div class="month-nav">
+      <button id="prevMonthBtn" class="month-nav-btn" aria-label="Prejšnji mesec">&#8249;</button>
+      <span id="monthLabel" class="month-nav-label"></span>
+      <button id="nextMonthBtn" class="month-nav-btn" aria-label="Naslednji mesec">&#8250;</button>
+    </div>
+
     <!-- Summary cards -->
     <section class="stats-section" aria-label="Povzetek">
       <div class="stats-grid">
         <div class="stat-card">
           <span id="statTotal" class="stat-value">—</span>
-          <span class="stat-label">Skupaj vpisov</span>
+          <span class="stat-label">Vpisov</span>
         </div>
         <div class="stat-card">
-          <span id="statToday" class="stat-value">—</span>
-          <span class="stat-label">Ur danes</span>
+          <span id="statWork" class="stat-value">—</span>
+          <span class="stat-label">Ure dela</span>
+        </div>
+        <div class="stat-card">
+          <span id="statRoad" class="stat-value">—</span>
+          <span class="stat-label">Ure na poti</span>
         </div>
         <div class="stat-card">
           <span id="statGerk" class="stat-value">—</span>
-          <span class="stat-label">GERK polj</span>
+          <span class="stat-label">GERKI</span>
         </div>
       </div>
     </section>
@@ -119,24 +130,22 @@
         </div>
 
         <!-- Durations -->
-        <div class="field-row">
-          <div class="field">
-            <label class="field-label">Trajanje dela <span class="required">*</span></label>
-            <div class="time-wrap">
-              <select class="field-input field-select" id="workHour" required></select>
-              <span class="time-sep">h</span>
-              <select class="field-input field-select time-min" id="workMin" required></select>
-              <span class="time-sep">min</span>
-            </div>
+        <div class="field">
+          <label class="field-label">Trajanje dela <span class="required">*</span></label>
+          <div class="time-wrap">
+            <select class="field-input field-select" id="workHour" required></select>
+            <span class="time-sep">h</span>
+            <select class="field-input field-select time-min" id="workMin" required></select>
+            <span class="time-sep">min</span>
           </div>
-          <div class="field">
-            <label class="field-label">Čas na poti</label>
-            <div class="time-wrap">
-              <select class="field-input field-select" id="roadHour"></select>
-              <span class="time-sep">h</span>
-              <select class="field-input field-select time-min" id="roadMin"></select>
-              <span class="time-sep">min</span>
-            </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Čas na poti</label>
+          <div class="time-wrap">
+            <select class="field-input field-select" id="roadHour"></select>
+            <span class="time-sep">h</span>
+            <select class="field-input field-select time-min" id="roadMin"></select>
+            <span class="time-sep">min</span>
           </div>
         </div>
 
@@ -150,7 +159,8 @@
         <!-- Tractor -->
         <div class="field">
           <label class="field-label" for="tractor">Traktor</label>
-          <input class="field-input" type="text" id="tractor" placeholder="npr. Fendt 724" autocomplete="off" />
+          <input class="field-input" type="text" id="tractor" placeholder="npr. Fendt 724" autocomplete="off" list="tractorList" />
+          <datalist id="tractorList"></datalist>
         </div>
 
         <!-- Notes -->

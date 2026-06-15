@@ -9,6 +9,7 @@ let logs        = [];
 let fields      = [];
 let pendingDeleteId = null;
 let viewMode    = 'compact';
+let currentMonth = new Date().toISOString().slice(0, 7);
 
 // ── DOM refs ───────────────────────────────────────────────────
 const operatorNameEl = document.getElementById('operatorName');
@@ -21,8 +22,13 @@ const viewCardsBtn   = document.getElementById('viewCardsBtn');
 const viewListBtn    = document.getElementById('viewListBtn');
 
 const statTotal = document.getElementById('statTotal');
-const statToday = document.getElementById('statToday');
+const statWork  = document.getElementById('statWork');
+const statRoad  = document.getElementById('statRoad');
 const statGerk  = document.getElementById('statGerk');
+
+const monthLabel   = document.getElementById('monthLabel');
+const prevMonthBtn = document.getElementById('prevMonthBtn');
+const nextMonthBtn = document.getElementById('nextMonthBtn');
 
 const formModal   = document.getElementById('formModal');
 const modalTitle  = document.getElementById('modalTitle');
@@ -80,8 +86,9 @@ function setDurationSels(hourSel, minSel, totalMins) {
   minSel.value  = String(mins % 60).padStart(2, '0');
 }
 
-// ── Date helpers ───────────────────────────────────────────────
-const MONTHS_SL = ['jan','feb','mar','apr','maj','jun','jul','avg','sep','okt','nov','dec'];
+// ── Date / month helpers ───────────────────────────────────────
+const MONTHS_SL      = ['jan','feb','mar','apr','maj','jun','jul','avg','sep','okt','nov','dec'];
+const MONTHS_SL_LONG = ['Januar','Februar','Marec','April','Maj','Junij','Julij','Avgust','September','Oktober','November','December'];
 
 function fmtDate(iso) {
   const [y, m, d] = iso.split('-');
@@ -109,6 +116,28 @@ function isEditable(log) {
   return new Date(log.work_date) >= cutoff;
 }
 
+// ── Month navigation ───────────────────────────────────────────
+function renderMonthLabel() {
+  const [y, m] = currentMonth.split('-').map(Number);
+  monthLabel.textContent = `${MONTHS_SL_LONG[m - 1]} ${y}`;
+}
+
+function changeMonth(delta) {
+  const [y, m] = currentMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  renderMonthLabel();
+  renderLogs();
+  updateStats();
+}
+
+prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+nextMonthBtn.addEventListener('click', () => changeMonth(1));
+
+function filteredLogs() {
+  return logs.filter(l => l.work_date.startsWith(currentMonth));
+}
+
 // ── Greeting ───────────────────────────────────────────────────
 function renderGreeting(fullName) {
   const h = new Date().getHours();
@@ -119,18 +148,14 @@ function renderGreeting(fullName) {
 
 // ── Stats ──────────────────────────────────────────────────────
 function updateStats() {
-  statTotal.textContent = logs.length;
-
-  const today = todayISO();
-  const todayMins = logs
-    .filter(l => l.work_date === today)
-    .reduce((sum, l) => sum + (l.work_duration || 0), 0);
-  statToday.textContent = fmtDuration(todayMins);
-
-  const allGerks = new Set(
-    logs.flatMap(l => (l.work_log_gerks || []).map(g => g.gerk_code))
-  );
-  statGerk.textContent = allGerks.size;
+  const fl = filteredLogs();
+  statTotal.textContent = fl.length;
+  const workMins = fl.reduce((s, l) => s + (l.work_duration || 0), 0);
+  statWork.textContent = fmtDuration(workMins);
+  const roadMins = fl.reduce((s, l) => s + (l.road_duration || 0), 0);
+  statRoad.textContent = roadMins > 0 ? fmtDuration(roadMins) : '—';
+  const allGerks = new Set(fl.flatMap(l => (l.work_log_gerks || []).map(g => g.gerk_code)));
+  statGerk.textContent = allGerks.size || '—';
 }
 
 // ── Load logs ──────────────────────────────────────────────────
@@ -160,21 +185,22 @@ async function loadLogs() {
 
 // ── Render ─────────────────────────────────────────────────────
 function renderLogs() {
+  const fl = filteredLogs();
   syncViewToggle();
-  if (logs.length === 0) {
+  if (fl.length === 0) {
     logsList.className = 'logs-list';
     logsList.innerHTML = `
       <div class="state-empty">
-        <p>Ni še vpisov.<br>Dodajte prvega s tipko <strong>+</strong></p>
+        <p>Ni vpisov za ta mesec.<br>Dodajte prvega s tipko <strong>+</strong></p>
       </div>`;
     return;
   }
-  viewMode === 'compact' ? renderLogsCompact() : renderLogsCards();
+  viewMode === 'compact' ? renderLogsCompact(fl) : renderLogsCards(fl);
 }
 
-function renderLogsCards() {
+function renderLogsCards(fl) {
   logsList.className = 'logs-list';
-  logsList.innerHTML = logs.map(log => {
+  logsList.innerHTML = fl.map(log => {
     const gerks = log.work_log_gerks || [];
     const gerkBadges = gerks.map(g =>
       `<span class="log-gerk-badge">${escHtml(g.gerk_code)}</span>`
@@ -211,7 +237,7 @@ function renderLogsCards() {
 const EDIT_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.5 1.5l3 3-8 8H1.5v-3l8-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const DEL_ICON  = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M5 3.5V2h4v1.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-function renderLogsCompact() {
+function renderLogsCompact(fl) {
   logsList.className = 'logs-list logs-list--compact';
   const header = `
     <div class="lc-header" aria-hidden="true">
@@ -222,7 +248,7 @@ function renderLogsCompact() {
       <span></span>
     </div>`;
 
-  const rows = logs.map(log => {
+  const rows = fl.map(log => {
     const gerks = log.work_log_gerks || [];
     const gerkCodes = gerks.map(g => escHtml(g.gerk_code)).join(', ') || '—';
     const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
@@ -269,6 +295,21 @@ viewListBtn?.addEventListener('click',  () => { viewMode = 'compact'; renderLogs
 function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Tractor history (localStorage) ────────────────────────────
+function getTractorHistory() {
+  return JSON.parse(localStorage.getItem('wt_tractors') || '[]');
+}
+function saveTractorToHistory(name) {
+  if (!name) return;
+  const list = getTractorHistory().filter(t => t !== name);
+  list.unshift(name);
+  localStorage.setItem('wt_tractors', JSON.stringify(list.slice(0, 15)));
+}
+function updateTractorDatalist() {
+  const dl = document.getElementById('tractorList');
+  if (dl) dl.innerHTML = getTractorHistory().map(t => `<option value="${escHtml(t)}">`).join('');
 }
 
 // ── GERK autocomplete ──────────────────────────────────────────
@@ -358,11 +399,11 @@ function addGerkRow(code = '', hectares = '') {
            placeholder="ha" step="0.0001" min="0" max="9999">
     <button type="button" class="gerk-remove-btn" aria-label="Odstrani">✕</button>`;
 
-  const codeInput    = row.querySelector('.gerk-code-input');
-  const haInput      = row.querySelector('.gerk-ha-input');
+  const codeInput     = row.querySelector('.gerk-code-input');
+  const haInput       = row.querySelector('.gerk-ha-input');
   const suggestionsEl = row.querySelector('.gerk-suggestions');
-  const hintEl       = row.querySelector('.gerk-hint');
-  const removeBtn    = row.querySelector('.gerk-remove-btn');
+  const hintEl        = row.querySelector('.gerk-hint');
+  const removeBtn     = row.querySelector('.gerk-remove-btn');
 
   codeInput.value = code;
   if (hectares !== '' && hectares != null) haInput.value = hectares;
@@ -411,6 +452,7 @@ function openModal(title, prefill = null) {
   workHourSel.value = '0'; workMinSel.value = '00';
   roadHourSel.value = '0'; roadMinSel.value = '00';
   gerksListEl.innerHTML = '';
+  updateTractorDatalist();
 
   if (prefill) {
     editIdInput.value = prefill.id;
@@ -473,7 +515,7 @@ workLogForm.addEventListener('submit', async e => {
   const roadDuration = getDurationMins(roadHourSel, roadMinSel);
   const gerkRows     = getFormGerks();
 
-  if (!workDate)        return showFormError('Izberite datum dela.');
+  if (!workDate)         return showFormError('Izberite datum dela.');
   if (workDuration <= 0) return showFormError('Vnesite trajanje dela.');
   if (!gerkRows.length)  return showFormError('Dodajte vsaj en GERK.');
 
@@ -520,7 +562,6 @@ workLogForm.addEventListener('submit', async e => {
     return;
   }
 
-  // Replace GERK lines
   if (isEdit) {
     await supabase.from('work_log_gerks').delete().eq('work_log_id', workLogId);
   }
@@ -536,6 +577,7 @@ workLogForm.addEventListener('submit', async e => {
     return;
   }
 
+  saveTractorToHistory(tractorInput.value.trim());
   showFormSuccess(isEdit ? '✓ Vpis posodobljen!' : '✓ Vpis shranjen!');
   await loadLogs();
   setTimeout(closeModal, 1000);
@@ -604,6 +646,7 @@ async function boot() {
   if (!authed) return;
 
   buildTimeOptions();
+  renderMonthLabel();
   loadFields();
 
   const { data: profile } = await supabase

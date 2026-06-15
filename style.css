@@ -372,7 +372,6 @@ input, select, textarea { font-family: inherit; }
 .header-logo {
   width: auto;
   height: 28px;
-  filter: brightness(0) invert(1);
 }
 
 .header-user {
@@ -427,9 +426,44 @@ input, select, textarea { font-family: inherit; }
 /* ── Stats ──────────────────────────────────────────────────── */
 .stats-section { padding: 16px 16px 8px; }
 
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 4px 16px 12px;
+}
+
+.month-nav-label {
+  font-size: 1rem;
+  font-weight: 600;
+  min-width: 160px;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.month-nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 1.375rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s;
+}
+.month-nav-btn:hover  { background: var(--border-light); }
+.month-nav-btn:active { transform: scale(.93); }
+
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 

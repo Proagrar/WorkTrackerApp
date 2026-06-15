@@ -55,14 +55,6 @@ supabase.auth.getSession().then(({ data: { session } }) => {
   if (session && mode !== 'recovery') window.location.replace('app.html');
 });
 
-document.getElementById('googleBtn').addEventListener('click', () => {
-  errorEl.textContent = 'Prosimo, uporabite prijavo z e-pošto.';
-  errorEl.hidden = false;
-});
-document.getElementById('facebookBtn').addEventListener('click', () => {
-  errorEl.textContent = 'Prosimo, uporabite prijavo z e-pošto.';
-  errorEl.hidden = false;
-});
 
 toggleLink.addEventListener('click', () => {
   if (mode === 'login')        setMode('signup');
