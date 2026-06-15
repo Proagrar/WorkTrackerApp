@@ -97,25 +97,9 @@ input, select, textarea { font-family: inherit; }
   margin-bottom: 32px;
 }
 
-.login-logo-icon {
-  width: 80px;
-  height: 80px;
-  background: var(--blue-100);
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 16px;
-  overflow: hidden;
-}
-
-.login-logo-icon img { width: 64px; height: 64px; }
-
-.login-title {
-  font-size: 1.625rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -.02em;
+.login-logo img {
+  display: block;
+  margin: 0 auto 12px;
 }
 
 .login-sub {
@@ -378,10 +362,10 @@ input, select, textarea { font-family: inherit; }
   gap: 10px;
 }
 
-.header-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -.01em;
+.header-logo {
+  width: auto;
+  height: 28px;
+  filter: brightness(0) invert(1);
 }
 
 .header-user {
