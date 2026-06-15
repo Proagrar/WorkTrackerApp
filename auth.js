@@ -55,20 +55,14 @@ supabase.auth.getSession().then(({ data: { session } }) => {
   if (session && mode !== 'recovery') window.location.replace('app.html');
 });
 
-document.getElementById('googleBtn').addEventListener('click', () => signInWith('google'));
-document.getElementById('facebookBtn').addEventListener('click', () => signInWith('facebook'));
-
-async function signInWith(provider) {
-  errorEl.hidden = true;
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: { redirectTo: new URL('app.html', window.location.href).href },
-  });
-  if (error) {
-    errorEl.textContent = 'Prijava ni uspela. Poskusite znova.';
-    errorEl.hidden = false;
-  }
-}
+document.getElementById('googleBtn').addEventListener('click', () => {
+  errorEl.textContent = 'Prosimo, uporabite prijavo z e-pošto.';
+  errorEl.hidden = false;
+});
+document.getElementById('facebookBtn').addEventListener('click', () => {
+  errorEl.textContent = 'Prosimo, uporabite prijavo z e-pošto.';
+  errorEl.hidden = false;
+});
 
 toggleLink.addEventListener('click', () => {
   if (mode === 'login')        setMode('signup');
