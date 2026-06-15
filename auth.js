@@ -70,17 +70,13 @@ async function signInWith(provider) {
   }
 }
 
-toggleLink.addEventListener('click', e => {
-  e.preventDefault();
-  if (mode === 'login')  setMode('signup');
-  else if (mode === 'signup') setMode('login');
-  else if (mode === 'reset')  setMode('login');
+toggleLink.addEventListener('click', () => {
+  if (mode === 'login')        setMode('signup');
+  else if (mode === 'signup')  setMode('login');
+  else if (mode === 'reset')   setMode('login');
 });
 
-forgotLink.addEventListener('click', e => {
-  e.preventDefault();
-  setMode('reset');
-});
+forgotLink.addEventListener('click', () => setMode('reset'));
 
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
