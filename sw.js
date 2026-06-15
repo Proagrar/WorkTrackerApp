@@ -8,6 +8,7 @@ const SHELL = [
   './app.js',
   './manifest.json',
   './icons/icon.svg',
+  './icons/Proagrar_LOGO.png',
 ];
 
 self.addEventListener('install', (e) => {
