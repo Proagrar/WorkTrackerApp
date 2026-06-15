@@ -531,7 +531,7 @@ workLogForm.addEventListener('submit', async e => {
   const gerkRows     = getFormGerks();
 
   if (!workDate)         return showFormError('Izberite datum dela.');
-  if (workDuration <= 0) return showFormError('Vnesite trajanje dela.');
+  if (workDuration <= 0) return showFormError('Vnesite čas dela na traktorju.');
   if (!gerkRows.length)  return showFormError('Dodajte vsaj en GERK.');
 
   for (const g of gerkRows) {
