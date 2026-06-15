@@ -57,16 +57,16 @@
           <label class="field-label" for="fullName">Ime in priimek</label>
           <input class="field-input" type="text" id="fullName" autocomplete="name" />
         </div>
-        <div class="field">
+        <div class="field" id="emailField">
           <label class="field-label" for="email">E-pošta</label>
           <input class="field-input" type="email" id="email" autocomplete="email" required />
         </div>
-        <div class="field">
-          <label class="field-label" for="password">Geslo</label>
+        <div class="field" id="passwordField">
+          <label class="field-label" id="passwordLabel" for="password">Geslo</label>
           <input class="field-input" type="password" id="password" autocomplete="current-password" required />
         </div>
         <div class="field" id="confirmPasswordField" hidden>
-          <label class="field-label" for="confirmPassword">Potrdi geslo</label>
+          <label class="field-label" id="confirmPasswordLabel" for="confirmPassword">Potrdi geslo</label>
           <input class="field-input" type="password" id="confirmPassword" autocomplete="new-password" />
         </div>
         <button id="loginBtn" class="btn btn-primary" type="submit">
@@ -77,6 +77,9 @@
 
       <p class="auth-toggle">
         <a id="authToggleLink" href="#">Nimam računa? Registracija →</a>
+      </p>
+      <p class="auth-toggle">
+        <a id="forgotPasswordLink" href="#">Pozabljeno geslo?</a>
       </p>
 
       <div id="loginSuccess" class="alert alert-success" hidden role="status"></div>
