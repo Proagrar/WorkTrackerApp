@@ -380,6 +380,26 @@ input, select, textarea { font-family: inherit; }
   gap: 10px;
 }
 
+.admin-badge {
+  font-size: .625rem;
+  font-weight: 700;
+  background: #c6d92d;
+  color: #1a3a00;
+  padding: 2px 7px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.log-operator-badge {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--blue-800);
+  background: var(--blue-100);
+  padding: 1px 8px;
+  border-radius: 20px;
+}
+
 .header-name {
   font-size: .8125rem;
   font-weight: 500;

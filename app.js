@@ -4,11 +4,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── State ──────────────────────────────────────────────────────
-let currentUser = null;
-let logs        = [];
-let fields      = [];
+let currentUser  = null;
+let currentRole  = 'operator';
+let profileMap   = {};
+let logs         = [];
+let fields       = [];
 let pendingDeleteId = null;
-let viewMode    = 'compact';
+let viewMode     = 'compact';
 let currentMonth = new Date().toISOString().slice(0, 7);
 
 // ── DOM refs ───────────────────────────────────────────────────
@@ -21,10 +23,11 @@ const logsList       = document.getElementById('logsList');
 const viewCardsBtn   = document.getElementById('viewCardsBtn');
 const viewListBtn    = document.getElementById('viewListBtn');
 
-const statTotal = document.getElementById('statTotal');
-const statWork  = document.getElementById('statWork');
-const statRoad  = document.getElementById('statRoad');
-const statGerk  = document.getElementById('statGerk');
+const statTotal  = document.getElementById('statTotal');
+const statWork   = document.getElementById('statWork');
+const statRoad   = document.getElementById('statRoad');
+const statGerk   = document.getElementById('statGerk');
+const adminBadge = document.getElementById('adminBadge');
 
 const monthLabel   = document.getElementById('monthLabel');
 const prevMonthBtn = document.getElementById('prevMonthBtn');
@@ -166,12 +169,20 @@ async function loadLogs() {
       <p>Nalaganje...</p>
     </div>`;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('work_logs')
     .select('*, work_log_gerks(*)')
-    .eq('operator_id', currentUser.id)
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
+
+  if (currentRole !== 'admin') {
+    query = query.eq('operator_id', currentUser.id);
+  } else {
+    const { data: profs } = await supabase.from('profiles').select('id, full_name');
+    profileMap = Object.fromEntries((profs ?? []).map(p => [p.id, p.full_name]));
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     logsList.innerHTML = `<div class="state-empty"><p>Napaka pri nalaganju. Poskusite znova.</p></div>`;
@@ -213,6 +224,8 @@ function renderLogsCards(fl) {
       ? `<div class="log-row"><span class="log-icon">🚜</span><span>${escHtml(log.tractor)}</span></div>` : '';
     const desc = log.description
       ? `<div class="log-row"><span class="log-desc">${escHtml(log.description)}</span></div>` : '';
+    const operatorRow = currentRole === 'admin'
+      ? `<div class="log-row"><span class="log-operator-badge">${escHtml(profileMap[log.operator_id] ?? '—')}</span></div>` : '';
     const editable = isEditable(log);
     return `
       <div class="log-card" role="listitem">
@@ -221,6 +234,7 @@ function renderLogsCards(fl) {
           <span class="log-duration">${fmtDuration(log.work_duration)}</span>
         </div>
         <div class="log-card-body">
+          ${operatorRow}
           <div class="log-row">${gerkBadges}${haStr ? `<span class="log-ha-text">${haStr}</span>` : ''}</div>
           ${road}${tractor}${desc}
         </div>
@@ -256,6 +270,7 @@ function renderLogsCompact(fl) {
     const editable = isEditable(log);
 
     const extras = [
+      currentRole === 'admin' ? escHtml(profileMap[log.operator_id] ?? '—') : null,
       log.road_duration > 0 ? `Pot: ${fmtDuration(log.road_duration)}` : null,
       log.tractor ? `Traktor: ${escHtml(log.tractor)}` : null,
       log.description ? escHtml(log.description) : null,
@@ -656,7 +671,9 @@ async function boot() {
     .maybeSingle();
 
   const displayName = profile?.full_name ?? currentUser.email;
+  currentRole = profile?.role ?? 'operator';
   operatorNameEl.textContent = displayName;
+  adminBadge.hidden = currentRole !== 'admin';
   renderGreeting(displayName);
 
   await loadLogs();
