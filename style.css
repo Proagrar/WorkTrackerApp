@@ -99,7 +99,7 @@ input, select, textarea { font-family: inherit; }
 
 .login-logo img {
   display: block;
-  margin: 0 auto 16px;
+  margin: 0 auto var(--header-h);
 }
 
 .login-title {
