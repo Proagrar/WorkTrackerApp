@@ -53,6 +53,10 @@
       <div class="oauth-divider">ali</div>
 
       <form id="loginForm" class="login-form" novalidate>
+        <div class="field" id="fullNameField" hidden>
+          <label class="field-label" for="fullName">Ime in priimek</label>
+          <input class="field-input" type="text" id="fullName" autocomplete="name" />
+        </div>
         <div class="field">
           <label class="field-label" for="email">E-pošta</label>
           <input class="field-input" type="email" id="email" autocomplete="email" required />
@@ -61,13 +65,22 @@
           <label class="field-label" for="password">Geslo</label>
           <input class="field-input" type="password" id="password" autocomplete="current-password" required />
         </div>
+        <div class="field" id="confirmPasswordField" hidden>
+          <label class="field-label" for="confirmPassword">Potrdi geslo</label>
+          <input class="field-input" type="password" id="confirmPassword" autocomplete="new-password" />
+        </div>
         <button id="loginBtn" class="btn btn-primary" type="submit">
           <span class="btn-label">Prijava</span>
           <span class="btn-spinner" hidden aria-hidden="true"></span>
         </button>
       </form>
 
-      <div id="loginError" class="alert alert-error" hidden role="alert"></div>
+      <p class="auth-toggle">
+        <a id="authToggleLink" href="#">Nimam računa? Registracija →</a>
+      </p>
+
+      <div id="loginSuccess" class="alert alert-success" hidden role="status"></div>
+      <div id="loginError"   class="alert alert-error"   hidden role="alert"></div>
 
     </div>
   </div>
