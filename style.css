@@ -99,7 +99,14 @@ input, select, textarea { font-family: inherit; }
 
 .login-logo img {
   display: block;
-  margin: 0 auto 12px;
+  margin: 0 auto 16px;
+}
+
+.login-title {
+  font-size: 1.625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.02em;
 }
 
 .login-sub {
