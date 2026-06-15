@@ -666,7 +666,7 @@ async function boot() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name')
+    .select('full_name, role')
     .eq('id', currentUser.id)
     .maybeSingle();
 
