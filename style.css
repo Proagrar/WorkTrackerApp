@@ -358,7 +358,8 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px 0 12px;
+  padding: env(safe-area-inset-top) 16px 0 12px;
+  height: calc(var(--header-h) + env(safe-area-inset-top));
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
@@ -415,7 +416,7 @@ input, select, textarea { font-family: inherit; }
    APP MAIN
    ============================================================ */
 .app-main {
-  margin-top: var(--header-h);
+  margin-top: calc(var(--header-h) + env(safe-area-inset-top));
   padding: 0 0 calc(var(--fab-size) + 40px);
   max-width: 640px;
   margin-left: auto;
