@@ -1,4 +1,4 @@
-const CACHE = 'worktracker-v11';
+const CACHE = 'worktracker-v12';
 const SHELL = [
   './index.html',
   './app.html',
@@ -9,6 +9,7 @@ const SHELL = [
   './manifest.json',
   './icons/icon.svg',
   './icons/Proagrar_LOGO.png',
+  './icons/Proagrar_icon.png',
 ];
 
 self.addEventListener('install', (e) => {
