@@ -11,7 +11,7 @@
   "icons": [
     {
       "src": "icons/Proagrar_icon.png",
-      "sizes": "512x512",
+      "sizes": "385x381",
       "type": "image/png",
       "purpose": "any maskable"
     },
