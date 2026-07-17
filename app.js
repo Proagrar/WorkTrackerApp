@@ -6,12 +6,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ── State ──────────────────────────────────────────────────────
 let currentUser  = null;
 let currentRole  = 'operator';
+let currentOrg   = null;
 let profileMap   = {};
 let logs         = [];
 let fields       = [];
-let pendingDeleteId = null;
+let pendingDeleteId   = null;
+let pendingDeleteType = 'log'; // 'log' | 'workorder'
 let viewMode     = 'compact';
 let currentMonth = new Date().toISOString().slice(0, 7);
+
+let currentTab       = 'evidenca'; // 'evidenca' | 'nalogi'
+let workOrders       = [];
+let workOrdersLoaded = false;
+let customers        = [];
+let operatorsList    = [];
+let myOpenWorkOrders = [];
 
 // ── DOM refs ───────────────────────────────────────────────────
 const operatorNameEl = document.getElementById('operatorName');
@@ -39,6 +48,7 @@ const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const editIdInput = document.getElementById('editId');
 const workDateInput = document.getElementById('workDate');
+const workOrderSelect = document.getElementById('workOrderSelect');
 const workHourSel = document.getElementById('workHour');
 const workMinSel  = document.getElementById('workMin');
 const roadHourSel = document.getElementById('roadHour');
@@ -53,8 +63,38 @@ const saveBtn     = document.getElementById('saveBtn');
 const cancelBtn   = document.getElementById('cancelBtn');
 
 const deleteModal      = document.getElementById('deleteModal');
+const deleteTitleEl    = document.getElementById('deleteTitle');
+const deleteBodyEl     = document.getElementById('deleteBody');
 const deleteCancelBtn  = document.getElementById('deleteCancelBtn');
 const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+
+// ── Tabs ───────────────────────────────────────────────────────
+const tabEvidenca   = document.getElementById('tabEvidenca');
+const tabNalogi     = document.getElementById('tabNalogi');
+const panelEvidenca = document.getElementById('panelEvidenca');
+const panelNalogi   = document.getElementById('panelNalogi');
+const workOrdersList = document.getElementById('workOrdersList');
+
+// ── Work order modal refs ───────────────────────────────────────
+const workOrderModal      = document.getElementById('workOrderModal');
+const woModalTitle        = document.getElementById('woModalTitle');
+const woModalClose        = document.getElementById('woModalClose');
+const workOrderForm       = document.getElementById('workOrderForm');
+const woEditIdInput       = document.getElementById('woEditId');
+const woStevilkaInput     = document.getElementById('woStevilka');
+const woStrankaInput      = document.getElementById('woStranka');
+const woStrankaIdInput    = document.getElementById('woStrankaId');
+const woStrankaSuggestions = document.getElementById('woStrankaSuggestions');
+const woIzvajalecSel      = document.getElementById('woIzvajalec');
+const woTipSel            = document.getElementById('woTip');
+const woHaInput           = document.getElementById('woHa');
+const woStrosekOcenaInput = document.getElementById('woStrosekOcena');
+const woStrosekInput      = document.getElementById('woStrosek');
+const woStatusSel         = document.getElementById('woStatus');
+const woFormError         = document.getElementById('woFormError');
+const woFormSuccess       = document.getElementById('woFormSuccess');
+const woSaveBtn           = document.getElementById('woSaveBtn');
+const woCancelBtn         = document.getElementById('woCancelBtn');
 
 // ── Session guard ──────────────────────────────────────────────
 async function initAuth() {
@@ -175,11 +215,23 @@ async function loadLogs() {
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
 
-  if (currentRole !== 'admin') {
-    query = query.eq('operator_id', currentUser.id);
-  } else {
+  if (currentRole === 'admin' || currentRole === 'supervisor') {
     const { data: profs } = await supabase.from('profiles').select('id, full_name');
     profileMap = Object.fromEntries((profs ?? []).map(p => [p.id, p.full_name]));
+  } else if (currentRole === 'supervisor') {
+    const { data: profs } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('organization', currentOrg);
+    profileMap = Object.fromEntries((profs ?? []).map(p => [p.id, p.full_name]));
+    const orgIds = (profs ?? []).map(p => p.id);
+    if (orgIds.length) {
+      query = query.in('operator_id', orgIds);
+    } else {
+      query = query.eq('operator_id', currentUser.id);
+    }
+  } else {
+    query = query.eq('operator_id', currentUser.id);
   }
 
   const { data, error } = await query;
@@ -224,7 +276,7 @@ function renderLogsCards(fl) {
       ? `<div class="log-row"><span class="log-icon">🚜</span><span>${escHtml(log.tractor)}</span></div>` : '';
     const desc = log.description
       ? `<div class="log-row"><span class="log-desc">${escHtml(log.description)}</span></div>` : '';
-    const operatorRow = currentRole === 'admin'
+    const operatorRow = currentRole === 'admin' || currentRole === 'supervisor'
       ? `<div class="log-row"><span class="log-operator-badge">${escHtml(profileMap[log.operator_id] ?? '—')}</span></div>` : '';
     const editable = isEditable(log);
     return `
@@ -270,7 +322,7 @@ function renderLogsCompact(fl) {
     const editable = isEditable(log);
 
     const extras = [
-      currentRole === 'admin' ? escHtml(profileMap[log.operator_id] ?? '—') : null,
+      currentRole === 'admin' || currentRole === 'supervisor' ? escHtml(profileMap[log.operator_id] ?? '—') : null,
       log.road_duration > 0 ? `Pot: ${fmtDuration(log.road_duration)}` : null,
       log.tractor ? `Traktor: ${escHtml(log.tractor)}` : null,
       log.description ? escHtml(log.description) : null,
@@ -457,8 +509,37 @@ addGerkBtn.addEventListener('click', () => {
   input.focus();
 });
 
+// ── Work order picker (for work log form) ──────────────────────
+async function loadMyOpenWorkOrders() {
+  const { data } = await supabase
+    .from('delovni_nalogi')
+    .select('id, stevilka, tip_storitve, customers(naziv, company_name)')
+    .eq('izvajalec', currentUser.id)
+    .in('status', ['Plan', 'V delu'])
+    .order('ustvarjen', { ascending: false });
+  myOpenWorkOrders = data ?? [];
+}
+
+function workOrderOptionLabel(wo) {
+  const stranka = wo.customers?.naziv || wo.customers?.company_name;
+  return [wo.stevilka, wo.tip_storitve, stranka].filter(Boolean).join(' — ');
+}
+
+function populateWorkOrderSelect(selectedId = '', selectedLabel = '') {
+  let options = myOpenWorkOrders;
+  // Editing a log whose work order isn't in "my open" list (already
+  // completed, or RLS hides it) — keep it selectable so the form doesn't
+  // silently invalidate an existing, unrelated field.
+  if (selectedId && !options.some(w => w.id === selectedId)) {
+    options = [{ id: selectedId, stevilka: selectedLabel || '(obstoječi nalog)', tip_storitve: null, customers: null }, ...options];
+  }
+  workOrderSelect.innerHTML = '<option value="">— izberi delovni nalog —</option>' +
+    options.map(w => `<option value="${w.id}">${escHtml(workOrderOptionLabel(w))}</option>`).join('');
+  workOrderSelect.value = selectedId || '';
+}
+
 // ── Modal ──────────────────────────────────────────────────────
-function openModal(title, prefill = null) {
+async function openModal(title, prefill = null) {
   modalTitle.textContent = title;
   workLogForm.reset();
   editIdInput.value = '';
@@ -468,6 +549,9 @@ function openModal(title, prefill = null) {
   roadHourSel.value = '0'; roadMinSel.value = '00';
   gerksListEl.innerHTML = '';
   updateTractorDatalist();
+
+  await loadMyOpenWorkOrders();
+  populateWorkOrderSelect(prefill?.work_order_id || '');
 
   if (prefill) {
     editIdInput.value = prefill.id;
@@ -530,9 +614,10 @@ workLogForm.addEventListener('submit', async e => {
   const roadDuration = getDurationMins(roadHourSel, roadMinSel);
   const gerkRows     = getFormGerks();
 
-  if (!workDate)         return showFormError('Izberite datum dela.');
-  if (workDuration <= 0) return showFormError('Vnesite čas dela na traktorju.');
-  if (!gerkRows.length)  return showFormError('Dodajte vsaj en GERK.');
+  if (!workDate)              return showFormError('Izberite datum dela.');
+  if (!workOrderSelect.value) return showFormError('Izberite delovni nalog.');
+  if (workDuration <= 0)      return showFormError('Vnesite čas dela na traktorju.');
+  if (!gerkRows.length)       return showFormError('Dodajte vsaj en GERK.');
 
   for (const g of gerkRows) {
     const known = fields.find(f => f.code === g.code);
@@ -543,11 +628,12 @@ workLogForm.addEventListener('submit', async e => {
   setSaveLoading(true);
 
   const logPayload = {
-    work_date:     workDate,
-    work_duration: workDuration,
-    road_duration: roadDuration || null,
-    tractor:       tractorInput.value.trim() || null,
-    description:   descInput.value.trim()    || null,
+    work_date:      workDate,
+    work_order_id:  workOrderSelect.value,
+    work_duration:  workDuration,
+    road_duration:  roadDuration || null,
+    tractor:        tractorInput.value.trim() || null,
+    description:    descInput.value.trim()    || null,
   };
 
   let workLogId;
@@ -608,7 +694,10 @@ function wireLogButtons() {
   });
   logsList.querySelectorAll('[data-action="delete"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      pendingDeleteId = btn.dataset.id;
+      pendingDeleteId   = btn.dataset.id;
+      pendingDeleteType = 'log';
+      deleteTitleEl.textContent = 'Izbriši vpis?';
+      deleteBodyEl.textContent  = 'To dejanje je trajno in ga ni mogoče razveljaviti.';
       deleteModal.hidden = false;
       document.body.style.overflow = 'hidden';
     });
@@ -618,14 +707,18 @@ function wireLogButtons() {
 deleteConfirmBtn.addEventListener('click', async () => {
   if (!pendingDeleteId) return;
   deleteConfirmBtn.disabled = true;
-  const { error } = await supabase
-    .from('work_logs')
-    .delete()
-    .eq('id', pendingDeleteId)
-    .eq('operator_id', currentUser.id);
+
+  const { error } = pendingDeleteType === 'workorder'
+    ? await supabase.from('delovni_nalogi').delete().eq('id', pendingDeleteId)
+    : await supabase.from('work_logs').delete().eq('id', pendingDeleteId).eq('operator_id', currentUser.id);
+
   deleteConfirmBtn.disabled = false;
+  const type = pendingDeleteType;
   closeDeleteModal();
-  if (!error) await loadLogs();
+  if (!error) {
+    if (type === 'workorder') await loadWorkOrders();
+    else await loadLogs();
+  }
 });
 
 deleteCancelBtn.addEventListener('click', closeDeleteModal);
@@ -641,7 +734,10 @@ logoutBtn.addEventListener('click', async () => {
   window.location.replace('index.html');
 });
 
-addBtn.addEventListener('click', () => openModal('Nov vpis'));
+addBtn.addEventListener('click', () => {
+  if (currentTab === 'nalogi') openWorkOrderModal('Nov delovni nalog');
+  else openModal('Nov vpis');
+});
 modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
 
@@ -650,10 +746,257 @@ deleteModal.addEventListener('click', e => { if (e.target === deleteModal) close
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (!formModal.hidden)   closeModal();
-    if (!deleteModal.hidden) closeDeleteModal();
+    if (!formModal.hidden)      closeModal();
+    if (!deleteModal.hidden)    closeDeleteModal();
+    if (!workOrderModal.hidden) closeWorkOrderModal();
   }
 });
+
+// ── Tabs ───────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  tabEvidenca.classList.toggle('tab-btn--active', tab === 'evidenca');
+  tabNalogi.classList.toggle('tab-btn--active', tab === 'nalogi');
+  panelEvidenca.hidden = tab !== 'evidenca';
+  panelNalogi.hidden   = tab !== 'nalogi';
+  updateFabVisibility();
+  if (tab === 'nalogi' && !workOrdersLoaded) loadWorkOrders();
+}
+
+function updateFabVisibility() {
+  addBtn.hidden = currentTab === 'nalogi' && currentRole !== 'admin';
+}
+
+tabEvidenca.addEventListener('click', () => switchTab('evidenca'));
+tabNalogi.addEventListener('click',   () => switchTab('nalogi'));
+
+// ── Work orders: load + render ───────────────────────────────────
+function slugStatus(status) {
+  return { 'Plan': 'plan', 'V delu': 'delo', 'Izvedeno': 'izvedeno', 'Izdan Račun': 'racun' }[status] || 'plan';
+}
+
+async function loadWorkOrders() {
+  workOrdersList.innerHTML = `
+    <div class="state-loading">
+      <div class="spinner"></div>
+      <p>Nalaganje...</p>
+    </div>`;
+
+  const { data, error } = await supabase
+    .from('delovni_nalogi')
+    .select('*, customers(naziv, company_name), profiles(full_name)')
+    .order('ustvarjen', { ascending: false });
+
+  if (error) {
+    workOrdersList.innerHTML = `<div class="state-empty"><p>Napaka pri nalaganju. Poskusite znova.</p></div>`;
+    return;
+  }
+
+  workOrders = data ?? [];
+  workOrdersLoaded = true;
+  renderWorkOrders();
+}
+
+function renderWorkOrders() {
+  if (workOrders.length === 0) {
+    workOrdersList.innerHTML = `<div class="state-empty"><p>Ni delovnih nalogov.</p></div>`;
+    return;
+  }
+
+  const canEdit = currentRole === 'admin';
+
+  workOrdersList.innerHTML = workOrders.map(wo => {
+    const stranka   = wo.customers?.naziv || wo.customers?.company_name || '—';
+    const izvajalec = wo.profiles?.full_name || '—';
+    const ha        = wo.kolicina_ha != null ? `${Number(wo.kolicina_ha).toFixed(2)} ha` : null;
+
+    return `
+      <div class="log-card" role="listitem">
+        <div class="log-card-top">
+          <span class="log-date">${escHtml(wo.stevilka)}</span>
+          <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
+        </div>
+        <div class="log-card-body">
+          <div class="log-row"><span class="log-operator-badge">${escHtml(stranka)}</span></div>
+          ${wo.tip_storitve ? `<div class="log-row"><span>${escHtml(wo.tip_storitve)}</span>${ha ? `<span class="log-ha-text"> · ${ha}</span>` : ''}</div>` : ''}
+          <div class="log-row"><span class="log-desc">Izvajalec: ${escHtml(izvajalec)}</span></div>
+        </div>
+        ${canEdit ? `
+        <div class="log-card-actions">
+          <button class="btn-outline" data-action="wo-edit" data-id="${wo.id}">Uredi</button>
+          <button class="btn-danger-outline" data-action="wo-delete" data-id="${wo.id}">Izbriši</button>
+        </div>` : ''}
+      </div>`;
+  }).join('');
+
+  wireWorkOrderButtons();
+}
+
+function wireWorkOrderButtons() {
+  workOrdersList.querySelectorAll('[data-action="wo-edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wo = workOrders.find(w => w.id === btn.dataset.id);
+      if (wo) openWorkOrderModal('Uredi delovni nalog', wo);
+    });
+  });
+  workOrdersList.querySelectorAll('[data-action="wo-delete"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pendingDeleteId   = btn.dataset.id;
+      pendingDeleteType = 'workorder';
+      deleteTitleEl.textContent = 'Izbriši delovni nalog?';
+      deleteBodyEl.textContent  = 'To dejanje je trajno in ga ni mogoče razveljaviti.';
+      deleteModal.hidden = false;
+      document.body.style.overflow = 'hidden';
+    });
+  });
+}
+
+// ── Work orders: customer + operator lookups ────────────────────
+async function loadCustomers() {
+  const { data } = await supabase
+    .from('customers')
+    .select('id, naziv, company_name')
+    .order('naziv');
+  customers = (data ?? []).map(c => ({ id: c.id, name: c.naziv || c.company_name || '—' }));
+}
+
+async function loadOperatorsList() {
+  const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
+  operatorsList = data ?? [];
+  woIzvajalecSel.innerHTML = '<option value="">— brez —</option>' +
+    operatorsList.map(p => `<option value="${p.id}">${escHtml(p.full_name || '—')}</option>`).join('');
+}
+
+function filterCustomers(query) {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  return customers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+}
+
+function showCustomerSuggestions(matches) {
+  if (!matches.length) { woStrankaSuggestions.hidden = true; return; }
+  woStrankaSuggestions.innerHTML = matches.map(c =>
+    `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
+  ).join('');
+  woStrankaSuggestions.hidden = false;
+}
+
+woStrankaInput.addEventListener('input', () => {
+  woStrankaIdInput.value = '';
+  showCustomerSuggestions(filterCustomers(woStrankaInput.value.trim()));
+});
+woStrankaInput.addEventListener('blur', () => {
+  setTimeout(() => { woStrankaSuggestions.hidden = true; }, 150);
+});
+woStrankaSuggestions.addEventListener('mousedown', e => {
+  const item = e.target.closest('.gerk-suggestion-item');
+  if (!item) return;
+  const c = customers.find(c => c.id === item.dataset.id);
+  if (c) {
+    woStrankaInput.value = c.name;
+    woStrankaIdInput.value = c.id;
+  }
+  woStrankaSuggestions.hidden = true;
+});
+
+// ── Work order modal ────────────────────────────────────────────
+async function openWorkOrderModal(title, prefill = null) {
+  woModalTitle.textContent = title;
+  workOrderForm.reset();
+  woEditIdInput.value = '';
+  woStrankaIdInput.value = '';
+  hideWoFormFeedback();
+  woStatusSel.value = 'Plan';
+
+  if (!customers.length) await loadCustomers();
+  if (!operatorsList.length) await loadOperatorsList();
+
+  if (prefill) {
+    woEditIdInput.value      = prefill.id;
+    woStevilkaInput.value    = prefill.stevilka;
+    woStrankaIdInput.value   = prefill.stranka_id || '';
+    woStrankaInput.value     = prefill.customers?.naziv || prefill.customers?.company_name || '';
+    woIzvajalecSel.value     = prefill.izvajalec || '';
+    woTipSel.value           = prefill.tip_storitve || '';
+    woHaInput.value          = prefill.kolicina_ha ?? '';
+    woStrosekOcenaInput.value = prefill.strosek_ocena ?? '';
+    woStrosekInput.value     = prefill.strosek ?? '';
+    woStatusSel.value        = prefill.status || 'Plan';
+  }
+
+  workOrderModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeWorkOrderModal() {
+  workOrderModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function hideWoFormFeedback() {
+  woFormError.hidden   = true;
+  woFormSuccess.hidden = true;
+}
+
+function showWoFormError(msg) {
+  woFormError.textContent = msg;
+  woFormError.hidden = false;
+  woFormSuccess.hidden = true;
+}
+
+function showWoFormSuccess(msg) {
+  woFormSuccess.textContent = msg;
+  woFormSuccess.hidden = false;
+  woFormError.hidden = true;
+}
+
+function setWoSaveLoading(on) {
+  woSaveBtn.disabled   = on;
+  woCancelBtn.disabled = on;
+  woSaveBtn.querySelector('.btn-label').hidden   = on;
+  woSaveBtn.querySelector('.btn-spinner').hidden = !on;
+}
+
+workOrderForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  hideWoFormFeedback();
+
+  const isEdit   = !!woEditIdInput.value;
+  const stevilka = woStevilkaInput.value.trim();
+  if (!stevilka) return showWoFormError('Vnesite številko naloga.');
+
+  setWoSaveLoading(true);
+
+  const payload = {
+    stevilka,
+    stranka_id:    woStrankaIdInput.value || null,
+    izvajalec:     woIzvajalecSel.value || null,
+    tip_storitve:  woTipSel.value || null,
+    kolicina_ha:   woHaInput.value ? parseFloat(woHaInput.value) : null,
+    strosek_ocena: woStrosekOcenaInput.value ? parseFloat(woStrosekOcenaInput.value) : null,
+    strosek:       woStrosekInput.value ? parseFloat(woStrosekInput.value) : null,
+    status:        woStatusSel.value,
+  };
+
+  const { error } = isEdit
+    ? await supabase.from('delovni_nalogi').update(payload).eq('id', woEditIdInput.value)
+    : await supabase.from('delovni_nalogi').insert(payload);
+
+  setWoSaveLoading(false);
+
+  if (error) {
+    showWoFormError('Napaka pri shranjevanju. Preverite podatke in poskusite znova.');
+    return;
+  }
+
+  showWoFormSuccess(isEdit ? '✓ Nalog posodobljen!' : '✓ Nalog shranjen!');
+  await loadWorkOrders();
+  setTimeout(closeWorkOrderModal, 1000);
+});
+
+woModalClose.addEventListener('click', closeWorkOrderModal);
+woCancelBtn.addEventListener('click', closeWorkOrderModal);
+workOrderModal.addEventListener('click', e => { if (e.target === workOrderModal) closeWorkOrderModal(); });
 
 // ── Boot ───────────────────────────────────────────────────────
 async function boot() {
@@ -666,15 +1009,25 @@ async function boot() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, role')
+    .select('full_name, role, organization')
     .eq('id', currentUser.id)
     .maybeSingle();
 
   const displayName = profile?.full_name ?? currentUser.email;
   currentRole = profile?.role ?? 'operator';
+  currentOrg  = profile?.organization ?? null;
   operatorNameEl.textContent = displayName;
-  adminBadge.hidden = currentRole !== 'admin';
+  if (currentRole === 'admin') {
+    adminBadge.textContent = 'Admin';
+    adminBadge.hidden = false;
+  } else if (currentRole === 'supervisor') {
+    adminBadge.textContent = 'Nadzornik';
+    adminBadge.hidden = false;
+  } else {
+    adminBadge.hidden = true;
+  }
   renderGreeting(displayName);
+  updateFabVisibility();
 
   await loadLogs();
 }

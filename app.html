@@ -33,69 +33,95 @@
   <!-- ── Main ───────────────────────────────────────────────── -->
   <main class="app-main">
 
-    <section class="greeting-section">
-      <p id="greeting" class="greeting"></p>
-      <p class="greeting-sub">Danes, <span id="todayDate"></span></p>
-    </section>
+    <!-- Tabs -->
+    <nav class="tab-bar" aria-label="Zavihki">
+      <button id="tabEvidenca" class="tab-btn tab-btn--active" data-tab="evidenca">Evidenca dela</button>
+      <button id="tabNalogi" class="tab-btn" data-tab="nalogi">Delovni Nalogi</button>
+    </nav>
 
-    <!-- Month navigation -->
-    <div class="month-nav">
-      <button id="prevMonthBtn" class="month-nav-btn" aria-label="Prejšnji mesec">&#8249;</button>
-      <span id="monthLabel" class="month-nav-label"></span>
-      <button id="nextMonthBtn" class="month-nav-btn" aria-label="Naslednji mesec">&#8250;</button>
+    <!-- ── Tab: Evidenca dela (original view) ────────────────── -->
+    <div id="panelEvidenca" class="tab-panel">
+
+      <section class="greeting-section">
+        <p id="greeting" class="greeting"></p>
+        <p class="greeting-sub">Danes, <span id="todayDate"></span></p>
+      </section>
+
+      <!-- Month navigation -->
+      <div class="month-nav">
+        <button id="prevMonthBtn" class="month-nav-btn" aria-label="Prejšnji mesec">&#8249;</button>
+        <span id="monthLabel" class="month-nav-label"></span>
+        <button id="nextMonthBtn" class="month-nav-btn" aria-label="Naslednji mesec">&#8250;</button>
+      </div>
+
+      <!-- Summary cards -->
+      <section class="stats-section" aria-label="Povzetek">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span id="statTotal" class="stat-value">—</span>
+            <span class="stat-label">Vpisov</span>
+          </div>
+          <div class="stat-card">
+            <span id="statWork" class="stat-value">—</span>
+            <span class="stat-label">Ure dela</span>
+          </div>
+          <div class="stat-card">
+            <span id="statRoad" class="stat-value">—</span>
+            <span class="stat-label">Ure na poti</span>
+          </div>
+          <div class="stat-card">
+            <span id="statGerk" class="stat-value">—</span>
+            <span class="stat-label">GERKI</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Log list -->
+      <section class="logs-section">
+        <div class="section-header">
+          <h2 class="section-title">Evidenca dela</h2>
+          <div class="view-toggle" role="group" aria-label="Način prikaza">
+            <button id="viewCardsBtn" class="view-btn" title="Kartice">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+                <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+                <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+                <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              </svg>
+            </button>
+            <button id="viewListBtn" class="view-btn" title="Seznam">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+                <line x1="1" y1="3.5" x2="14" y2="3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="1" y1="7.5" x2="14" y2="7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <line x1="1" y1="11.5" x2="14" y2="11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="logsList" class="logs-list" role="list">
+          <div class="state-loading">
+            <div class="spinner"></div>
+            <p>Nalaganje...</p>
+          </div>
+        </div>
+      </section>
+
     </div>
 
-    <!-- Summary cards -->
-    <section class="stats-section" aria-label="Povzetek">
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span id="statTotal" class="stat-value">—</span>
-          <span class="stat-label">Vpisov</span>
+    <!-- ── Tab: Delovni Nalogi (work orders) ─────────────────── -->
+    <div id="panelNalogi" class="tab-panel" hidden>
+      <section class="logs-section wo-section">
+        <div class="section-header">
+          <h2 class="section-title">Delovni Nalogi</h2>
         </div>
-        <div class="stat-card">
-          <span id="statWork" class="stat-value">—</span>
-          <span class="stat-label">Ure dela</span>
+        <div id="workOrdersList" class="logs-list" role="list">
+          <div class="state-loading">
+            <div class="spinner"></div>
+            <p>Nalaganje...</p>
+          </div>
         </div>
-        <div class="stat-card">
-          <span id="statRoad" class="stat-value">—</span>
-          <span class="stat-label">Ure na poti</span>
-        </div>
-        <div class="stat-card">
-          <span id="statGerk" class="stat-value">—</span>
-          <span class="stat-label">GERKI</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- Log list -->
-    <section class="logs-section">
-      <div class="section-header">
-        <h2 class="section-title">Evidenca dela</h2>
-        <div class="view-toggle" role="group" aria-label="Način prikaza">
-          <button id="viewCardsBtn" class="view-btn" title="Kartice">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-              <rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
-              <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
-              <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
-              <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
-            </svg>
-          </button>
-          <button id="viewListBtn" class="view-btn" title="Seznam">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-              <line x1="1" y1="3.5" x2="14" y2="3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <line x1="1" y1="7.5" x2="14" y2="7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-              <line x1="1" y1="11.5" x2="14" y2="11.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-      <div id="logsList" class="logs-list" role="list">
-        <div class="state-loading">
-          <div class="spinner"></div>
-          <p>Nalaganje...</p>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
   </main>
 
@@ -128,6 +154,14 @@
         <div class="field">
           <label class="field-label" for="workDate">Datum dela</label>
           <input class="field-input" type="date" id="workDate" required />
+        </div>
+
+        <!-- Work order -->
+        <div class="field">
+          <label class="field-label" for="workOrderSelect">Delovni nalog <span class="required">*</span></label>
+          <select class="field-input field-select" id="workOrderSelect" required>
+            <option value="">— izberi delovni nalog —</option>
+          </select>
         </div>
 
         <!-- Durations -->
@@ -195,11 +229,102 @@
       <div class="modal-head">
         <h3 id="deleteTitle" class="modal-title">Izbriši vpis?</h3>
       </div>
-      <p class="dialog-body">To dejanje je trajno in ga ni mogoče razveljaviti.</p>
+      <p id="deleteBody" class="dialog-body">To dejanje je trajno in ga ni mogoče razveljaviti.</p>
       <div class="form-actions">
         <button id="deleteCancelBtn"  class="btn btn-secondary btn-flex">Prekliči</button>
         <button id="deleteConfirmBtn" class="btn btn-danger    btn-flex">Izbriši</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Work Order Add / Edit Modal ─────────────────────────── -->
+  <div id="workOrderModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="woModalTitle">
+    <div class="modal-sheet">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="woModalTitle" class="modal-title">Nov delovni nalog</h3>
+        <button id="woModalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="workOrderForm" class="work-form" novalidate>
+        <input type="hidden" id="woEditId" />
+        <input type="hidden" id="woStrankaId" />
+
+        <div class="field">
+          <label class="field-label" for="woStevilka">Številka naloga <span class="required">*</span></label>
+          <input class="field-input" type="text" id="woStevilka" placeholder="npr. DN-001" required />
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="woStranka">Stranka</label>
+          <div class="gerk-wrap">
+            <input class="field-input" type="text" id="woStranka" placeholder="Išči stranko..." autocomplete="off" />
+            <ul id="woStrankaSuggestions" class="gerk-suggestions" hidden></ul>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="woIzvajalec">Izvajalec</label>
+          <select class="field-input field-select" id="woIzvajalec">
+            <option value="">— brez —</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="woTip">Tip storitve</label>
+            <select class="field-input field-select" id="woTip">
+              <option value="">— izberi —</option>
+              <option>Vzorčenje</option>
+              <option>Gnojenje</option>
+              <option>Setev</option>
+              <option>Škropljenje</option>
+              <option>Žetev</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="woHa">Količina (ha)</label>
+            <input class="field-input" type="number" id="woHa" step="0.01" min="0" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="woStrosekOcena">Ocenjeni strošek (€)</label>
+            <input class="field-input" type="number" id="woStrosekOcena" step="0.01" min="0" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="woStrosek">Dejanski strošek (€)</label>
+            <input class="field-input" type="number" id="woStrosek" step="0.01" min="0" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="woStatus">Status</label>
+          <select class="field-input field-select" id="woStatus">
+            <option value="Plan">Plan</option>
+            <option value="V delu">V delu</option>
+            <option value="Izvedeno">Izvedeno</option>
+            <option value="Izdan Račun">Izdan Račun</option>
+          </select>
+        </div>
+
+        <div id="woFormError"   class="alert alert-error"   hidden role="alert"></div>
+        <div id="woFormSuccess" class="alert alert-success" hidden role="status"></div>
+
+        <div class="form-actions">
+          <button type="button" id="woCancelBtn" class="btn btn-secondary btn-flex">Prekliči</button>
+          <button type="submit" id="woSaveBtn"   class="btn btn-primary   btn-flex">
+            <span class="btn-label">Shrani</span>
+            <span class="btn-spinner" hidden aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
