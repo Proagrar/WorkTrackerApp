@@ -33,6 +33,10 @@ create trigger on_auth_user_created
     after insert on auth.users
     for each row execute function public.handle_new_user();
 
+-- Trigger functions don't need to be callable directly; Postgres still
+-- exposes them to PostgREST as an RPC endpoint by default, so lock it down.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
 
 -- ── 2. Helper function: create a new operator ─────────────────
 -- Creates the auth user + profile in one call.
@@ -123,6 +127,10 @@ begin
 end;
 $$;
 
+-- SECURITY DEFINER + no internal auth check: must never be callable over
+-- the API (anon/authenticated), only from the SQL Editor as postgres/service_role.
+revoke execute on function public.create_operator(text, text, text) from public, anon, authenticated;
+
 
 -- ── 3. Helper function: change operator password ──────────────
 -- Usage:
@@ -150,6 +158,10 @@ begin
 end;
 $$;
 
+-- SECURITY DEFINER + no internal auth check: must never be callable over
+-- the API (anon/authenticated), only from the SQL Editor as postgres/service_role.
+revoke execute on function public.set_operator_password(text, text) from public, anon, authenticated;
+
 
 -- ── 4. Helper function: delete an operator ────────────────────
 -- Cascades to work_logs and profiles automatically.
@@ -170,6 +182,10 @@ begin
     end if;
 end;
 $$;
+
+-- SECURITY DEFINER + no internal auth check: must never be callable over
+-- the API (anon/authenticated), only from the SQL Editor as postgres/service_role.
+revoke execute on function public.delete_operator(text) from public, anon, authenticated;
 
 
 -- ── 5. View: list all operators ───────────────────────────────
