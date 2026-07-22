@@ -22,6 +22,7 @@
   <header class="app-header">
     <div class="header-brand">
       <img src="icons/Proagrar_LOGO.png" alt="Proagrar" height="30" class="header-logo" />
+      <span id="appVersion" class="header-version"></span>
     </div>
     <div class="header-user">
       <span id="operatorName" class="header-name">—</span>
@@ -240,10 +241,7 @@
         <input type="hidden" id="woEditId" />
         <input type="hidden" id="woStrankaId" />
 
-        <div class="field">
-          <label class="field-label" for="woStevilka">Številka naloga <span class="required">*</span></label>
-          <input class="field-input" type="text" id="woStevilka" placeholder="npr. DN-001" required />
-        </div>
+        <p id="woStevilkaLabel" class="wo-order-label"></p>
 
         <div class="field">
           <label class="field-label" for="woStranka">Stranka</label>
@@ -297,6 +295,16 @@
             <option value="Izvedeno">Izvedeno</option>
             <option value="Izdan Račun">Izdan Račun</option>
           </select>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="woPodrobnosti">Podrobnosti</label>
+          <textarea
+            class="field-input field-textarea"
+            id="woPodrobnosti"
+            rows="2"
+            placeholder="npr. Sampling depth: 25 cm"
+          ></textarea>
         </div>
 
         <div id="woFormError"   class="alert alert-error"   hidden role="alert"></div>

@@ -366,8 +366,16 @@ input, select, textarea { font-family: inherit; }
 
 .header-brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.header-version {
+  font-size: .5625rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, .55);
+  letter-spacing: .02em;
 }
 
 .header-logo {
@@ -1063,12 +1071,18 @@ input, select, textarea { font-family: inherit; }
    ============================================================ */
 .gerk-row {
   display: flex;
-  gap: 8px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
-.gerk-row .gerk-wrap {
+.gerk-row-main {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.gerk-row-main .gerk-wrap {
   flex: 1;
   min-width: 0;
 }

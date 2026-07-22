@@ -1,7 +1,11 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
+// Bump alongside sw.js's CACHE constant on every push to GitHub.
+const APP_VERSION = 'v15';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+document.getElementById('appVersion').textContent = APP_VERSION;
 
 // ── State ──────────────────────────────────────────────────────
 let currentUser  = null;
@@ -78,7 +82,7 @@ const woModalTitle        = document.getElementById('woModalTitle');
 const woModalClose        = document.getElementById('woModalClose');
 const workOrderForm       = document.getElementById('workOrderForm');
 const woEditIdInput       = document.getElementById('woEditId');
-const woStevilkaInput     = document.getElementById('woStevilka');
+const woStevilkaLabel     = document.getElementById('woStevilkaLabel');
 const woStrankaInput      = document.getElementById('woStranka');
 const woStrankaIdInput    = document.getElementById('woStrankaId');
 const woStrankaSuggestions = document.getElementById('woStrankaSuggestions');
@@ -89,6 +93,7 @@ const woAddGerkBtn        = document.getElementById('woAddGerkBtn');
 const woStrosekOcenaInput = document.getElementById('woStrosekOcena');
 const woStrosekInput      = document.getElementById('woStrosek');
 const woStatusSel         = document.getElementById('woStatus');
+const woPodrobnostiInput  = document.getElementById('woPodrobnosti');
 const woFormError         = document.getElementById('woFormError');
 const woFormSuccess       = document.getElementById('woFormSuccess');
 const woSaveBtn           = document.getElementById('woSaveBtn');
@@ -445,28 +450,34 @@ function showSuggestionsInto(suggestionsEl, matches) {
   suggestionsEl.hidden = false;
 }
 
-function addGerkRow(container = woGerksListEl, code = '', hectares = '') {
+function addGerkRow(container = woGerksListEl, code = '', hectares = '', lokacija = '') {
   const row = document.createElement('div');
   row.className = 'gerk-row';
   row.innerHTML = `
-    <div class="gerk-wrap">
-      <input type="text" class="field-input gerk-code-input"
-             placeholder="GERK številka ali ime" autocomplete="off">
-      <ul class="gerk-suggestions" hidden></ul>
-      <p class="field-hint gerk-hint" hidden></p>
+    <div class="gerk-row-main">
+      <div class="gerk-wrap">
+        <input type="text" class="field-input gerk-code-input"
+               placeholder="GERK številka ali ime" autocomplete="off">
+        <ul class="gerk-suggestions" hidden></ul>
+        <p class="field-hint gerk-hint" hidden></p>
+      </div>
+      <input type="number" class="field-input gerk-ha-input"
+             placeholder="ha" step="0.0001" min="0" max="9999">
+      <button type="button" class="gerk-remove-btn" aria-label="Odstrani">✕</button>
     </div>
-    <input type="number" class="field-input gerk-ha-input"
-           placeholder="ha" step="0.0001" min="0" max="9999">
-    <button type="button" class="gerk-remove-btn" aria-label="Odstrani">✕</button>`;
+    <input type="text" class="field-input gerk-lokacija-input"
+           placeholder="Lokacija (npr. GPS koordinate)" autocomplete="off">`;
 
   const codeInput     = row.querySelector('.gerk-code-input');
   const haInput       = row.querySelector('.gerk-ha-input');
+  const lokacijaInput = row.querySelector('.gerk-lokacija-input');
   const suggestionsEl = row.querySelector('.gerk-suggestions');
   const hintEl        = row.querySelector('.gerk-hint');
   const removeBtn     = row.querySelector('.gerk-remove-btn');
 
   codeInput.value = code;
   if (hectares !== '' && hectares != null) haInput.value = hectares;
+  if (lokacija) lokacijaInput.value = lokacija;
 
   if (code) {
     const f = fields.find(f => f.code === code);
@@ -494,6 +505,7 @@ function getFormGerks(container = woGerksListEl) {
     code:     row.querySelector('.gerk-code-input').value.trim(),
     hectares: row.querySelector('.gerk-ha-input').value
               ? parseFloat(row.querySelector('.gerk-ha-input').value) : null,
+    lokacija: row.querySelector('.gerk-lokacija-input').value.trim() || null,
   })).filter(g => g.code);
 }
 
@@ -509,6 +521,7 @@ function buildGerkPlanRows(workOrder, existingLog) {
   const rows = planFields.map(pf => ({
     code:      pf.gerk_code,
     hectares:  pf.kolicina_ha ?? logByCode[pf.gerk_code]?.hectares ?? null,
+    lokacija:  pf.lokacija ?? null,
     duration:  logByCode[pf.gerk_code]?.duration ?? null,
     completed: logByCode[pf.gerk_code]?.completed ?? false,
   }));
@@ -530,7 +543,7 @@ function renderWorkLogGerkRows(rows) {
     const f = fields.find(f => f.code === r.code);
     const name = f?.name || '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
-    const meta = [name, ha].filter(Boolean).join(' · ');
+    const meta = [name, ha, r.lokacija].filter(Boolean).join(' · ');
     const hours = r.duration != null ? (r.duration / 60).toFixed(2).replace(/\.?0+$/, '') : '';
     return `
       <div class="wlg-row" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}">
@@ -697,7 +710,7 @@ workLogForm.addEventListener('submit', async e => {
 async function fetchWorkOrderForLog(log) {
   const { data } = await supabase
     .from('delovni_nalogi')
-    .select('id, stevilka, customers(naziv, company_name), delovni_nalogi_gerki(gerk_code, kolicina_ha)')
+    .select('id, stevilka, customers(naziv, company_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija)')
     .eq('id', log.work_order_id)
     .maybeSingle();
 
@@ -807,7 +820,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha)')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija)')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
@@ -849,6 +862,7 @@ function renderWorkOrders() {
           <div class="log-row">${gerkBadges}${haStr ? `<span class="log-ha-text">${haStr}</span>` : ''}</div>
           ${wo.tip_storitve ? `<div class="log-row"><span>${escHtml(wo.tip_storitve)}</span></div>` : ''}
           <div class="log-row"><span class="log-desc">Izvajalec: ${escHtml(izvajalec)}</span></div>
+          ${wo.podrobnosti ? `<div class="log-row"><span class="log-desc">${escHtml(wo.podrobnosti)}</span></div>` : ''}
         </div>
         <div class="log-card-actions">
           <button class="btn-outline" data-action="wo-log-time" data-id="${wo.id}">Vpiši čas</button>
@@ -950,7 +964,7 @@ async function openWorkOrderModal(title, prefill = null) {
 
   if (prefill) {
     woEditIdInput.value      = prefill.id;
-    woStevilkaInput.value    = prefill.stevilka;
+    woStevilkaLabel.textContent = prefill.stevilka;
     woStrankaIdInput.value   = prefill.stranka_id || '';
     woStrankaInput.value     = prefill.customers?.naziv || prefill.customers?.company_name || '';
     woIzvajalecSel.value     = prefill.izvajalec || '';
@@ -958,14 +972,16 @@ async function openWorkOrderModal(title, prefill = null) {
     woStrosekOcenaInput.value = prefill.strosek_ocena ?? '';
     woStrosekInput.value     = prefill.strosek ?? '';
     woStatusSel.value        = prefill.status || 'Plan';
+    woPodrobnostiInput.value = prefill.podrobnosti || '';
 
     const gerks = prefill.delovni_nalogi_gerki || [];
     if (gerks.length) {
-      gerks.forEach(g => addGerkRow(woGerksListEl, g.gerk_code, g.kolicina_ha ?? ''));
+      gerks.forEach(g => addGerkRow(woGerksListEl, g.gerk_code, g.kolicina_ha ?? '', g.lokacija ?? ''));
     } else {
       addGerkRow(woGerksListEl);
     }
   } else {
+    woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
     addGerkRow(woGerksListEl);
   }
 
@@ -1012,10 +1028,8 @@ workOrderForm.addEventListener('submit', async e => {
   hideWoFormFeedback();
 
   const isEdit   = !!woEditIdInput.value;
-  const stevilka = woStevilkaInput.value.trim();
   const gerkRows = getFormGerks(woGerksListEl);
 
-  if (!stevilka)        return showWoFormError('Vnesite številko naloga.');
   if (!gerkRows.length) return showWoFormError('Dodajte vsaj en GERK.');
 
   for (const g of gerkRows) {
@@ -1027,13 +1041,13 @@ workOrderForm.addEventListener('submit', async e => {
   setWoSaveLoading(true);
 
   const payload = {
-    stevilka,
     stranka_id:    woStrankaIdInput.value || null,
     izvajalec:     woIzvajalecSel.value || null,
     tip_storitve:  woTipSel.value || null,
     strosek_ocena: woStrosekOcenaInput.value ? parseFloat(woStrosekOcenaInput.value) : null,
     strosek:       woStrosekInput.value ? parseFloat(woStrosekInput.value) : null,
     status:        woStatusSel.value,
+    podrobnosti:   woPodrobnostiInput.value.trim() || null,
   };
 
   let workOrderId;
@@ -1061,7 +1075,12 @@ workOrderForm.addEventListener('submit', async e => {
 
   const { error: gerkError } = await supabase
     .from('delovni_nalogi_gerki')
-    .insert(gerkRows.map(g => ({ delovni_nalog_id: workOrderId, gerk_code: g.code, kolicina_ha: g.hectares })));
+    .insert(gerkRows.map(g => ({
+      delovni_nalog_id: workOrderId,
+      gerk_code:        g.code,
+      kolicina_ha:      g.hectares,
+      lokacija:         g.lokacija,
+    })));
 
   setWoSaveLoading(false);
 
