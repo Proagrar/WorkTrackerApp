@@ -126,7 +126,7 @@
   </main>
 
   <!-- ── FAB ────────────────────────────────────────────────── -->
-  <button id="addBtn" class="fab" aria-label="Dodaj nov vpis">
+  <button id="addBtn" class="fab" aria-label="Dodaj nov delovni nalog">
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
       <line x1="14" y1="4" x2="14" y2="24" stroke="white" stroke-width="3" stroke-linecap="round"/>
       <line x1="4" y1="14" x2="24" y2="14" stroke="white" stroke-width="3" stroke-linecap="round"/>
@@ -149,6 +149,10 @@
 
       <form id="workLogForm" class="work-form" novalidate>
         <input type="hidden" id="editId" />
+        <input type="hidden" id="logWorkOrderId" />
+
+        <!-- Work order (read-only — set by which order was opened) -->
+        <p id="workLogOrderLabel" class="wo-order-label"></p>
 
         <!-- Date -->
         <div class="field">
@@ -156,24 +160,6 @@
           <input class="field-input" type="date" id="workDate" required />
         </div>
 
-        <!-- Work order -->
-        <div class="field">
-          <label class="field-label" for="workOrderSelect">Delovni nalog <span class="required">*</span></label>
-          <select class="field-input field-select" id="workOrderSelect" required>
-            <option value="">— izberi delovni nalog —</option>
-          </select>
-        </div>
-
-        <!-- Durations -->
-        <div class="field">
-          <label class="field-label">Delo na traktorju <span class="required">*</span></label>
-          <div class="time-wrap">
-            <select class="field-input field-select" id="workHour" required></select>
-            <span class="time-sep">h</span>
-            <select class="field-input field-select time-min" id="workMin" required></select>
-            <span class="time-sep">min</span>
-          </div>
-        </div>
         <div class="field">
           <label class="field-label">Čas na poti</label>
           <div class="time-wrap">
@@ -184,11 +170,10 @@
           </div>
         </div>
 
-        <!-- GERKs -->
+        <!-- GERKs (fixed to the work order's planned fields) -->
         <div class="field">
-          <label class="field-label">GERKI <span class="required">*</span></label>
-          <div id="gerksList"></div>
-          <button type="button" id="addGerkBtn" class="btn-add-gerk">+ Dodaj GERK</button>
+          <label class="field-label">GERKI</label>
+          <div id="workLogGerkRows" class="wlg-table"></div>
         </div>
 
         <!-- Tractor -->
@@ -275,22 +260,22 @@
           </select>
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label class="field-label" for="woTip">Tip storitve</label>
-            <select class="field-input field-select" id="woTip">
-              <option value="">— izberi —</option>
-              <option>Vzorčenje</option>
-              <option>Gnojenje</option>
-              <option>Setev</option>
-              <option>Škropljenje</option>
-              <option>Žetev</option>
-            </select>
-          </div>
-          <div class="field">
-            <label class="field-label" for="woHa">Količina (ha)</label>
-            <input class="field-input" type="number" id="woHa" step="0.01" min="0" />
-          </div>
+        <div class="field">
+          <label class="field-label" for="woTip">Tip storitve</label>
+          <select class="field-input field-select" id="woTip">
+            <option value="">— izberi —</option>
+            <option>Vzorčenje</option>
+            <option>Gnojenje</option>
+            <option>Setev</option>
+            <option>Škropljenje</option>
+            <option>Žetev</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field-label">GERKI <span class="required">*</span></label>
+          <div id="woGerksList"></div>
+          <button type="button" id="woAddGerkBtn" class="btn-add-gerk">+ Dodaj GERK</button>
         </div>
 
         <div class="field-row">
