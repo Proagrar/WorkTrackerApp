@@ -483,17 +483,17 @@ input, select, textarea { font-family: inherit; }
 /* ── Work orders: compact table ────────────────────────────── */
 .wo-lc-header,
 .wo-compact {
-  grid-template-columns: 64px 1fr 55px 92px 58px;
+  grid-template-columns: 76px 55px 55px 1fr 58px;
 }
 
 .wo-compact { cursor: pointer; }
 
 .wo-c-gerki {
   font-size: .8125rem;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -533,10 +533,30 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
-.wlg-duration-text {
-  font-size: .6875rem;
-  font-weight: 600;
-  color: var(--blue-800);
+.wlg-timer {
+  font-family: monospace;
+  font-size: .9375rem;
+  font-weight: 700;
+  color: var(--danger);
+  min-width: 46px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.wlg-duration-input {
+  width: 60px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+.wlg-duration-input::-webkit-inner-spin-button,
+.wlg-duration-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+.wlg-row--completed {
+  background: var(--success-bg);
+  border-color: #BBF7D0;
 }
 
 .wlg-toggle-btn {
@@ -562,6 +582,23 @@ input, select, textarea { font-family: inherit; }
   color: #fff;
 }
 .wlg-toggle-btn--running:hover:not(:disabled) { background: var(--danger-hover); }
+
+
+/* ── Work order header: start/status button + meta ─────────── */
+.btn-started {
+  background: var(--success);
+}
+.btn-started:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.wo-header-meta {
+  font-size: .8125rem;
+  color: var(--text-secondary);
+  margin: -4px 0 4px;
+  min-height: 1.2em;
+}
 
 .wlg-check {
   display: flex;

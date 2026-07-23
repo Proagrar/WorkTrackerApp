@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -10,6 +10,7 @@ document.getElementById('appVersion').textContent = APP_VERSION;
 // ── State ──────────────────────────────────────────────────────
 let currentUser  = null;
 let currentRole  = 'operator';
+let currentUserName = '';
 let currentOrg   = null;
 let profileMap   = {};
 let logs         = [];
@@ -51,6 +52,7 @@ const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const woStartBtn  = document.getElementById('woStartBtn');
+const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadHourSel = document.getElementById('roadHour');
 const roadMinSel  = document.getElementById('roadMin');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
@@ -285,8 +287,7 @@ function renderLogsCards(fl) {
   wireLogButtons();
 }
 
-const EDIT_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M9.5 1.5l3 3-8 8H1.5v-3l8-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const DEL_ICON  = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M5 3.5V2h4v1.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const DEL_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M5 3.5V2h4v1.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function renderLogsCompact(fl) {
   logsList.className = 'logs-list logs-list--compact';
@@ -520,9 +521,40 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
 }
 
 function fmtHM(mins) {
-  if (!mins) return '';
+  if (!mins) return '0m';
   const h = Math.floor(mins / 60), m = mins % 60;
   return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+function fmtMMSS(totalSeconds) {
+  const s = Math.max(0, totalSeconds);
+  const mm = Math.floor(s / 60);
+  const ss = Math.floor(s % 60);
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+// ── Live per-row ticking timers (mm:ss while running) ───────────
+const activeTickers = new Map(); // gerk_code -> intervalId
+
+function startRowTicker(row) {
+  stopRowTicker(row);
+  const timerEl = row.querySelector('.wlg-timer');
+  const tick = () => {
+    const startMs = new Date(row.dataset.start).getTime();
+    timerEl.textContent = fmtMMSS(Math.floor((Date.now() - startMs) / 1000));
+  };
+  tick();
+  activeTickers.set(row.dataset.code, setInterval(tick, 1000));
+}
+
+function stopRowTicker(row) {
+  const id = activeTickers.get(row.dataset.code);
+  if (id) { clearInterval(id); activeTickers.delete(row.dataset.code); }
+}
+
+function stopAllTickers() {
+  activeTickers.forEach(id => clearInterval(id));
+  activeTickers.clear();
 }
 
 function renderWorkLogGerkRows(rows) {
@@ -535,25 +567,49 @@ function renderWorkLogGerkRows(rows) {
     const name = f?.name || '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [name, ha, r.lokacija].filter(Boolean).join(' · ');
-    const running = !!(r.startTime && !r.endTime);
-    const durationText = r.duration != null ? fmtHM(r.duration) : '';
+    const running   = !!(r.startTime && !r.endTime);
+    const completed = !!(r.endTime);
     return `
-      <div class="wlg-row" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}"
+      <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info">
           <span class="wlg-code">${escHtml(r.code)}</span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
-          ${durationText ? `<span class="wlg-duration-text">${durationText}</span>` : ''}
         </div>
+        <span class="wlg-timer" ${running ? '' : 'hidden'}></span>
+        <input type="number" class="field-input wlg-duration-input" placeholder="min" min="0"
+               value="${r.duration ?? ''}" ${completed ? '' : 'hidden'}>
         <button type="button" class="wlg-toggle-btn${running ? ' wlg-toggle-btn--running' : ''}" data-action="wlg-toggle">${running ? 'Stop' : 'Start'}</button>
-        <label class="wlg-check">
-          <input type="checkbox" class="wlg-completed" ${r.completed ? 'checked' : ''}>
-          <span>OK</span>
-        </label>
       </div>`;
   }).join('');
 
+  workLogGerkRowsEl.querySelectorAll('.wlg-row').forEach(row => {
+    if (row.dataset.start && !row.dataset.end) startRowTicker(row);
+  });
+
   wireGerkRowButtons();
+}
+
+function updateOrderHeader() {
+  const wo = currentDetailWorkOrder;
+  const rows = Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row'));
+  const allCompleted = rows.length > 0 && rows.every(r => r.classList.contains('wlg-row--completed'));
+  const totalMin = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
+
+  woStartBtn.classList.toggle('btn-started', wo.status !== 'Plan');
+  if (wo.status === 'Plan') {
+    woStartBtn.textContent = 'Start';
+    woStartBtn.disabled = false;
+  } else {
+    woStartBtn.textContent = allCompleted ? 'Končan' : 'V delu';
+    woStartBtn.disabled = true;
+  }
+
+  const opName = wo.profiles?.full_name;
+  const metaParts = [];
+  if (wo.status !== 'Plan' && opName) metaParts.push(`Izvaja: ${opName}`);
+  if (totalMin > 0) metaParts.push(`Skupaj: ${fmtHM(totalMin)}`);
+  woHeaderMeta.textContent = metaParts.join(' · ');
 }
 
 // ── Modal ──────────────────────────────────────────────────────
@@ -564,6 +620,7 @@ async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
   currentDetailLogId      = null;
   ensureTodaysLogPromise  = null;
+  stopAllTickers();
 
   modalTitle.textContent = 'Delovni nalog';
   hideFormFeedback();
@@ -574,7 +631,6 @@ async function openWorkOrderDetail(workOrder) {
 
   const stranka = workOrder.customers?.naziv || workOrder.customers?.company_name;
   workLogOrderLabel.textContent = [workOrder.stevilka, stranka].filter(Boolean).join(' — ');
-  woStartBtn.hidden = workOrder.status !== 'Plan';
 
   const { data: existingLog } = await supabase
     .from('work_logs')
@@ -592,12 +648,14 @@ async function openWorkOrderDetail(workOrder) {
   }
 
   renderWorkLogGerkRows(buildGerkPlanRows(workOrder, existingLog?.work_log_gerks || []));
+  updateOrderHeader();
 
   formModal.hidden = false;
   document.body.style.overflow = 'hidden';
 }
 
 function closeModal() {
+  stopAllTickers();
   formModal.hidden = true;
   document.body.style.overflow = '';
 }
@@ -704,6 +762,8 @@ async function toggleGerkTimer(btn) {
   const row      = btn.closest('.wlg-row');
   const code     = row.dataset.code;
   const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
+  const durationInput = row.querySelector('.wlg-duration-input');
+  const timerEl        = row.querySelector('.wlg-timer');
 
   btn.disabled = true;
   try {
@@ -713,11 +773,11 @@ async function toggleGerkTimer(btn) {
 
     let updated;
     if (running) {
-      const endIso    = new Date().toISOString();
+      const endIso      = new Date().toISOString();
       const durationMin = Math.max(0, Math.round((new Date(endIso) - new Date(gerkRow.start_time)) / 60000));
       const { data, error } = await supabase
         .from('work_log_gerks')
-        .update({ end_time: endIso, duration: durationMin })
+        .update({ end_time: endIso, duration: durationMin, completed: true })
         .eq('id', gerkRow.id)
         .select('id, start_time, end_time, duration, completed')
         .single();
@@ -725,29 +785,40 @@ async function toggleGerkTimer(btn) {
       updated = data;
       await recomputeWorkLogDuration(logId);
     } else {
+      // (Re)starting always clears any previous end_time/duration/completed
+      // state — this is the escape hatch for redoing a field's work, and
+      // keeps the header total from double-counting a stale prior session.
       const { data, error } = await supabase
         .from('work_log_gerks')
-        .update({ start_time: new Date().toISOString(), end_time: null })
+        .update({ start_time: new Date().toISOString(), end_time: null, duration: null, completed: false })
         .eq('id', gerkRow.id)
         .select('id, start_time, end_time, duration, completed')
         .single();
       if (error) throw error;
       updated = data;
+      await recomputeWorkLogDuration(logId);
     }
 
     row.dataset.start    = updated.start_time || '';
     row.dataset.end      = updated.end_time || '';
     row.dataset.duration = updated.duration ?? '';
     const nowRunning = updated.start_time && !updated.end_time;
+    row.classList.toggle('wlg-row--completed', !!updated.end_time);
     btn.textContent = nowRunning ? 'Stop' : 'Start';
     btn.classList.toggle('wlg-toggle-btn--running', nowRunning);
 
-    let durEl = row.querySelector('.wlg-duration-text');
-    if (updated.duration != null) {
-      const text = fmtHM(updated.duration);
-      if (durEl) durEl.textContent = text;
-      else row.querySelector('.wlg-info').insertAdjacentHTML('beforeend', `<span class="wlg-duration-text">${text}</span>`);
+    if (nowRunning) {
+      durationInput.hidden = true;
+      timerEl.hidden = false;
+      startRowTicker(row);
+    } else {
+      stopRowTicker(row);
+      timerEl.hidden = true;
+      durationInput.value = updated.duration ?? '';
+      durationInput.hidden = false;
     }
+
+    updateOrderHeader();
   } catch (e) {
     showFormError('Napaka pri shranjevanju časa.');
   } finally {
@@ -755,20 +826,24 @@ async function toggleGerkTimer(btn) {
   }
 }
 
-async function saveGerkCompleted(cb) {
-  const row      = cb.closest('.wlg-row');
+async function saveGerkDuration(input) {
+  const row      = input.closest('.wlg-row');
   const code     = row.dataset.code;
   const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
+  const minutes  = input.value ? Math.max(0, parseInt(input.value, 10)) : 0;
 
-  cb.disabled = true;
+  input.disabled = true;
   try {
     const logId   = await ensureTodaysLog();
     const gerkRow = await ensureGerkRow(logId, code, hectares);
-    await supabase.from('work_log_gerks').update({ completed: cb.checked }).eq('id', gerkRow.id);
+    await supabase.from('work_log_gerks').update({ duration: minutes }).eq('id', gerkRow.id);
+    row.dataset.duration = minutes;
+    await recomputeWorkLogDuration(logId);
+    updateOrderHeader();
   } catch (e) {
     showFormError('Napaka pri shranjevanju.');
   } finally {
-    cb.disabled = false;
+    input.disabled = false;
   }
 }
 
@@ -776,8 +851,8 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-toggle"]').forEach(btn => {
     btn.addEventListener('click', () => toggleGerkTimer(btn));
   });
-  workLogGerkRowsEl.querySelectorAll('.wlg-completed').forEach(cb => {
-    cb.addEventListener('change', () => saveGerkCompleted(cb));
+  workLogGerkRowsEl.querySelectorAll('.wlg-duration-input').forEach(input => {
+    input.addEventListener('blur', () => saveGerkDuration(input));
   });
 }
 
@@ -801,14 +876,15 @@ tractorInput.addEventListener('blur',  saveOrderMeta);
 descInput.addEventListener('blur',     saveOrderMeta);
 
 woStartBtn.addEventListener('click', async () => {
+  if (currentDetailWorkOrder.status !== 'Plan') return;
   woStartBtn.disabled = true;
   const { error } = await supabase.rpc('start_work_order', { p_work_order_id: currentDetailWorkOrder.id });
-  woStartBtn.disabled = false;
-  if (error) { showFormError('Napaka pri zagonu naloga.'); return; }
+  if (error) { showFormError('Napaka pri zagonu naloga.'); woStartBtn.disabled = false; return; }
   currentDetailWorkOrder.status    = 'V delu';
   currentDetailWorkOrder.izvajalec = currentUser.id;
-  woStartBtn.hidden = true;
+  currentDetailWorkOrder.profiles  = { full_name: currentUserName };
   showFormSuccess('✓ Nalog zagnan!');
+  updateOrderHeader();
   await loadWorkOrders();
 });
 
@@ -928,7 +1004,7 @@ function renderWorkOrders() {
   const header = `
     <div class="lc-header wo-lc-header" aria-hidden="true">
       <span>Št.</span>
-      <span>Ime GERKA</span>
+      <span>GERKI</span>
       <span>Ha</span>
       <span>Status</span>
       <span></span>
@@ -936,19 +1012,17 @@ function renderWorkOrders() {
 
   const rows = workOrders.map(wo => {
     const gerks   = wo.delovni_nalogi_gerki || [];
-    const gerkNames = gerks.map(g => fields.find(f => f.code === g.gerk_code)?.name || g.gerk_code).join(', ') || '—';
     const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
     const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
 
     return `
       <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${wo.id}">
         <span class="lc-date">${escHtml(wo.stevilka)}</span>
-        <span class="wo-c-gerki">${escHtml(gerkNames)}</span>
+        <span class="wo-c-gerki">${gerks.length || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
         <div class="lc-actions">
           ${canEdit ? `
-          <button class="lc-btn" data-action="wo-edit" data-id="${wo.id}" title="Uredi">${EDIT_ICON}</button>
           <button class="lc-btn lc-btn--danger" data-action="wo-delete" data-id="${wo.id}" title="Izbriši">${DEL_ICON}</button>` : ''}
         </div>
       </div>`;
@@ -963,13 +1037,6 @@ function wireWorkOrderButtons() {
     row.addEventListener('click', () => {
       const wo = workOrders.find(w => w.id === row.dataset.id);
       if (wo) openWorkOrderDetail(wo);
-    });
-  });
-  workOrdersList.querySelectorAll('[data-action="wo-edit"]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      const wo = workOrders.find(w => w.id === btn.dataset.id);
-      if (wo) openWorkOrderModal('Uredi delovni nalog', wo);
     });
   });
   workOrdersList.querySelectorAll('[data-action="wo-delete"]').forEach(btn => {
@@ -1200,6 +1267,7 @@ async function boot() {
   const displayName = profile?.full_name ?? currentUser.email;
   currentRole = profile?.role ?? 'operator';
   currentOrg  = profile?.organization ?? null;
+  currentUserName = displayName;
   operatorNameEl.textContent = displayName;
   if (currentRole === 'admin') {
     adminBadge.textContent = 'Admin';
