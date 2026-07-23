@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v1.0';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -526,11 +526,12 @@ function fmtHM(mins) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function fmtMMSS(totalSeconds) {
-  const s = Math.max(0, totalSeconds);
-  const mm = Math.floor(s / 60);
+function fmtHMS(totalSeconds) {
+  const s  = Math.max(0, totalSeconds);
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
   const ss = Math.floor(s % 60);
-  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
 // ── Live per-row ticking timers (mm:ss while running) ───────────
@@ -541,7 +542,7 @@ function startRowTicker(row) {
   const timerEl = row.querySelector('.wlg-timer');
   const tick = () => {
     const startMs = new Date(row.dataset.start).getTime();
-    timerEl.textContent = fmtMMSS(Math.floor((Date.now() - startMs) / 1000));
+    timerEl.textContent = fmtHMS(Math.floor((Date.now() - startMs) / 1000));
   };
   tick();
   activeTickers.set(row.dataset.code, setInterval(tick, 1000));
@@ -566,14 +567,14 @@ function renderWorkLogGerkRows(rows) {
     const f = fields.find(f => f.code === r.code);
     const name = f?.name || '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
-    const meta = [name, ha, r.lokacija].filter(Boolean).join(' · ');
+    const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
     const running   = !!(r.startTime && !r.endTime);
     const completed = !!(r.endTime);
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info">
-          <span class="wlg-code">${escHtml(r.code)}</span>
+          <span class="wlg-code-line"><span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}</span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
         </div>
         <span class="wlg-timer" ${running ? '' : 'hidden'}></span>
@@ -1014,10 +1015,12 @@ function renderWorkOrders() {
     const gerks   = wo.delovni_nalogi_gerki || [];
     const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
     const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
+    const stranka = wo.customers?.naziv || wo.customers?.company_name;
+    const stevilkaLabel = [wo.stevilka, stranka].filter(Boolean).join(' — ');
 
     return `
       <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${wo.id}">
-        <span class="lc-date">${escHtml(wo.stevilka)}</span>
+        <span class="lc-date">${escHtml(stevilkaLabel)}</span>
         <span class="wo-c-gerki">${gerks.length || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
