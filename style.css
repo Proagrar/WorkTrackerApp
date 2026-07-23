@@ -553,15 +553,13 @@ input, select, textarea { font-family: inherit; }
 }
 
 .wlg-duration-input {
-  width: 60px;
+  width: 76px;
   height: 40px;
   flex-shrink: 0;
   padding: 0 6px;
   text-align: center;
-  -moz-appearance: textfield;
+  font-family: monospace;
 }
-.wlg-duration-input::-webkit-inner-spin-button,
-.wlg-duration-input::-webkit-outer-spin-button { -webkit-appearance: none; }
 
 .wlg-row--completed {
   background: var(--success-bg);

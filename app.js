@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.0';
+const APP_VERSION = 'v1.1';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -578,8 +578,8 @@ function renderWorkLogGerkRows(rows) {
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
         </div>
         <span class="wlg-timer" ${running ? '' : 'hidden'}></span>
-        <input type="number" class="field-input wlg-duration-input" placeholder="min" min="0"
-               value="${r.duration ?? ''}" ${completed ? '' : 'hidden'}>
+        <input type="text" class="field-input wlg-duration-input" placeholder="hh:mm:ss" inputmode="numeric"
+               value="${r.duration != null ? fmtHMS(r.duration) : ''}" ${completed ? '' : 'hidden'}>
         <button type="button" class="wlg-toggle-btn${running ? ' wlg-toggle-btn--running' : ''}" data-action="wlg-toggle">${running ? 'Stop' : 'Start'}</button>
       </div>`;
   }).join('');
@@ -595,7 +595,8 @@ function updateOrderHeader() {
   const wo = currentDetailWorkOrder;
   const rows = Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row'));
   const allCompleted = rows.length > 0 && rows.every(r => r.classList.contains('wlg-row--completed'));
-  const totalMin = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
+  const totalSec = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
+  const totalMin = Math.round(totalSec / 60);
 
   woStartBtn.classList.toggle('btn-started', wo.status !== 'Plan');
   if (wo.status === 'Plan') {
@@ -755,8 +756,10 @@ async function ensureGerkRow(logId, gerkCode, hectares) {
 
 async function recomputeWorkLogDuration(logId) {
   const { data } = await supabase.from('work_log_gerks').select('duration').eq('work_log_id', logId);
-  const total = (data ?? []).reduce((s, g) => s + (g.duration || 0), 0);
-  await supabase.from('work_logs').update({ work_duration: total }).eq('id', logId);
+  const totalSec = (data ?? []).reduce((s, g) => s + (g.duration || 0), 0);
+  // work_log_gerks.duration is seconds; work_logs.work_duration stays in
+  // minutes since existing stats rendering (updateStats(), fmtDuration()) expects that.
+  await supabase.from('work_logs').update({ work_duration: Math.round(totalSec / 60) }).eq('id', logId);
 }
 
 async function toggleGerkTimer(btn) {
@@ -775,10 +778,10 @@ async function toggleGerkTimer(btn) {
     let updated;
     if (running) {
       const endIso      = new Date().toISOString();
-      const durationMin = Math.max(0, Math.round((new Date(endIso) - new Date(gerkRow.start_time)) / 60000));
+      const durationSec = Math.max(0, Math.round((new Date(endIso) - new Date(gerkRow.start_time)) / 1000));
       const { data, error } = await supabase
         .from('work_log_gerks')
-        .update({ end_time: endIso, duration: durationMin, completed: true })
+        .update({ end_time: endIso, duration: durationSec, completed: true })
         .eq('id', gerkRow.id)
         .select('id, start_time, end_time, duration, completed')
         .single();
@@ -815,7 +818,7 @@ async function toggleGerkTimer(btn) {
     } else {
       stopRowTicker(row);
       timerEl.hidden = true;
-      durationInput.value = updated.duration ?? '';
+      durationInput.value = updated.duration != null ? fmtHMS(updated.duration) : '';
       durationInput.hidden = false;
     }
 
@@ -827,18 +830,27 @@ async function toggleGerkTimer(btn) {
   }
 }
 
+function parseHMS(text) {
+  const parts = text.trim().split(':').map(p => Math.max(0, parseInt(p, 10) || 0));
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1) return parts[0] * 60; // bare number: treat as minutes
+  return 0;
+}
+
 async function saveGerkDuration(input) {
   const row      = input.closest('.wlg-row');
   const code     = row.dataset.code;
   const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
-  const minutes  = input.value ? Math.max(0, parseInt(input.value, 10)) : 0;
+  const seconds  = input.value ? parseHMS(input.value) : 0;
 
   input.disabled = true;
   try {
     const logId   = await ensureTodaysLog();
     const gerkRow = await ensureGerkRow(logId, code, hectares);
-    await supabase.from('work_log_gerks').update({ duration: minutes }).eq('id', gerkRow.id);
-    row.dataset.duration = minutes;
+    await supabase.from('work_log_gerks').update({ duration: seconds }).eq('id', gerkRow.id);
+    row.dataset.duration = seconds;
+    input.value = fmtHMS(seconds);
     await recomputeWorkLogDuration(logId);
     updateOrderHeader();
   } catch (e) {
