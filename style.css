@@ -480,6 +480,23 @@ input, select, textarea { font-family: inherit; }
 .wo-status--racun    { background: #EDE9FE;               color: #6D28D9; }
 
 
+/* ── Work orders: compact table ────────────────────────────── */
+.wo-lc-header,
+.wo-compact {
+  grid-template-columns: 64px 1fr 55px 92px 58px;
+}
+
+.wo-compact { cursor: pointer; }
+
+.wo-c-gerki {
+  font-size: .8125rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 /* ── Work log: work-order label + compact GERK entry table ──── */
 .wo-order-label {
   font-size: .8125rem;
@@ -516,16 +533,35 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
-.wlg-duration {
-  width: 64px;
-  height: 44px;
-  flex-shrink: 0;
-  padding: 0 6px;
-  text-align: center;
-  -moz-appearance: textfield;
+.wlg-duration-text {
+  font-size: .6875rem;
+  font-weight: 600;
+  color: var(--blue-800);
 }
-.wlg-duration::-webkit-inner-spin-button,
-.wlg-duration::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+.wlg-toggle-btn {
+  width: 64px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--blue-800);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--blue-800);
+  font-size: .8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wlg-toggle-btn:hover:not(:disabled) { background: var(--blue-50); }
+.wlg-toggle-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.wlg-toggle-btn--running {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.wlg-toggle-btn--running:hover:not(:disabled) { background: var(--danger-hover); }
 
 .wlg-check {
   display: flex;
@@ -1050,8 +1086,6 @@ input, select, textarea { font-family: inherit; }
 }
 .lc-btn:hover { background: var(--border-light); color: var(--text-primary); }
 .lc-btn--danger:hover  { background: var(--error-bg); color: var(--danger); }
-.lc-btn--locked        { opacity: .35; cursor: not-allowed; }
-.lc-btn--locked:hover  { background: transparent; color: var(--text-muted); }
 
 .lc-desc-row {
   grid-column: 1 / -1;

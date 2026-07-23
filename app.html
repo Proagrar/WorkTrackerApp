@@ -134,12 +134,12 @@
     </svg>
   </button>
 
-  <!-- ── Add / Edit Modal ────────────────────────────────────── -->
+  <!-- ── Work Order Detail (live time tracking) ──────────────── -->
   <div id="formModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-sheet">
       <div class="modal-handle" aria-hidden="true"></div>
       <div class="modal-head">
-        <h3 id="modalTitle" class="modal-title">Nov vpis</h3>
+        <h3 id="modalTitle" class="modal-title">Delovni nalog</h3>
         <button id="modalClose" class="btn btn-icon" aria-label="Zapri">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -148,18 +148,11 @@
         </button>
       </div>
 
-      <form id="workLogForm" class="work-form" novalidate>
-        <input type="hidden" id="editId" />
-        <input type="hidden" id="logWorkOrderId" />
-
+      <div id="workLogForm" class="work-form">
         <!-- Work order (read-only — set by which order was opened) -->
         <p id="workLogOrderLabel" class="wo-order-label"></p>
 
-        <!-- Date -->
-        <div class="field">
-          <label class="field-label" for="workDate">Datum dela</label>
-          <input class="field-input" type="date" id="workDate" required />
-        </div>
+        <button type="button" id="woStartBtn" class="btn btn-primary btn-block" hidden>Start</button>
 
         <div class="field">
           <label class="field-label">Čas na poti</label>
@@ -171,7 +164,7 @@
           </div>
         </div>
 
-        <!-- GERKs (fixed to the work order's planned fields) -->
+        <!-- GERKs: one row per planned field, Start/Stop logs start/end time -->
         <div class="field">
           <label class="field-label">GERKI</label>
           <div id="workLogGerkRows" class="wlg-table"></div>
@@ -199,13 +192,9 @@
         <div id="formSuccess" class="alert alert-success" hidden role="status"></div>
 
         <div class="form-actions">
-          <button type="button" id="cancelBtn" class="btn btn-secondary btn-flex">Prekliči</button>
-          <button type="submit" id="saveBtn"   class="btn btn-primary   btn-flex">
-            <span class="btn-label">Shrani</span>
-            <span class="btn-spinner" hidden aria-hidden="true"></span>
-          </button>
+          <button type="button" id="cancelBtn" class="btn btn-secondary btn-block">Zapri</button>
         </div>
-      </form>
+      </div>
     </div>
   </div>
 

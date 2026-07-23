@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v15';
+const APP_VERSION = 'v16';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -49,10 +49,8 @@ const formModal   = document.getElementById('formModal');
 const modalTitle  = document.getElementById('modalTitle');
 const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
-const editIdInput = document.getElementById('editId');
-const logWorkOrderIdInput = document.getElementById('logWorkOrderId');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
-const workDateInput = document.getElementById('workDate');
+const woStartBtn  = document.getElementById('woStartBtn');
 const roadHourSel = document.getElementById('roadHour');
 const roadMinSel  = document.getElementById('roadMin');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
@@ -60,7 +58,6 @@ const tractorInput = document.getElementById('tractor');
 const descInput   = document.getElementById('description');
 const formError   = document.getElementById('formError');
 const formSuccess = document.getElementById('formSuccess');
-const saveBtn     = document.getElementById('saveBtn');
 const cancelBtn   = document.getElementById('cancelBtn');
 
 const deleteModal      = document.getElementById('deleteModal');
@@ -148,13 +145,6 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 function fmtTodayLong() {
   const d = new Date();
   return `${d.getDate()}. ${MONTHS_SL[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function isEditable(log) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 7);
-  cutoff.setHours(0, 0, 0, 0);
-  return new Date(log.work_date) >= cutoff;
 }
 
 // ── Month navigation ───────────────────────────────────────────
@@ -276,7 +266,6 @@ function renderLogsCards(fl) {
       ? `<div class="log-row"><span class="log-desc">${escHtml(log.description)}</span></div>` : '';
     const operatorRow = currentRole === 'admin' || currentRole === 'supervisor'
       ? `<div class="log-row"><span class="log-operator-badge">${escHtml(profileMap[log.operator_id] ?? '—')}</span></div>` : '';
-    const editable = isEditable(log);
     return `
       <div class="log-card" role="listitem">
         <div class="log-card-top">
@@ -289,8 +278,6 @@ function renderLogsCards(fl) {
           ${road}${tractor}${desc}
         </div>
         <div class="log-card-actions">
-          <button class="btn-outline" data-action="edit" data-id="${log.id}"
-            ${editable ? '' : 'disabled title="Starejše od 7 dni"'}>Uredi</button>
           <button class="btn-danger-outline" data-action="delete" data-id="${log.id}">Izbriši</button>
         </div>
       </div>`;
@@ -317,7 +304,6 @@ function renderLogsCompact(fl) {
     const gerkCodes = gerks.map(g => escHtml(g.gerk_code)).join(', ') || '—';
     const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
     const haStr = totalHa > 0 ? totalHa.toFixed(2) : '—';
-    const editable = isEditable(log);
 
     const extras = [
       currentRole === 'admin' || currentRole === 'supervisor' ? escHtml(profileMap[log.operator_id] ?? '—') : null,
@@ -335,10 +321,6 @@ function renderLogsCompact(fl) {
         <span class="lc-gerk">${gerkCodes}</span>
         <span class="lc-ha">${haStr}</span>
         <div class="lc-actions">
-          <button class="lc-btn${editable ? '' : ' lc-btn--locked'}"
-            data-action="edit" data-id="${log.id}"
-            title="${editable ? 'Uredi' : 'Starejše od 7 dni'}"
-            ${editable ? '' : 'disabled'}>${EDIT_ICON}</button>
           <button class="lc-btn lc-btn--danger" data-action="delete" data-id="${log.id}" title="Izbriši">${DEL_ICON}</button>
         </div>
         ${extraRow}
@@ -510,28 +492,37 @@ function getFormGerks(container = woGerksListEl) {
 }
 
 // ── Work log GERK entry table (fixed to the work order's fields) ──
-// Rows = the work order's planned fields, plus any field the log
-// already carries but the current plan no longer lists (so re-saving
-// an edited log never silently drops historical data).
-function buildGerkPlanRows(workOrder, existingLog) {
+// Rows = the work order's planned fields, plus any field today's log
+// already carries but the current plan no longer lists.
+function buildGerkPlanRows(workOrder, todaysGerks) {
   const planFields = workOrder?.delovni_nalogi_gerki || [];
-  const logGerks    = existingLog?.work_log_gerks || [];
-  const logByCode   = Object.fromEntries(logGerks.map(g => [g.gerk_code, g]));
+  const logByCode   = Object.fromEntries((todaysGerks || []).map(g => [g.gerk_code, g]));
 
   const rows = planFields.map(pf => ({
     code:      pf.gerk_code,
     hectares:  pf.kolicina_ha ?? logByCode[pf.gerk_code]?.hectares ?? null,
     lokacija:  pf.lokacija ?? null,
+    startTime: logByCode[pf.gerk_code]?.start_time ?? null,
+    endTime:   logByCode[pf.gerk_code]?.end_time ?? null,
     duration:  logByCode[pf.gerk_code]?.duration ?? null,
     completed: logByCode[pf.gerk_code]?.completed ?? false,
   }));
 
   const planCodes = new Set(planFields.map(pf => pf.gerk_code));
-  logGerks.filter(g => !planCodes.has(g.gerk_code)).forEach(g => {
-    rows.push({ code: g.gerk_code, hectares: g.hectares, duration: g.duration ?? null, completed: g.completed ?? false });
+  (todaysGerks || []).filter(g => !planCodes.has(g.gerk_code)).forEach(g => {
+    rows.push({
+      code: g.gerk_code, hectares: g.hectares, lokacija: null,
+      startTime: g.start_time, endTime: g.end_time, duration: g.duration ?? null, completed: g.completed ?? false,
+    });
   });
 
   return rows;
+}
+
+function fmtHM(mins) {
+  if (!mins) return '';
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
 }
 
 function renderWorkLogGerkRows(rows) {
@@ -544,55 +535,63 @@ function renderWorkLogGerkRows(rows) {
     const name = f?.name || '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [name, ha, r.lokacija].filter(Boolean).join(' · ');
-    const hours = r.duration != null ? (r.duration / 60).toFixed(2).replace(/\.?0+$/, '') : '';
+    const running = !!(r.startTime && !r.endTime);
+    const durationText = r.duration != null ? fmtHM(r.duration) : '';
     return `
-      <div class="wlg-row" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}">
+      <div class="wlg-row" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}"
+           data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info">
           <span class="wlg-code">${escHtml(r.code)}</span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
+          ${durationText ? `<span class="wlg-duration-text">${durationText}</span>` : ''}
         </div>
-        <input type="number" class="field-input wlg-duration" placeholder="h" step="0.25" min="0" max="24" value="${hours}">
+        <button type="button" class="wlg-toggle-btn${running ? ' wlg-toggle-btn--running' : ''}" data-action="wlg-toggle">${running ? 'Stop' : 'Start'}</button>
         <label class="wlg-check">
           <input type="checkbox" class="wlg-completed" ${r.completed ? 'checked' : ''}>
           <span>OK</span>
         </label>
       </div>`;
   }).join('');
-}
 
-function readWorkLogGerkRows() {
-  return Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row')).map(row => {
-    const hoursVal = row.querySelector('.wlg-duration').value;
-    return {
-      code:      row.dataset.code,
-      hectares:  row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null,
-      duration:  hoursVal ? Math.round(parseFloat(hoursVal) * 60) : null,
-      completed: row.querySelector('.wlg-completed').checked,
-    };
-  });
+  wireGerkRowButtons();
 }
 
 // ── Modal ──────────────────────────────────────────────────────
-async function openWorkLogEntry(workOrder, existingLog = null) {
-  modalTitle.textContent = existingLog ? 'Uredi vpis' : 'Vpis časa';
-  workLogForm.reset();
-  editIdInput.value = existingLog?.id || '';
-  logWorkOrderIdInput.value = workOrder.id;
+let currentDetailWorkOrder = null;
+let currentDetailLogId     = null;
+
+async function openWorkOrderDetail(workOrder) {
+  currentDetailWorkOrder  = workOrder;
+  currentDetailLogId      = null;
+  ensureTodaysLogPromise  = null;
+
+  modalTitle.textContent = 'Delovni nalog';
   hideFormFeedback();
-  workDateInput.value = existingLog?.work_date || todayISO();
   roadHourSel.value = '0'; roadMinSel.value = '00';
+  tractorInput.value = '';
+  descInput.value = '';
   updateTractorDatalist();
 
   const stranka = workOrder.customers?.naziv || workOrder.customers?.company_name;
   workLogOrderLabel.textContent = [workOrder.stevilka, stranka].filter(Boolean).join(' — ');
+  woStartBtn.hidden = workOrder.status !== 'Plan';
+
+  const { data: existingLog } = await supabase
+    .from('work_logs')
+    .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed)')
+    .eq('operator_id', currentUser.id)
+    .eq('work_order_id', workOrder.id)
+    .eq('work_date', todayISO())
+    .maybeSingle();
 
   if (existingLog) {
+    currentDetailLogId = existingLog.id;
     setDurationSels(roadHourSel, roadMinSel, existingLog.road_duration);
     tractorInput.value = existingLog.tractor || '';
     descInput.value    = existingLog.description || '';
   }
 
-  renderWorkLogGerkRows(buildGerkPlanRows(workOrder, existingLog));
+  renderWorkLogGerkRows(buildGerkPlanRows(workOrder, existingLog?.work_log_gerks || []));
 
   formModal.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -620,117 +619,201 @@ function showFormSuccess(msg) {
   formError.hidden = true;
 }
 
-function setSaveLoading(on) {
-  saveBtn.disabled   = on;
-  cancelBtn.disabled = on;
-  saveBtn.querySelector('.btn-label').hidden   = on;
-  saveBtn.querySelector('.btn-spinner').hidden = !on;
-}
+// ── Live time tracking: today's work_logs + work_log_gerks ──────
+let ensureTodaysLogPromise = null;
 
-// ── Save ───────────────────────────────────────────────────────
-workLogForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  hideFormFeedback();
+async function ensureTodaysLog() {
+  if (currentDetailLogId) return currentDetailLogId;
+  // Two GERK rows started in quick succession would otherwise both race
+  // through the check-then-insert below before either resolves — share
+  // the same in-flight promise so only one insert is ever attempted.
+  if (ensureTodaysLogPromise) return ensureTodaysLogPromise;
 
-  const isEdit       = !!editIdInput.value;
-  const workDate     = workDateInput.value;
-  const roadDuration = getDurationMins(roadHourSel, roadMinSel);
-  const gerkRows     = readWorkLogGerkRows().filter(g => g.duration > 0 || g.completed);
-  const workDuration = gerkRows.reduce((s, g) => s + (g.duration || 0), 0);
-
-  if (!workDate)         return showFormError('Izberite datum dela.');
-  if (!gerkRows.length)  return showFormError('Vnesite čas vsaj za en GERK.');
-
-  setSaveLoading(true);
-
-  const logPayload = {
-    work_date:      workDate,
-    work_order_id:  logWorkOrderIdInput.value,
-    work_duration:  workDuration,
-    road_duration:  roadDuration || null,
-    tractor:        tractorInput.value.trim() || null,
-    description:    descInput.value.trim()    || null,
-  };
-
-  let workLogId;
-  let saveError;
-
-  if (isEdit) {
-    const { error } = await supabase
+  ensureTodaysLogPromise = (async () => {
+    const today = todayISO();
+    const { data: existing } = await supabase
       .from('work_logs')
-      .update(logPayload)
-      .eq('id', editIdInput.value)
-      .eq('operator_id', currentUser.id);
-    saveError = error;
-    workLogId = editIdInput.value;
-  } else {
+      .select('id')
+      .eq('operator_id', currentUser.id)
+      .eq('work_order_id', currentDetailWorkOrder.id)
+      .eq('work_date', today)
+      .maybeSingle();
+
+    if (existing) { currentDetailLogId = existing.id; return existing.id; }
+
     const { data, error } = await supabase
       .from('work_logs')
-      .insert({ ...logPayload, operator_id: currentUser.id })
+      .insert({ operator_id: currentUser.id, work_order_id: currentDetailWorkOrder.id, work_date: today, work_duration: 0 })
       .select('id')
       .single();
-    saveError = error;
-    workLogId = data?.id;
-  }
 
-  if (saveError) {
-    setSaveLoading(false);
-    showFormError('Napaka pri shranjevanju. Preverite podatke in poskusite znova.');
-    return;
-  }
+    if (error) {
+      // Unique violation from a concurrent insert (e.g. a second tab)
+      // that won the race — fetch the row it created instead of failing.
+      if (error.code === '23505') {
+        const { data: raceWinner, error: fetchErr } = await supabase
+          .from('work_logs')
+          .select('id')
+          .eq('operator_id', currentUser.id)
+          .eq('work_order_id', currentDetailWorkOrder.id)
+          .eq('work_date', today)
+          .single();
+        if (fetchErr) throw fetchErr;
+        currentDetailLogId = raceWinner.id;
+        return raceWinner.id;
+      }
+      throw error;
+    }
 
-  if (isEdit) {
-    await supabase.from('work_log_gerks').delete().eq('work_log_id', workLogId);
-  }
+    currentDetailLogId = data.id;
+    return data.id;
+  })();
 
-  const { error: gerkError } = await supabase
+  try {
+    return await ensureTodaysLogPromise;
+  } finally {
+    ensureTodaysLogPromise = null;
+  }
+}
+
+async function ensureGerkRow(logId, gerkCode, hectares) {
+  const { data: existing } = await supabase
     .from('work_log_gerks')
-    .insert(gerkRows.map(g => ({
-      work_log_id: workLogId,
-      gerk_code:   g.code,
-      hectares:    g.hectares,
-      duration:    g.duration,
-      completed:   g.completed,
-    })));
+    .select('id, start_time, end_time, duration, completed')
+    .eq('work_log_id', logId)
+    .eq('gerk_code', gerkCode)
+    .maybeSingle();
+  if (existing) return existing;
 
-  setSaveLoading(false);
+  const { data, error } = await supabase
+    .from('work_log_gerks')
+    .insert({ work_log_id: logId, gerk_code: gerkCode, hectares })
+    .select('id, start_time, end_time, duration, completed')
+    .single();
+  if (error) throw error;
+  return data;
+}
 
-  if (gerkError) {
-    showFormError('Napaka pri shranjevanju GERKOV.');
-    return;
+async function recomputeWorkLogDuration(logId) {
+  const { data } = await supabase.from('work_log_gerks').select('duration').eq('work_log_id', logId);
+  const total = (data ?? []).reduce((s, g) => s + (g.duration || 0), 0);
+  await supabase.from('work_logs').update({ work_duration: total }).eq('id', logId);
+}
+
+async function toggleGerkTimer(btn) {
+  const row      = btn.closest('.wlg-row');
+  const code     = row.dataset.code;
+  const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
+
+  btn.disabled = true;
+  try {
+    const logId   = await ensureTodaysLog();
+    const gerkRow = await ensureGerkRow(logId, code, hectares);
+    const running = gerkRow.start_time && !gerkRow.end_time;
+
+    let updated;
+    if (running) {
+      const endIso    = new Date().toISOString();
+      const durationMin = Math.max(0, Math.round((new Date(endIso) - new Date(gerkRow.start_time)) / 60000));
+      const { data, error } = await supabase
+        .from('work_log_gerks')
+        .update({ end_time: endIso, duration: durationMin })
+        .eq('id', gerkRow.id)
+        .select('id, start_time, end_time, duration, completed')
+        .single();
+      if (error) throw error;
+      updated = data;
+      await recomputeWorkLogDuration(logId);
+    } else {
+      const { data, error } = await supabase
+        .from('work_log_gerks')
+        .update({ start_time: new Date().toISOString(), end_time: null })
+        .eq('id', gerkRow.id)
+        .select('id, start_time, end_time, duration, completed')
+        .single();
+      if (error) throw error;
+      updated = data;
+    }
+
+    row.dataset.start    = updated.start_time || '';
+    row.dataset.end      = updated.end_time || '';
+    row.dataset.duration = updated.duration ?? '';
+    const nowRunning = updated.start_time && !updated.end_time;
+    btn.textContent = nowRunning ? 'Stop' : 'Start';
+    btn.classList.toggle('wlg-toggle-btn--running', nowRunning);
+
+    let durEl = row.querySelector('.wlg-duration-text');
+    if (updated.duration != null) {
+      const text = fmtHM(updated.duration);
+      if (durEl) durEl.textContent = text;
+      else row.querySelector('.wlg-info').insertAdjacentHTML('beforeend', `<span class="wlg-duration-text">${text}</span>`);
+    }
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju časa.');
+  } finally {
+    btn.disabled = false;
   }
+}
 
-  saveTractorToHistory(tractorInput.value.trim());
-  showFormSuccess(isEdit ? '✓ Vpis posodobljen!' : '✓ Vpis shranjen!');
-  await loadLogs();
-  setTimeout(closeModal, 1000);
+async function saveGerkCompleted(cb) {
+  const row      = cb.closest('.wlg-row');
+  const code     = row.dataset.code;
+  const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
+
+  cb.disabled = true;
+  try {
+    const logId   = await ensureTodaysLog();
+    const gerkRow = await ensureGerkRow(logId, code, hectares);
+    await supabase.from('work_log_gerks').update({ completed: cb.checked }).eq('id', gerkRow.id);
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju.');
+  } finally {
+    cb.disabled = false;
+  }
+}
+
+function wireGerkRowButtons() {
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-toggle"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleGerkTimer(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('.wlg-completed').forEach(cb => {
+    cb.addEventListener('change', () => saveGerkCompleted(cb));
+  });
+}
+
+async function saveOrderMeta() {
+  try {
+    const logId = await ensureTodaysLog();
+    await supabase.from('work_logs').update({
+      road_duration: getDurationMins(roadHourSel, roadMinSel) || null,
+      tractor:       tractorInput.value.trim() || null,
+      description:   descInput.value.trim()    || null,
+    }).eq('id', logId);
+    saveTractorToHistory(tractorInput.value.trim());
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju.');
+  }
+}
+
+roadHourSel.addEventListener('change', saveOrderMeta);
+roadMinSel.addEventListener('change',  saveOrderMeta);
+tractorInput.addEventListener('blur',  saveOrderMeta);
+descInput.addEventListener('blur',     saveOrderMeta);
+
+woStartBtn.addEventListener('click', async () => {
+  woStartBtn.disabled = true;
+  const { error } = await supabase.rpc('start_work_order', { p_work_order_id: currentDetailWorkOrder.id });
+  woStartBtn.disabled = false;
+  if (error) { showFormError('Napaka pri zagonu naloga.'); return; }
+  currentDetailWorkOrder.status    = 'V delu';
+  currentDetailWorkOrder.izvajalec = currentUser.id;
+  woStartBtn.hidden = true;
+  showFormSuccess('✓ Nalog zagnan!');
+  await loadWorkOrders();
 });
 
 // ── Wire buttons ───────────────────────────────────────────────
-async function fetchWorkOrderForLog(log) {
-  const { data } = await supabase
-    .from('delovni_nalogi')
-    .select('id, stevilka, customers(naziv, company_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija)')
-    .eq('id', log.work_order_id)
-    .maybeSingle();
-
-  if (data) return data;
-
-  // RLS hid it (e.g. the order has since been marked completed) — fall
-  // back to a minimal stand-in built from the log's own saved fields,
-  // so editing an old entry still works.
-  return { id: log.work_order_id, stevilka: '(nalog ni več dostopen)', customers: null, delovni_nalogi_gerki: [] };
-}
-
 function wireLogButtons() {
-  logsList.querySelectorAll('[data-action="edit"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const log = logs.find(l => l.id === btn.dataset.id);
-      if (!log) return;
-      const workOrder = await fetchWorkOrderForLog(log);
-      openWorkLogEntry(workOrder, log);
-    });
-  });
   logsList.querySelectorAll('[data-action="delete"]').forEach(btn => {
     btn.addEventListener('click', () => {
       pendingDeleteId   = btn.dataset.id;
@@ -841,56 +924,57 @@ function renderWorkOrders() {
 
   const canEdit = currentRole === 'admin';
 
-  workOrdersList.innerHTML = workOrders.map(wo => {
-    const stranka   = wo.customers?.naziv || wo.customers?.company_name || '—';
-    const izvajalec = wo.profiles?.full_name || '—';
-    const gerks     = wo.delovni_nalogi_gerki || [];
-    const gerkBadges = gerks.map(g =>
-      `<span class="log-gerk-badge">${escHtml(g.gerk_code)}</span>`
-    ).join('') || '<span class="log-gerk-badge">—</span>';
+  workOrdersList.className = 'logs-list logs-list--compact';
+  const header = `
+    <div class="lc-header wo-lc-header" aria-hidden="true">
+      <span>Št.</span>
+      <span>Ime GERKA</span>
+      <span>Ha</span>
+      <span>Status</span>
+      <span></span>
+    </div>`;
+
+  const rows = workOrders.map(wo => {
+    const gerks   = wo.delovni_nalogi_gerki || [];
+    const gerkNames = gerks.map(g => fields.find(f => f.code === g.gerk_code)?.name || g.gerk_code).join(', ') || '—';
     const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
-    const haStr   = totalHa > 0 ? ` · ${totalHa.toFixed(2)} ha` : '';
+    const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
 
     return `
-      <div class="log-card" role="listitem">
-        <div class="log-card-top">
-          <span class="log-date">${escHtml(wo.stevilka)}</span>
-          <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
-        </div>
-        <div class="log-card-body">
-          <div class="log-row"><span class="log-operator-badge">${escHtml(stranka)}</span></div>
-          <div class="log-row">${gerkBadges}${haStr ? `<span class="log-ha-text">${haStr}</span>` : ''}</div>
-          ${wo.tip_storitve ? `<div class="log-row"><span>${escHtml(wo.tip_storitve)}</span></div>` : ''}
-          <div class="log-row"><span class="log-desc">Izvajalec: ${escHtml(izvajalec)}</span></div>
-          ${wo.podrobnosti ? `<div class="log-row"><span class="log-desc">${escHtml(wo.podrobnosti)}</span></div>` : ''}
-        </div>
-        <div class="log-card-actions">
-          <button class="btn-outline" data-action="wo-log-time" data-id="${wo.id}">Vpiši čas</button>
+      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${wo.id}">
+        <span class="lc-date">${escHtml(wo.stevilka)}</span>
+        <span class="wo-c-gerki">${escHtml(gerkNames)}</span>
+        <span class="lc-ha">${haStr}</span>
+        <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
+        <div class="lc-actions">
           ${canEdit ? `
-          <button class="btn-outline" data-action="wo-edit" data-id="${wo.id}">Uredi</button>
-          <button class="btn-danger-outline" data-action="wo-delete" data-id="${wo.id}">Izbriši</button>` : ''}
+          <button class="lc-btn" data-action="wo-edit" data-id="${wo.id}" title="Uredi">${EDIT_ICON}</button>
+          <button class="lc-btn lc-btn--danger" data-action="wo-delete" data-id="${wo.id}" title="Izbriši">${DEL_ICON}</button>` : ''}
         </div>
       </div>`;
   }).join('');
 
+  workOrdersList.innerHTML = header + rows;
   wireWorkOrderButtons();
 }
 
 function wireWorkOrderButtons() {
-  workOrdersList.querySelectorAll('[data-action="wo-log-time"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const wo = workOrders.find(w => w.id === btn.dataset.id);
-      if (wo) openWorkLogEntry(wo);
+  workOrdersList.querySelectorAll('[data-action="wo-open"]').forEach(row => {
+    row.addEventListener('click', () => {
+      const wo = workOrders.find(w => w.id === row.dataset.id);
+      if (wo) openWorkOrderDetail(wo);
     });
   });
   workOrdersList.querySelectorAll('[data-action="wo-edit"]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       const wo = workOrders.find(w => w.id === btn.dataset.id);
       if (wo) openWorkOrderModal('Uredi delovni nalog', wo);
     });
   });
   workOrdersList.querySelectorAll('[data-action="wo-delete"]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       pendingDeleteId   = btn.dataset.id;
       pendingDeleteType = 'workorder';
       deleteTitleEl.textContent = 'Izbriši delovni nalog?';
