@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.3';
+const APP_VERSION = 'v1.4';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -75,6 +75,7 @@ const panelEvidenca = document.getElementById('panelEvidenca');
 const panelNalogi   = document.getElementById('panelNalogi');
 const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
+const woSearchSuggestions = document.getElementById('woSearchSuggestions');
 
 // ── Work order modal refs ───────────────────────────────────────
 const workOrderModal      = document.getElementById('workOrderModal');
@@ -1063,7 +1064,38 @@ function wireWorkOrderButtons() {
   });
 }
 
-woSearchStranka.addEventListener('input', renderWorkOrders);
+function getAvailableStranke() {
+  const set = new Set();
+  workOrders.forEach(wo => {
+    const name = wo.customers?.naziv || wo.customers?.company_name;
+    if (name) set.add(name);
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function showWoSearchSuggestions() {
+  const q = woSearchStranka.value.trim().toLowerCase();
+  const all = getAvailableStranke();
+  const matches = q ? all.filter(n => n.toLowerCase().includes(q)) : all;
+  if (!matches.length) { woSearchSuggestions.hidden = true; return; }
+  woSearchSuggestions.innerHTML = matches.map(name =>
+    `<li class="gerk-suggestion-item" data-name="${escHtml(name)}"><span class="gerk-suggestion-code">${escHtml(name)}</span></li>`
+  ).join('');
+  woSearchSuggestions.hidden = false;
+}
+
+woSearchStranka.addEventListener('input', () => { renderWorkOrders(); showWoSearchSuggestions(); });
+woSearchStranka.addEventListener('focus', showWoSearchSuggestions);
+woSearchStranka.addEventListener('blur', () => {
+  setTimeout(() => { woSearchSuggestions.hidden = true; }, 150);
+});
+woSearchSuggestions.addEventListener('mousedown', e => {
+  const item = e.target.closest('.gerk-suggestion-item');
+  if (!item) return;
+  woSearchStranka.value = item.dataset.name;
+  woSearchSuggestions.hidden = true;
+  renderWorkOrders();
+});
 
 // ── Work orders: customer + operator lookups ────────────────────
 async function loadCustomers() {

@@ -786,6 +786,11 @@ input, select, textarea { font-family: inherit; }
 
 .wo-section { padding-top: 16px; }
 
+.wo-search-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .wo-search-input {
   width: 140px;
   height: 34px;
