@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.3';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -74,6 +74,7 @@ const tabNalogi     = document.getElementById('tabNalogi');
 const panelEvidenca = document.getElementById('panelEvidenca');
 const panelNalogi   = document.getElementById('panelNalogi');
 const workOrdersList = document.getElementById('workOrdersList');
+const woSearchStranka = document.getElementById('woSearchStranka');
 
 // ── Work order modal refs ───────────────────────────────────────
 const workOrderModal      = document.getElementById('workOrderModal');
@@ -1005,13 +1006,23 @@ async function loadWorkOrders() {
   renderWorkOrders();
 }
 
+function filteredWorkOrders() {
+  const q = woSearchStranka.value.trim().toLowerCase();
+  if (!q) return workOrders;
+  return workOrders.filter(wo => {
+    const stranka = wo.customers?.naziv || wo.customers?.company_name || '';
+    return stranka.toLowerCase().includes(q);
+  });
+}
+
 function renderWorkOrders() {
-  if (workOrders.length === 0) {
-    workOrdersList.innerHTML = `<div class="state-empty"><p>Ni delovnih nalogov.</p></div>`;
+  const fwo = filteredWorkOrders();
+
+  if (fwo.length === 0) {
+    const msg = woSearchStranka.value.trim() ? 'Ni zadetkov za to stranko.' : 'Ni delovnih nalogov.';
+    workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     return;
   }
-
-  const canEdit = currentRole === 'admin';
 
   workOrdersList.className = 'logs-list logs-list--compact';
   const header = `
@@ -1021,10 +1032,9 @@ function renderWorkOrders() {
       <span>GERKI</span>
       <span>Ha</span>
       <span>Status</span>
-      <span></span>
     </div>`;
 
-  const rows = workOrders.map(wo => {
+  const rows = fwo.map(wo => {
     const gerks   = wo.delovni_nalogi_gerki || [];
     const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
     const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
@@ -1037,10 +1047,6 @@ function renderWorkOrders() {
         <span class="wo-c-gerki">${gerks.length || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
-        <div class="lc-actions">
-          ${canEdit ? `
-          <button class="lc-btn lc-btn--danger" data-action="wo-delete" data-id="${wo.id}" title="Izbriši">${DEL_ICON}</button>` : ''}
-        </div>
       </div>`;
   }).join('');
 
@@ -1055,18 +1061,9 @@ function wireWorkOrderButtons() {
       if (wo) openWorkOrderDetail(wo);
     });
   });
-  workOrdersList.querySelectorAll('[data-action="wo-delete"]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      pendingDeleteId   = btn.dataset.id;
-      pendingDeleteType = 'workorder';
-      deleteTitleEl.textContent = 'Izbriši delovni nalog?';
-      deleteBodyEl.textContent  = 'To dejanje je trajno in ga ni mogoče razveljaviti.';
-      deleteModal.hidden = false;
-      document.body.style.overflow = 'hidden';
-    });
-  });
 }
+
+woSearchStranka.addEventListener('input', renderWorkOrders);
 
 // ── Work orders: customer + operator lookups ────────────────────
 async function loadCustomers() {
