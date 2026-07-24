@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.6';
+const APP_VERSION = 'v1.7';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -658,6 +658,10 @@ function closeModal() {
   stopAllTickers();
   formModal.hidden = true;
   document.body.style.overflow = '';
+  // Time logged via the live Start/Stop timers writes straight to Supabase
+  // without updating the in-memory `logs` array — refresh it so Evidenca
+  // dela reflects what was just logged.
+  loadLogs();
 }
 
 function hideFormFeedback() {
