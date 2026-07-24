@@ -470,8 +470,12 @@ input, select, textarea { font-family: inherit; }
   font-size: .75rem;
   font-weight: 600;
   border-radius: 20px;
-  padding: 3px 10px;
+  padding: 3px 8px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  min-width: 0;
   flex-shrink: 0;
 }
 .wo-status--plan     { background: var(--border-light); color: var(--text-secondary); }
@@ -483,10 +487,18 @@ input, select, textarea { font-family: inherit; }
 /* ── Work orders: compact table ────────────────────────────── */
 .wo-lc-header,
 .wo-compact {
-  grid-template-columns: 1fr 45px 50px 92px 58px;
+  grid-template-columns: 68px 1fr 40px 48px 80px 58px;
 }
 
 .wo-compact { cursor: pointer; }
+
+.wo-c-stranka {
+  font-size: .8125rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .wo-c-gerki {
   font-size: .8125rem;

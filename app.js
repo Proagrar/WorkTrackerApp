@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -20,7 +20,7 @@ let pendingDeleteType = 'log'; // 'log' | 'workorder'
 let viewMode     = 'compact';
 let currentMonth = new Date().toISOString().slice(0, 7);
 
-let currentTab       = 'evidenca'; // 'evidenca' | 'nalogi'
+let currentTab       = 'nalogi'; // 'evidenca' | 'nalogi'
 let workOrders       = [];
 let workOrdersLoaded = false;
 let customers        = [];
@@ -1017,6 +1017,7 @@ function renderWorkOrders() {
   const header = `
     <div class="lc-header wo-lc-header" aria-hidden="true">
       <span>Št.</span>
+      <span>Stranka</span>
       <span>GERKI</span>
       <span>Ha</span>
       <span>Status</span>
@@ -1027,12 +1028,12 @@ function renderWorkOrders() {
     const gerks   = wo.delovni_nalogi_gerki || [];
     const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
     const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
-    const stranka = wo.customers?.naziv || wo.customers?.company_name;
-    const stevilkaLabel = [wo.stevilka, stranka].filter(Boolean).join(' — ');
+    const stranka = wo.customers?.naziv || wo.customers?.company_name || '—';
 
     return `
       <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${wo.id}">
-        <span class="lc-date">${escHtml(stevilkaLabel)}</span>
+        <span class="lc-date">${escHtml(wo.stevilka)}</span>
+        <span class="wo-c-stranka">${escHtml(stranka)}</span>
         <span class="wo-c-gerki">${gerks.length || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
@@ -1296,7 +1297,11 @@ async function boot() {
   renderGreeting(displayName);
   updateFabVisibility();
 
-  await loadLogs();
+  // Delovni Nalogi is the default visible tab now — load it first so the
+  // user isn't staring at a spinner; Evidenca dela loads in the background
+  // so switching to it later is instant.
+  await loadWorkOrders();
+  loadLogs();
 }
 
 boot();

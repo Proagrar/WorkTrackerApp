@@ -36,12 +36,12 @@
 
     <!-- Tabs -->
     <nav class="tab-bar" aria-label="Zavihki">
-      <button id="tabEvidenca" class="tab-btn tab-btn--active" data-tab="evidenca">Evidenca dela</button>
-      <button id="tabNalogi" class="tab-btn" data-tab="nalogi">Delovni Nalogi</button>
+      <button id="tabNalogi" class="tab-btn tab-btn--active" data-tab="nalogi">Delovni Nalogi</button>
+      <button id="tabEvidenca" class="tab-btn" data-tab="evidenca">Evidenca dela</button>
     </nav>
 
     <!-- ── Tab: Evidenca dela (original view) ────────────────── -->
-    <div id="panelEvidenca" class="tab-panel">
+    <div id="panelEvidenca" class="tab-panel" hidden>
 
       <section class="greeting-section">
         <p id="greeting" class="greeting"></p>
@@ -110,7 +110,7 @@
     </div>
 
     <!-- ── Tab: Delovni Nalogi (work orders) ─────────────────── -->
-    <div id="panelNalogi" class="tab-panel" hidden>
+    <div id="panelNalogi" class="tab-panel">
       <section class="logs-section wo-section">
         <div class="section-header">
           <h2 class="section-title">Delovni Nalogi</h2>
