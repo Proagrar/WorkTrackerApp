@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.5';
+const APP_VERSION = 'v1.6';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -16,7 +16,6 @@ let profileMap   = {};
 let logs         = [];
 let fields       = [];
 let pendingDeleteId   = null;
-let pendingDeleteType = 'log'; // 'log' | 'workorder'
 let viewMode     = 'compact';
 let currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -63,8 +62,6 @@ const formSuccess = document.getElementById('formSuccess');
 const cancelBtn   = document.getElementById('cancelBtn');
 
 const deleteModal      = document.getElementById('deleteModal');
-const deleteTitleEl    = document.getElementById('deleteTitle');
-const deleteBodyEl     = document.getElementById('deleteBody');
 const deleteCancelBtn  = document.getElementById('deleteCancelBtn');
 const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
 
@@ -82,7 +79,6 @@ const workOrderModal      = document.getElementById('workOrderModal');
 const woModalTitle        = document.getElementById('woModalTitle');
 const woModalClose        = document.getElementById('woModalClose');
 const workOrderForm       = document.getElementById('workOrderForm');
-const woEditIdInput       = document.getElementById('woEditId');
 const woStevilkaLabel     = document.getElementById('woStevilkaLabel');
 const woStrankaInput      = document.getElementById('woStranka');
 const woStrankaIdInput    = document.getElementById('woStrankaId');
@@ -907,10 +903,7 @@ woStartBtn.addEventListener('click', async () => {
 function wireLogButtons() {
   logsList.querySelectorAll('[data-action="delete"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      pendingDeleteId   = btn.dataset.id;
-      pendingDeleteType = 'log';
-      deleteTitleEl.textContent = 'Izbriši vpis?';
-      deleteBodyEl.textContent  = 'To dejanje je trajno in ga ni mogoče razveljaviti.';
+      pendingDeleteId = btn.dataset.id;
       deleteModal.hidden = false;
       document.body.style.overflow = 'hidden';
     });
@@ -921,17 +914,15 @@ deleteConfirmBtn.addEventListener('click', async () => {
   if (!pendingDeleteId) return;
   deleteConfirmBtn.disabled = true;
 
-  const { error } = pendingDeleteType === 'workorder'
-    ? await supabase.from('delovni_nalogi').delete().eq('id', pendingDeleteId)
-    : await supabase.from('work_logs').delete().eq('id', pendingDeleteId).eq('operator_id', currentUser.id);
+  const { error } = await supabase
+    .from('work_logs')
+    .delete()
+    .eq('id', pendingDeleteId)
+    .eq('operator_id', currentUser.id);
 
   deleteConfirmBtn.disabled = false;
-  const type = pendingDeleteType;
   closeDeleteModal();
-  if (!error) {
-    if (type === 'workorder') await loadWorkOrders();
-    else await loadLogs();
-  }
+  if (!error) await loadLogs();
 });
 
 deleteCancelBtn.addEventListener('click', closeDeleteModal);
@@ -947,7 +938,7 @@ logoutBtn.addEventListener('click', async () => {
   window.location.replace('index.html');
 });
 
-addBtn.addEventListener('click', () => openWorkOrderModal('Nov delovni nalog'));
+addBtn.addEventListener('click', () => openWorkOrderModal());
 modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
 
@@ -1145,41 +1136,20 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
   woStrankaSuggestions.hidden = true;
 });
 
-// ── Work order modal ────────────────────────────────────────────
-async function openWorkOrderModal(title, prefill = null) {
-  woModalTitle.textContent = title;
+// ── Work order modal (create only — there is no edit entry point) ──
+async function openWorkOrderModal() {
+  woModalTitle.textContent = 'Nov delovni nalog';
   workOrderForm.reset();
-  woEditIdInput.value = '';
   woStrankaIdInput.value = '';
   hideWoFormFeedback();
   woStatusSel.value = 'Plan';
   woGerksListEl.innerHTML = '';
+  woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
 
   if (!customers.length) await loadCustomers();
   if (!operatorsList.length) await loadOperatorsList();
 
-  if (prefill) {
-    woEditIdInput.value      = prefill.id;
-    woStevilkaLabel.textContent = prefill.stevilka;
-    woStrankaIdInput.value   = prefill.stranka_id || '';
-    woStrankaInput.value     = prefill.customers?.naziv || prefill.customers?.company_name || '';
-    woIzvajalecSel.value     = prefill.izvajalec || '';
-    woTipSel.value           = prefill.tip_storitve || '';
-    woStrosekOcenaInput.value = prefill.strosek_ocena ?? '';
-    woStrosekInput.value     = prefill.strosek ?? '';
-    woStatusSel.value        = prefill.status || 'Plan';
-    woPodrobnostiInput.value = prefill.podrobnosti || '';
-
-    const gerks = prefill.delovni_nalogi_gerki || [];
-    if (gerks.length) {
-      gerks.forEach(g => addGerkRow(woGerksListEl, g.gerk_code, g.kolicina_ha ?? '', g.lokacija ?? ''));
-    } else {
-      addGerkRow(woGerksListEl);
-    }
-  } else {
-    woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
-    addGerkRow(woGerksListEl);
-  }
+  addGerkRow(woGerksListEl);
 
   workOrderModal.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -1223,7 +1193,6 @@ workOrderForm.addEventListener('submit', async e => {
   e.preventDefault();
   hideWoFormFeedback();
 
-  const isEdit   = !!woEditIdInput.value;
   const gerkRows = getFormGerks(woGerksListEl);
 
   if (!gerkRows.length) return showWoFormError('Dodajte vsaj en GERK.');
@@ -1246,27 +1215,13 @@ workOrderForm.addEventListener('submit', async e => {
     podrobnosti:   woPodrobnostiInput.value.trim() || null,
   };
 
-  let workOrderId;
-  let saveError;
-
-  if (isEdit) {
-    const { error } = await supabase.from('delovni_nalogi').update(payload).eq('id', woEditIdInput.value);
-    saveError = error;
-    workOrderId = woEditIdInput.value;
-  } else {
-    const { data, error } = await supabase.from('delovni_nalogi').insert(payload).select('id').single();
-    saveError = error;
-    workOrderId = data?.id;
-  }
+  const { data, error: saveError } = await supabase.from('delovni_nalogi').insert(payload).select('id').single();
+  const workOrderId = data?.id;
 
   if (saveError) {
     setWoSaveLoading(false);
     showWoFormError('Napaka pri shranjevanju. Preverite podatke in poskusite znova.');
     return;
-  }
-
-  if (isEdit) {
-    await supabase.from('delovni_nalogi_gerki').delete().eq('delovni_nalog_id', workOrderId);
   }
 
   const { error: gerkError } = await supabase
@@ -1285,7 +1240,7 @@ workOrderForm.addEventListener('submit', async e => {
     return;
   }
 
-  showWoFormSuccess(isEdit ? '✓ Nalog posodobljen!' : '✓ Nalog shranjen!');
+  showWoFormSuccess('✓ Nalog shranjen!');
   await loadWorkOrders();
   setTimeout(closeWorkOrderModal, 1000);
 });

@@ -318,7 +318,7 @@ $$;
 
 ## 6. Migration files — exact run order
 
-Run these against a fresh Supabase project's SQL Editor, in this order. Files not listed here (`seed_test_work_orders.sql`) are optional test data, never actually applied to production.
+Run these against a fresh Supabase project's SQL Editor, in this order.
 
 | # | File | What it does |
 |---|---|---|
@@ -360,7 +360,7 @@ Already-logged-in visitors get redirected straight to `app.html`. No OAuth (Goog
 - Fixed header: Proagrar logo + tiny app version string (top-left), operator name + role badge + logout (top-right).
 - Two tabs, **Delovni Nalogi first** (default/active tab), **Evidenca dela second**. `boot()` loads work orders first (so the default tab isn't stuck on a spinner) then loads Evidenca dela's logs in the background.
 - One FAB (bottom-right +), visible **only** on the Delovni Nalogi tab and **only** for admins — opens the "create work order" modal. It has no role on the Evidenca dela tab at all (the old "add work log manually" flow was fully removed — see §8.4).
-- Three modals share the page: `formModal` (work order detail / live time tracking — repurposed from an earlier "add work log" modal, hence the id), `workOrderModal` (admin create/edit a work order's plan), `deleteModal` (generic confirm, shared between deleting a log and — historically — a work order; the work-order delete button itself was later removed from the UI, see §8.8, but the underlying delete code path still exists).
+- Three modals share the page: `formModal` (work order detail / live time tracking — repurposed from an earlier "add work log" modal, hence the id), `workOrderModal` (admin creates a work order's plan — **create-only**, see §8.8), `deleteModal` (confirms deleting a log entry — the work-order variant of this was removed along with the rest of the work-order edit/delete UI, see §8.8).
 
 ### 7.3 Evidenca dela tab (history view)
 
@@ -377,7 +377,7 @@ Already-logged-in visitors get redirected straight to `app.html`. No OAuth (Goog
 
 Compact table, columns: **Št.** (order number) | **Stranka** (client name) | **GERKI** (field count) | **Ha** (total planned hectares) | **Status** (colored badge). A search box next to the title filters by client name, with a dropdown of every client that appears in the currently-loaded work orders (deduplicated, sorted) — type to filter or click to pick.
 
-Tapping any row opens the work order detail view (§7.5). Admin's Edit/Delete icon buttons that originally sat in each row were both removed per explicit request (§8.8) — admins still create/edit orders via the FAB + `workOrderModal`, just not from this list's rows directly (edit access was removed from the UI entirely, actually — see §8.8 for the current state).
+Tapping any row opens the work order detail view (§7.5). Admin's Edit/Delete icon buttons that originally sat in each row were both removed per explicit request (§8.8) — admins create new orders via the FAB + `workOrderModal`, but there is currently no UI path to edit or delete an existing order's plan at all (both the UI and the underlying code for those were removed, not just hidden — see §8.8).
 
 ### 7.5 Work order detail — live time tracking (the core feature)
 
@@ -405,9 +405,9 @@ This is the most involved part of the app. Opened by tapping a row in the Delovn
 
 5. **`work_logs.work_duration`** is recomputed (`recomputeWorkLogDuration`) after every Stop/duration-edit — sum of all this log's `work_log_gerks.duration` (seconds), converted to minutes and rounded, kept purely so the Evidenca dela tab's existing minute-based stats code keeps working unmodified.
 
-### 7.6 Admin: create/edit a work order's plan (`workOrderModal`)
+### 7.6 Admin: create a work order's plan (`workOrderModal`)
 
-Separate from the live-tracking view above — this is where the *plan* itself (which fields, which customer, cost estimates, status, notes) gets defined. Reached only via the FAB (create) — the "edit an existing order's plan" entry point was removed from the UI (§8.8), though the modal/save logic behind it is still intact in the code, just currently unreachable from any button.
+Separate from the live-tracking view above — this is where the *plan* itself (which fields, which customer, cost estimates, status, notes) gets defined. **Create-only**, reached via the FAB — the edit path (and its code: `woEditId`, the update-vs-insert branch, prefilling from an existing order) was removed entirely (§8.8), not just hidden. To change an existing order's plan today, there is no UI; it would need a direct SQL update or the edit feature would need to be rebuilt.
 
 - **Stranka**: autocomplete text input against the CRM's `customers` table (loaded once, cached in the `customers` array).
 - **Izvajalec**: a plain `<select>` of all profiles (not filtered by role — any user could technically be pre-assigned, though in practice this is operators).
@@ -466,7 +466,7 @@ from pg_proc p where p.proname = '<function_name>';
 `anon` must not appear unless the function is genuinely meant to be public.
 
 ### 8.8 UI simplification: Edit/Delete removed from work orders
-Both the "Uredi" (edit) and "Izbriši" (delete) buttons on work order rows were removed per explicit request, in that order, within the same session. The underlying `openWorkOrderModal(...)` edit path and the `pendingDeleteType === 'workorder'` delete-confirm branch are both still present in `app.js` (harmless, currently unreachable from any button) — consistent with how Edit was handled first ("hide, don't delete the code") and Delete followed the same pattern.
+Both the "Uredi" (edit) and "Izbriši" (delete) buttons on work order rows were removed per explicit request, in that order, within the same session — initially just hidden (buttons/wiring removed, underlying code left in place). During a later code-cleanup pass, once it was confirmed `openWorkOrderModal(...)`'s edit branch and the `pendingDeleteType === 'workorder'` delete-confirm branch were genuinely unreachable from any remaining button, they were removed outright rather than left as dead code: `workOrderModal` is now create-only (`woEditId` and the update-vs-insert branching are gone), and the delete-confirm flow now only ever deletes a `work_logs` row (the `pendingDeleteType` concept was removed). There is currently **no way to edit or delete an existing work order's plan** through the UI at all.
 
 ### 8.9 Tab order flipped
 Delovni Nalogi and Evidenca dela swapped positions (Delovni Nalogi now first and default) per explicit request — this is also why `boot()` loads work orders before logs.
@@ -494,13 +494,13 @@ Even with the above, deploys sometimes didn't visibly update. Root cause: the ne
 - **Normal/incremental change** → `+0.1` (e.g. `v1.2` → `v1.3`)
 - **Major change/new feature** → next whole number, decimal reset (e.g. `v1.3` → `v2.0`)
 
-Current version at the time of this document: **v1.5**.
+Current version at the time of this document: **v1.6**.
 
 ---
 
 ## 10. Known open items / things worth revisiting
 
-- **`anon can read customers` RLS policy** (§5.7) — not created by WorkTracker's own work, origin unconfirmed, currently live. Business data (names, contacts, VAT numbers) is readable by anyone with the public anon key. Worth asking whoever owns the CRM side about it.
+- **`anon can read` RLS policies on the CRM's `customers`/`orders`/`fields`/`reports`** (§5.7) — not created by WorkTracker's own work, origin unconfirmed, but confirmed to be a *systematic* pattern (identical policy on all four tables, not a one-off), deliberately set up rather than accidental — most likely to support a public customer-portal feature that doesn't use Supabase Auth (the `customers` table has a `portal_password` column). This is live, real data (528 customers, 4,684 fields, 427 reports as of 2026-07-24), not test rows. Sharper finding: `customers.portal_password` has exactly one populated value across all 528 rows, and it's 7 characters long — nowhere near a bcrypt hash (always 60 chars, `$2a$`/`$2b$` prefix), so it's almost certainly stored in **plaintext** and is currently readable by anyone with the public anon key. Deferred by the user ("later") but flagged as a genuinely live, concrete credential-exposure risk on the CRM/portal side, not theoretical — worth raising with whoever owns that app.
 - **`audit_work_logs()`** still shows as `anon`/`authenticated`-executable in security advisors — never explicitly confirmed harmless (it's a trigger function, referencing `NEW`/`OLD`, so a direct RPC call would likely error, but "likely" isn't "verified").
 - **Cost field visibility** (§5.5.1) — `strosek`/`strosek_ocena` are visible to every operator/supervisor now that work-order visibility was widened. Accepted for now; would need a view or wrapper RPC to fix properly.
 - **Geofencing / auto time-tracking was explored but not built** — Slovenia's MKGP/GERK cadastral data is publicly downloadable (shapefile, via rkg.gov.si and the eprostor.gov.si WMS service) and could in principle back a point-in-polygon "operator is inside this field's boundary" check, but reliable **background** GPS tracking isn't realistic on a PWA (especially iOS) without a native app wrapper — this remains an idea, not an implementation. A more realistic middle ground discussed: an on-demand "where am I" check against the current work order's boundary, run while the app is open in the foreground.
