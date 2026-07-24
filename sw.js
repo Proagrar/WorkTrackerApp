@@ -1,4 +1,4 @@
-const CACHE = 'worktracker-v1.4';
+const CACHE = 'worktracker-v1.5';
 const SHELL = [
   './index.html',
   './app.html',
@@ -37,10 +37,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Network-first for HTML and JS — always picks up code changes when online
+  // Network-first for HTML and JS — always picks up code changes when online.
+  // cache: 'no-store' bypasses the browser's own HTTP cache, not just ours —
+  // otherwise a Cache-Control header from GitHub Pages can make fetch()
+  // silently return a stale response with no real network round-trip.
   if (url.endsWith('.html') || url.endsWith('.js')) {
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request, { cache: 'no-store' })
         .then(res => {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
