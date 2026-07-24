@@ -156,7 +156,12 @@
         <!-- Work order (read-only — set by which order was opened) -->
         <p id="workLogOrderLabel" class="wo-order-label"></p>
 
-        <button type="button" id="woStartBtn" class="btn btn-primary btn-block">Start</button>
+        <div class="field">
+          <label class="field-label" for="workLogDate">Datum</label>
+          <input class="field-input" type="date" id="workLogDate" />
+        </div>
+
+        <button type="button" id="woStartBtn" class="btn btn-primary btn-block">Prevzemi nalog</button>
         <p id="woHeaderMeta" class="wo-header-meta"></p>
 
         <div class="field">

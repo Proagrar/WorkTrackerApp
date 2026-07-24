@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -50,6 +50,7 @@ const modalTitle  = document.getElementById('modalTitle');
 const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
+const workLogDateInput = document.getElementById('workLogDate');
 const woStartBtn  = document.getElementById('woStartBtn');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadHourSel = document.getElementById('roadHour');
@@ -535,12 +536,15 @@ function fmtHMS(totalSeconds) {
 // ── Live per-row ticking timers (mm:ss while running) ───────────
 const activeTickers = new Map(); // gerk_code -> intervalId
 
-function startRowTicker(row) {
+// baseSeconds = duration already accumulated from earlier sessions today
+// (Start/Stop can be used more than once per field per day; each session
+// adds its elapsed time on top rather than overwriting the total).
+function startRowTicker(row, baseSeconds = 0) {
   stopRowTicker(row);
   const timerEl = row.querySelector('.wlg-timer');
+  const startMs = new Date(row.dataset.start).getTime();
   const tick = () => {
-    const startMs = new Date(row.dataset.start).getTime();
-    timerEl.textContent = fmtHMS(Math.floor((Date.now() - startMs) / 1000));
+    timerEl.textContent = fmtHMS(baseSeconds + Math.floor((Date.now() - startMs) / 1000));
   };
   tick();
   activeTickers.set(row.dataset.code, setInterval(tick, 1000));
@@ -567,9 +571,9 @@ function renderWorkLogGerkRows(rows) {
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
     const running   = !!(r.startTime && !r.endTime);
-    const completed = !!(r.endTime);
+    const completed = !!r.completed;
     return `
-      <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}" data-hectares="${r.hectares ?? ''}"
+      <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info">
           <span class="wlg-code-line"><span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}</span>
@@ -577,13 +581,15 @@ function renderWorkLogGerkRows(rows) {
         </div>
         <span class="wlg-timer" ${running ? '' : 'hidden'}></span>
         <input type="text" class="field-input wlg-duration-input" placeholder="hh:mm:ss" inputmode="numeric"
-               value="${r.duration != null ? fmtHMS(r.duration) : ''}" ${completed ? '' : 'hidden'}>
+               value="${r.duration != null ? fmtHMS(r.duration) : ''}" ${running ? 'hidden' : ''}>
         <button type="button" class="wlg-toggle-btn${running ? ' wlg-toggle-btn--running' : ''}" data-action="wlg-toggle">${running ? 'Stop' : 'Start'}</button>
       </div>`;
   }).join('');
 
   workLogGerkRowsEl.querySelectorAll('.wlg-row').forEach(row => {
-    if (row.dataset.start && !row.dataset.end) startRowTicker(row);
+    if (row.dataset.start && !row.dataset.end) {
+      startRowTicker(row, parseInt(row.dataset.duration, 10) || 0);
+    }
   });
 
   wireGerkRowButtons();
@@ -598,7 +604,7 @@ function updateOrderHeader() {
 
   woStartBtn.classList.toggle('btn-started', wo.status !== 'Plan');
   if (wo.status === 'Plan') {
-    woStartBtn.textContent = 'Start';
+    woStartBtn.textContent = 'Prevzemi nalog';
     woStartBtn.disabled = false;
   } else {
     woStartBtn.textContent = allCompleted ? 'Končan' : 'V delu';
@@ -615,29 +621,46 @@ function updateOrderHeader() {
 // ── Modal ──────────────────────────────────────────────────────
 let currentDetailWorkOrder = null;
 let currentDetailLogId     = null;
+let currentDetailDate      = null;
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
-  currentDetailLogId      = null;
-  ensureTodaysLogPromise  = null;
-  stopAllTickers();
+  currentDetailDate       = todayISO();
 
   modalTitle.textContent = 'Delovni nalog';
   hideFormFeedback();
-  roadHourSel.value = '0'; roadMinSel.value = '00';
-  tractorInput.value = '';
-  descInput.value = '';
   updateTractorDatalist();
 
   const stranka = workOrder.customers?.naziv || workOrder.customers?.company_name;
   workLogOrderLabel.textContent = [workOrder.stevilka, stranka].filter(Boolean).join(' — ');
 
+  workLogDateInput.max   = todayISO();
+  workLogDateInput.value = currentDetailDate;
+
+  await loadDetailForDate();
+
+  formModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+// Re-fetches and re-renders the modal's contents for currentDetailDate —
+// called on open, and again whenever the date picker changes, since each
+// work order can carry at most one work_logs row per operator per day.
+async function loadDetailForDate() {
+  currentDetailLogId     = null;
+  ensureTodaysLogPromise = null;
+  stopAllTickers();
+
+  roadHourSel.value = '0'; roadMinSel.value = '00';
+  tractorInput.value = '';
+  descInput.value = '';
+
   const { data: existingLog } = await supabase
     .from('work_logs')
     .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed)')
     .eq('operator_id', currentUser.id)
-    .eq('work_order_id', workOrder.id)
-    .eq('work_date', todayISO())
+    .eq('work_order_id', currentDetailWorkOrder.id)
+    .eq('work_date', currentDetailDate)
     .maybeSingle();
 
   if (existingLog) {
@@ -647,12 +670,15 @@ async function openWorkOrderDetail(workOrder) {
     descInput.value    = existingLog.description || '';
   }
 
-  renderWorkLogGerkRows(buildGerkPlanRows(workOrder, existingLog?.work_log_gerks || []));
+  renderWorkLogGerkRows(buildGerkPlanRows(currentDetailWorkOrder, existingLog?.work_log_gerks || []));
   updateOrderHeader();
-
-  formModal.hidden = false;
-  document.body.style.overflow = 'hidden';
 }
+
+workLogDateInput.addEventListener('change', () => {
+  currentDetailDate = workLogDateInput.value || todayISO();
+  hideFormFeedback();
+  loadDetailForDate();
+});
 
 function closeModal() {
   stopAllTickers();
@@ -682,30 +708,34 @@ function showFormSuccess(msg) {
 }
 
 // ── Live time tracking: today's work_logs + work_log_gerks ──────
+// Both RPCs below do their own find-or-create of the day's work_logs
+// row and the field's work_log_gerks row server-side, in one round
+// trip — see supabase/migration_gerk_timer_rpc.sql. ensureTodaysLog()
+// still handles that same find-or-create client-side, but only for the
+// road-duration/tractor/notes fields, which aren't covered by either RPC.
 let ensureTodaysLogPromise = null;
 
 async function ensureTodaysLog() {
   if (currentDetailLogId) return currentDetailLogId;
-  // Two GERK rows started in quick succession would otherwise both race
+  // Two fields saved in quick succession would otherwise both race
   // through the check-then-insert below before either resolves — share
   // the same in-flight promise so only one insert is ever attempted.
   if (ensureTodaysLogPromise) return ensureTodaysLogPromise;
 
   ensureTodaysLogPromise = (async () => {
-    const today = todayISO();
     const { data: existing } = await supabase
       .from('work_logs')
       .select('id')
       .eq('operator_id', currentUser.id)
       .eq('work_order_id', currentDetailWorkOrder.id)
-      .eq('work_date', today)
+      .eq('work_date', currentDetailDate)
       .maybeSingle();
 
     if (existing) { currentDetailLogId = existing.id; return existing.id; }
 
     const { data, error } = await supabase
       .from('work_logs')
-      .insert({ operator_id: currentUser.id, work_order_id: currentDetailWorkOrder.id, work_date: today, work_duration: 0 })
+      .insert({ operator_id: currentUser.id, work_order_id: currentDetailWorkOrder.id, work_date: currentDetailDate, work_duration: 0 })
       .select('id')
       .single();
 
@@ -718,7 +748,7 @@ async function ensureTodaysLog() {
           .select('id')
           .eq('operator_id', currentUser.id)
           .eq('work_order_id', currentDetailWorkOrder.id)
-          .eq('work_date', today)
+          .eq('work_date', currentDetailDate)
           .single();
         if (fetchErr) throw fetchErr;
         currentDetailLogId = raceWinner.id;
@@ -738,93 +768,48 @@ async function ensureTodaysLog() {
   }
 }
 
-async function ensureGerkRow(logId, gerkCode, hectares) {
-  const { data: existing } = await supabase
-    .from('work_log_gerks')
-    .select('id, start_time, end_time, duration, completed')
-    .eq('work_log_id', logId)
-    .eq('gerk_code', gerkCode)
-    .maybeSingle();
-  if (existing) return existing;
+// Applies an RPC's returned row to the DOM: timer/duration display,
+// completed styling, and the Start/Stop button state.
+function applyGerkRowUpdate(row, updated) {
+  currentDetailLogId   = updated.log_id;
+  row.dataset.start    = updated.start_time || '';
+  row.dataset.end      = updated.end_time || '';
+  row.dataset.duration = updated.duration ?? '';
 
-  const { data, error } = await supabase
-    .from('work_log_gerks')
-    .insert({ work_log_id: logId, gerk_code: gerkCode, hectares })
-    .select('id, start_time, end_time, duration, completed')
-    .single();
-  if (error) throw error;
-  return data;
-}
+  const btn         = row.querySelector('.wlg-toggle-btn');
+  const timerEl      = row.querySelector('.wlg-timer');
+  const durationInput = row.querySelector('.wlg-duration-input');
+  const running      = !!(updated.start_time && !updated.end_time);
 
-async function recomputeWorkLogDuration(logId) {
-  const { data } = await supabase.from('work_log_gerks').select('duration').eq('work_log_id', logId);
-  const totalSec = (data ?? []).reduce((s, g) => s + (g.duration || 0), 0);
-  // work_log_gerks.duration is seconds; work_logs.work_duration stays in
-  // minutes since existing stats rendering (updateStats(), fmtDuration()) expects that.
-  await supabase.from('work_logs').update({ work_duration: Math.round(totalSec / 60) }).eq('id', logId);
+  row.classList.toggle('wlg-row--completed', !!updated.completed);
+  btn.textContent = running ? 'Stop' : 'Start';
+  btn.classList.toggle('wlg-toggle-btn--running', running);
+
+  if (running) {
+    durationInput.hidden = true;
+    timerEl.hidden = false;
+    startRowTicker(row, updated.duration || 0);
+  } else {
+    stopRowTicker(row);
+    timerEl.hidden = true;
+    durationInput.value = updated.duration != null ? fmtHMS(updated.duration) : '';
+    durationInput.hidden = false;
+  }
+
+  updateOrderHeader();
 }
 
 async function toggleGerkTimer(btn) {
-  const row      = btn.closest('.wlg-row');
-  const code     = row.dataset.code;
-  const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
-  const durationInput = row.querySelector('.wlg-duration-input');
-  const timerEl        = row.querySelector('.wlg-timer');
-
+  const row = btn.closest('.wlg-row');
   btn.disabled = true;
   try {
-    const logId   = await ensureTodaysLog();
-    const gerkRow = await ensureGerkRow(logId, code, hectares);
-    const running = gerkRow.start_time && !gerkRow.end_time;
-
-    let updated;
-    if (running) {
-      const endIso      = new Date().toISOString();
-      const durationSec = Math.max(0, Math.round((new Date(endIso) - new Date(gerkRow.start_time)) / 1000));
-      const { data, error } = await supabase
-        .from('work_log_gerks')
-        .update({ end_time: endIso, duration: durationSec, completed: true })
-        .eq('id', gerkRow.id)
-        .select('id, start_time, end_time, duration, completed')
-        .single();
-      if (error) throw error;
-      updated = data;
-      await recomputeWorkLogDuration(logId);
-    } else {
-      // (Re)starting always clears any previous end_time/duration/completed
-      // state — this is the escape hatch for redoing a field's work, and
-      // keeps the header total from double-counting a stale prior session.
-      const { data, error } = await supabase
-        .from('work_log_gerks')
-        .update({ start_time: new Date().toISOString(), end_time: null, duration: null, completed: false })
-        .eq('id', gerkRow.id)
-        .select('id, start_time, end_time, duration, completed')
-        .single();
-      if (error) throw error;
-      updated = data;
-      await recomputeWorkLogDuration(logId);
-    }
-
-    row.dataset.start    = updated.start_time || '';
-    row.dataset.end      = updated.end_time || '';
-    row.dataset.duration = updated.duration ?? '';
-    const nowRunning = updated.start_time && !updated.end_time;
-    row.classList.toggle('wlg-row--completed', !!updated.end_time);
-    btn.textContent = nowRunning ? 'Stop' : 'Start';
-    btn.classList.toggle('wlg-toggle-btn--running', nowRunning);
-
-    if (nowRunning) {
-      durationInput.hidden = true;
-      timerEl.hidden = false;
-      startRowTicker(row);
-    } else {
-      stopRowTicker(row);
-      timerEl.hidden = true;
-      durationInput.value = updated.duration != null ? fmtHMS(updated.duration) : '';
-      durationInput.hidden = false;
-    }
-
-    updateOrderHeader();
+    const { data, error } = await supabase.rpc('toggle_gerk_timer', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_gerk_code:      row.dataset.code,
+      p_work_date:      currentDetailDate,
+    });
+    if (error) throw error;
+    applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
   } catch (e) {
     showFormError('Napaka pri shranjevanju časa.');
   } finally {
@@ -841,20 +826,19 @@ function parseHMS(text) {
 }
 
 async function saveGerkDuration(input) {
-  const row      = input.closest('.wlg-row');
-  const code     = row.dataset.code;
-  const hectares = row.dataset.hectares !== '' ? parseFloat(row.dataset.hectares) : null;
-  const seconds  = input.value ? parseHMS(input.value) : 0;
+  const row     = input.closest('.wlg-row');
+  const seconds = input.value ? parseHMS(input.value) : 0;
 
   input.disabled = true;
   try {
-    const logId   = await ensureTodaysLog();
-    const gerkRow = await ensureGerkRow(logId, code, hectares);
-    await supabase.from('work_log_gerks').update({ duration: seconds }).eq('id', gerkRow.id);
-    row.dataset.duration = seconds;
-    input.value = fmtHMS(seconds);
-    await recomputeWorkLogDuration(logId);
-    updateOrderHeader();
+    const { data, error } = await supabase.rpc('set_gerk_duration', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_gerk_code:      row.dataset.code,
+      p_seconds:        seconds,
+      p_work_date:      currentDetailDate,
+    });
+    if (error) throw error;
+    applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
   } catch (e) {
     showFormError('Napaka pri shranjevanju.');
   } finally {
@@ -894,11 +878,11 @@ woStartBtn.addEventListener('click', async () => {
   if (currentDetailWorkOrder.status !== 'Plan') return;
   woStartBtn.disabled = true;
   const { error } = await supabase.rpc('start_work_order', { p_work_order_id: currentDetailWorkOrder.id });
-  if (error) { showFormError('Napaka pri zagonu naloga.'); woStartBtn.disabled = false; return; }
+  if (error) { showFormError('Napaka pri prevzemu naloga.'); woStartBtn.disabled = false; return; }
   currentDetailWorkOrder.status    = 'V delu';
   currentDetailWorkOrder.izvajalec = currentUser.id;
   currentDetailWorkOrder.profiles  = { full_name: currentUserName };
-  showFormSuccess('✓ Nalog zagnan!');
+  showFormSuccess('✓ Nalog prevzet!');
   updateOrderHeader();
   await loadWorkOrders();
 });
