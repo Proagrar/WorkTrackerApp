@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.12';
+const APP_VERSION = 'v1.13';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -87,7 +87,6 @@ const declCustomerList       = document.getElementById('declCustomerList');
 const declDetailView         = document.getElementById('declDetailView');
 const declBackBtn            = document.getElementById('declBackBtn');
 const declCustomerInfo       = document.getElementById('declCustomerInfo');
-const declYearInput          = document.getElementById('declYear');
 const declGenerateBtn        = document.getElementById('declGenerateBtn');
 const declLinkResult         = document.getElementById('declLinkResult');
 const declLinksList          = document.getElementById('declLinksList');
@@ -1283,18 +1282,14 @@ function openDeclDetail(customerId) {
     <p class="wo-order-label">${escHtml(customer.name)}</p>
     ${sub ? `<p class="decl-link-sub">${escHtml(sub)}</p>` : ''}`;
 
-  if (!declYearInput.value) declYearInput.value = new Date().getFullYear();
   loadDeclCustomerLinks();
   loadDeclCustomerTable();
 }
 
-declYearInput.addEventListener('change', () => { if (declCustomerId) loadDeclCustomerTable(); });
-
 // ── Seznam strank modal: generate a customer link ────────────────
 declGenerateBtn.addEventListener('click', async () => {
   if (!declCustomerId) return;
-  const year = parseInt(declYearInput.value, 10);
-  if (!year) return;
+  const year = new Date().getFullYear();
 
   declGenerateBtn.disabled = true;
   const { data: token, error } = await supabase.rpc('create_field_declaration_link', {
@@ -1399,7 +1394,7 @@ function renderDeclLinks(links) {
 
 // ── Deklaracije tab: review table ────────────────────────────────
 async function loadDeclCustomerTable() {
-  const year = parseInt(declYearInput.value, 10) || new Date().getFullYear();
+  const year = new Date().getFullYear();
   declTableWrap.innerHTML = `<div class="state-loading"><div class="spinner"></div><p>Nalaganje...</p></div>`;
 
   const [{ data: flds, error: fErr }, { data: decls, error: dErr }] = await Promise.all([
