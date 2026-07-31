@@ -38,6 +38,7 @@
     <nav class="tab-bar" aria-label="Zavihki">
       <button id="tabNalogi" class="tab-btn tab-btn--active" data-tab="nalogi">Delovni Nalogi</button>
       <button id="tabEvidenca" class="tab-btn" data-tab="evidenca">Evidenca dela</button>
+      <button id="tabDeklaracije" class="tab-btn" data-tab="deklaracije" hidden>Deklaracije</button>
     </nav>
 
     <!-- ── Tab: Evidenca dela (original view) ────────────────── -->
@@ -124,6 +125,56 @@
             <div class="spinner"></div>
             <p>Nalaganje...</p>
           </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ── Tab: Deklaracije (customer field-declaration review, admin only) ── -->
+    <div id="panelDeklaracije" class="tab-panel" hidden>
+      <section class="logs-section">
+        <div class="section-header">
+          <h2 class="section-title">Deklaracije strank</h2>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="declStranka">Stranka</label>
+          <div class="gerk-wrap">
+            <input class="field-input" type="text" id="declStranka" placeholder="Išči stranko..." autocomplete="off" />
+            <ul id="declStrankaSuggestions" class="gerk-suggestions" hidden></ul>
+          </div>
+        </div>
+
+        <div id="declEmptyState" class="state-empty"><p>Izberite stranko za pregled deklaracij in ustvarjanje povezav.</p></div>
+
+        <div id="declCustomerPanel" hidden>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="declYear">Leto</label>
+              <input class="field-input" type="number" id="declYear" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="declLang">Jezik povezave</label>
+              <select class="field-input field-select" id="declLang">
+                <option value="sl">Slovenščina</option>
+                <option value="hr">Hrvaščina</option>
+              </select>
+            </div>
+          </div>
+
+          <button type="button" id="declGenerateBtn" class="btn btn-secondary btn-block">Ustvari povezavo</button>
+          <div id="declLinkResult" hidden></div>
+
+          <div class="section-header">
+            <h3 class="section-title">Ustvarjene povezave</h3>
+          </div>
+          <div id="declLinksList"></div>
+
+          <div class="section-header">
+            <h3 class="section-title">Prijavljeni podatki</h3>
+          </div>
+          <div id="declTableWrap"></div>
+
         </div>
       </section>
     </div>

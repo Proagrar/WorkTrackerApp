@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.8';
+const APP_VERSION = 'v1.10';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -74,6 +74,21 @@ const panelNalogi   = document.getElementById('panelNalogi');
 const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woSearchSuggestions = document.getElementById('woSearchSuggestions');
+
+// ── Deklaracije tab refs (admin only) ───────────────────────────
+const tabDeklaracije       = document.getElementById('tabDeklaracije');
+const panelDeklaracije     = document.getElementById('panelDeklaracije');
+const declStrankaInput     = document.getElementById('declStranka');
+const declStrankaSuggestions = document.getElementById('declStrankaSuggestions');
+const declEmptyState       = document.getElementById('declEmptyState');
+const declCustomerPanel    = document.getElementById('declCustomerPanel');
+const declYearInput        = document.getElementById('declYear');
+const declLangSel          = document.getElementById('declLang');
+const declGenerateBtn      = document.getElementById('declGenerateBtn');
+const declLinkResult       = document.getElementById('declLinkResult');
+const declLinksList        = document.getElementById('declLinksList');
+const declTableWrap        = document.getElementById('declTableWrap');
+let declCustomerId = null;
 
 // ── Work order modal refs ───────────────────────────────────────
 const workOrderModal      = document.getElementById('workOrderModal');
@@ -946,10 +961,13 @@ function switchTab(tab) {
   currentTab = tab;
   tabEvidenca.classList.toggle('tab-btn--active', tab === 'evidenca');
   tabNalogi.classList.toggle('tab-btn--active', tab === 'nalogi');
-  panelEvidenca.hidden = tab !== 'evidenca';
-  panelNalogi.hidden   = tab !== 'nalogi';
+  tabDeklaracije.classList.toggle('tab-btn--active', tab === 'deklaracije');
+  panelEvidenca.hidden    = tab !== 'evidenca';
+  panelNalogi.hidden      = tab !== 'nalogi';
+  panelDeklaracije.hidden = tab !== 'deklaracije';
   updateFabVisibility();
   if (tab === 'nalogi' && !workOrdersLoaded) loadWorkOrders();
+  if (tab === 'deklaracije' && !customers.length) loadCustomers();
 }
 
 function updateFabVisibility() {
@@ -958,6 +976,7 @@ function updateFabVisibility() {
 
 tabEvidenca.addEventListener('click', () => switchTab('evidenca'));
 tabNalogi.addEventListener('click',   () => switchTab('nalogi'));
+tabDeklaracije.addEventListener('click', () => switchTab('deklaracije'));
 
 // ── Work orders: load + render ───────────────────────────────────
 function slugStatus(status) {
@@ -1080,9 +1099,9 @@ woSearchSuggestions.addEventListener('mousedown', e => {
 async function loadCustomers() {
   const { data } = await supabase
     .from('customers')
-    .select('id, naziv, company_name')
+    .select('id, naziv, company_name, email')
     .order('naziv');
-  customers = (data ?? []).map(c => ({ id: c.id, name: c.naziv || c.company_name || '—' }));
+  customers = (data ?? []).map(c => ({ id: c.id, name: c.naziv || c.company_name || '—', email: c.email || null }));
 }
 
 async function loadOperatorsList() {
@@ -1123,6 +1142,211 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
   }
   woStrankaSuggestions.hidden = true;
 });
+
+// ── Deklaracije tab: customer picker ─────────────────────────────
+function showDeclCustomerSuggestions(matches) {
+  if (!matches.length) { declStrankaSuggestions.hidden = true; return; }
+  declStrankaSuggestions.innerHTML = matches.map(c =>
+    `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
+  ).join('');
+  declStrankaSuggestions.hidden = false;
+}
+
+declStrankaInput.addEventListener('input', () => {
+  declCustomerId = null;
+  declCustomerPanel.hidden = true;
+  declEmptyState.hidden = false;
+  showDeclCustomerSuggestions(filterCustomers(declStrankaInput.value.trim()));
+});
+declStrankaInput.addEventListener('blur', () => {
+  setTimeout(() => { declStrankaSuggestions.hidden = true; }, 150);
+});
+declStrankaSuggestions.addEventListener('mousedown', e => {
+  const item = e.target.closest('.gerk-suggestion-item');
+  if (!item) return;
+  const c = customers.find(c => c.id === item.dataset.id);
+  declStrankaSuggestions.hidden = true;
+  if (!c) return;
+  declStrankaInput.value = c.name;
+  declCustomerId = c.id;
+  declEmptyState.hidden = true;
+  declCustomerPanel.hidden = false;
+  declLinkResult.hidden = true;
+  if (!declYearInput.value) declYearInput.value = new Date().getFullYear();
+  loadDeclCustomerLinks();
+  loadDeclCustomerTable();
+});
+
+declYearInput.addEventListener('change', () => { if (declCustomerId) loadDeclCustomerTable(); });
+
+// ── Deklaracije tab: generate a customer link ────────────────────
+declGenerateBtn.addEventListener('click', async () => {
+  if (!declCustomerId) return;
+  const year = parseInt(declYearInput.value, 10);
+  if (!year) return;
+
+  declGenerateBtn.disabled = true;
+  const { data: token, error } = await supabase.rpc('create_field_declaration_link', {
+    p_customer_id: declCustomerId,
+    p_year: year,
+    p_lang: declLangSel.value,
+  });
+  declGenerateBtn.disabled = false;
+
+  if (error) {
+    declLinkResult.innerHTML = `<div class="alert alert-error">Napaka: ${escHtml(error.message)}</div>`;
+    declLinkResult.hidden = false;
+    return;
+  }
+
+  const url = new URL('deklaracija.html', location.href);
+  url.searchParams.set('token', token);
+  const customer = customers.find(c => c.id === declCustomerId);
+  declLinkResult.innerHTML = `
+    <div class="alert alert-success">
+      Povezava ustvarjena.
+      <button type="button" class="btn btn-secondary btn-sm" id="declCopyNewBtn">Kopiraj povezavo</button>
+      ${customer?.email ? `<button type="button" class="btn btn-secondary btn-sm" id="declSendNewBtn" data-token="${token}">Pošlji e-pošto</button>` : ''}
+    </div>`;
+  declLinkResult.hidden = false;
+  document.getElementById('declCopyNewBtn').addEventListener('click', () => navigator.clipboard.writeText(url.toString()));
+  const sendNewBtn = document.getElementById('declSendNewBtn');
+  if (sendNewBtn) wireSendEmailButton(sendNewBtn);
+  loadDeclCustomerLinks();
+});
+
+// ── Deklaracije tab: send/resend the declaration email ───────────
+function wireSendEmailButton(btn) {
+  btn.addEventListener('click', async () => {
+    const token = btn.dataset.token;
+    btn.disabled = true;
+    btn.textContent = 'Pošiljanje...';
+
+    const { error } = await supabase.rpc('send_field_declaration_email', { p_token: token });
+
+    if (error) {
+      btn.title = `Napaka pri pošiljanju: ${error.message}`;
+      btn.textContent = 'Napaka — poskusi znova';
+      btn.disabled = false;
+    } else {
+      loadDeclCustomerLinks();
+    }
+  });
+}
+
+// ── Deklaracije tab: existing links list ─────────────────────────
+async function loadDeclCustomerLinks() {
+  const { data, error } = await supabase
+    .from('customer_links')
+    .select('*')
+    .eq('customer_id', declCustomerId)
+    .eq('purpose', 'field_declarations')
+    .order('created_at', { ascending: false });
+
+  if (error) { declLinksList.innerHTML = `<p class="state-empty-inline">Napaka pri nalaganju povezav.</p>`; return; }
+  renderDeclLinks(data ?? []);
+}
+
+function renderDeclLinks(links) {
+  if (!links.length) {
+    declLinksList.innerHTML = `<p class="state-empty-inline">Za to stranko še ni ustvarjenih povezav.</p>`;
+    return;
+  }
+
+  const customer = customers.find(c => c.id === declCustomerId);
+
+  declLinksList.innerHTML = links.map(l => {
+    const url = new URL('deklaracija.html', location.href);
+    url.searchParams.set('token', l.token);
+    const expired = l.expires_at && new Date(l.expires_at) < new Date();
+    const created = new Date(l.created_at).toLocaleDateString('sl-SI');
+    const lastUsed = l.last_used_at ? new Date(l.last_used_at).toLocaleDateString('sl-SI') : null;
+    const emailSent = l.email_sent_at ? new Date(l.email_sent_at).toLocaleDateString('sl-SI') : null;
+
+    return `
+      <div class="decl-link-row">
+        <div class="decl-link-meta">
+          <strong>${l.year}</strong> · ${l.lang.toUpperCase()}
+          ${expired ? '<span class="wo-status-badge wo-status--plan">Poteklo</span>' : ''}
+          <div class="decl-link-sub">
+            Ustvarjeno: ${created}${lastUsed ? ' · Zadnja uporaba: ' + lastUsed : ' · še ni uporabljeno'}
+            ${emailSent ? ' · E-pošta poslana: ' + emailSent : ' · E-pošta še ni poslana'}
+          </div>
+        </div>
+        <div class="decl-link-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-copy="${escHtml(url.toString())}">Kopiraj</button>
+          ${customer?.email ? `<button type="button" class="btn btn-secondary btn-sm decl-send-btn" data-token="${l.token}">${emailSent ? 'Pošlji ponovno' : 'Pošlji e-pošto'}</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  declLinksList.querySelectorAll('.decl-send-btn').forEach(wireSendEmailButton);
+
+  declLinksList.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => navigator.clipboard.writeText(btn.dataset.copy));
+  });
+}
+
+// ── Deklaracije tab: review table ────────────────────────────────
+async function loadDeclCustomerTable() {
+  const year = parseInt(declYearInput.value, 10) || new Date().getFullYear();
+  declTableWrap.innerHTML = `<div class="state-loading"><div class="spinner"></div><p>Nalaganje...</p></div>`;
+
+  const [{ data: flds, error: fErr }, { data: decls, error: dErr }] = await Promise.all([
+    supabase.from('fields').select('id, name, area_ha, cadastre_id').eq('customer_id', declCustomerId).order('name'),
+    supabase.from('field_declarations').select('*').eq('customer_id', declCustomerId).eq('year', year),
+  ]);
+
+  if (fErr || dErr) { declTableWrap.innerHTML = `<div class="state-empty"><p>Napaka pri nalaganju.</p></div>`; return; }
+
+  const byField = new Map((decls ?? []).map(d => [d.field_id, d]));
+  const rows = (flds ?? []).map(f => ({ ...f, decl: byField.get(f.id) || null }));
+  renderDeclTable(rows, year);
+}
+
+function renderDeclTable(rows, year) {
+  if (!rows.length) {
+    declTableWrap.innerHTML = `<p class="state-empty-inline">Ta stranka nima evidentiranih polj.</p>`;
+    return;
+  }
+
+  const yn = (v) => (v === true ? 'Da' : v === false ? 'Ne' : '—');
+  const body = rows.map(f => {
+    const d = f.decl;
+    const kolicina = d?.organic_fertilizer_amount != null
+      ? `${d.organic_fertilizer_amount}${d.organic_fertilizer_unit ? ' ' + d.organic_fertilizer_unit : ''}`
+      : '—';
+    return `
+      <tr>
+        <td>${escHtml(f.name)}</td>
+        <td>${escHtml(f.cadastre_id || '—')}</td>
+        <td>${f.area_ha ?? '—'}</td>
+        <td>${escHtml(d?.crop_current || '—')}</td>
+        <td>${escHtml(d?.crop_next || '—')}</td>
+        <td>${yn(d?.green_cover)}</td>
+        <td>${yn(d?.straw_stays)}</td>
+        <td>${d?.expected_yield_t_per_ha ?? '—'}</td>
+        <td>${yn(d?.organic_fertilizer_used)}</td>
+        <td>${escHtml(d?.organic_fertilizer_type || '—')}</td>
+        <td>${kolicina}</td>
+      </tr>`;
+  }).join('');
+
+  declTableWrap.innerHTML = `
+    <div class="decl-table-scroll">
+      <table class="decl-table">
+        <thead>
+          <tr>
+            <th>Polje</th><th>GERK</th><th>Ha</th>
+            <th>Kultura ${year}</th><th>Kultura ${year + 1}</th>
+            <th>Zel. gnojidba</th><th>Slama ostane</th><th>Prid. (t/ha)</th>
+            <th>Org. gnojilo</th><th>Tip</th><th>Količina</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
 
 // ── Work order modal (create only — there is no edit entry point) ──
 async function openWorkOrderModal() {
@@ -1266,6 +1490,7 @@ async function boot() {
   } else {
     adminBadge.hidden = true;
   }
+  tabDeklaracije.hidden = currentRole !== 'admin';
   renderGreeting(displayName);
   updateFabVisibility();
 
