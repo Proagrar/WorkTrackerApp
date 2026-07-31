@@ -469,15 +469,15 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 12px;
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-md);
 }
 
-.wlg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wlg-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
 .wlg-code-line {
   display: block;
@@ -498,35 +498,29 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
-.wlg-timer {
-  font-family: monospace;
-  font-size: .6875rem;
-  font-weight: 700;
-  color: var(--danger);
-  min-width: 60px;
-  text-align: center;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.wlg-duration-input {
-  width: 68px;
-  height: 40px;
-  flex-shrink: 0;
-  padding: 0 4px;
-  text-align: center;
-  font-family: monospace;
-  font-size: .75rem;
-}
-
 .wlg-row--completed {
   background: var(--success-bg);
   border-color: #BBF7D0;
 }
 
+.wlg-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wlg-time-value {
+  font-family: monospace;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 42px;
+}
+
 .wlg-toggle-btn {
-  width: 64px;
-  height: 40px;
+  height: 36px;
+  padding: 0 14px;
   flex-shrink: 0;
   border: 1.5px solid var(--blue-800);
   border-radius: var(--radius-sm);
@@ -539,14 +533,63 @@ input, select, textarea { font-family: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .wlg-toggle-btn:hover:not(:disabled) { background: var(--blue-50); }
-.wlg-toggle-btn:disabled { opacity: .6; cursor: not-allowed; }
+.wlg-toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-.wlg-toggle-btn--running {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #fff;
+.wlg-edit-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
-.wlg-toggle-btn--running:hover:not(:disabled) { background: var(--danger-hover); }
+
+.wlg-edit-panel {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-light);
+}
+
+.wlg-edit-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: .75rem;
+  color: var(--text-secondary);
+}
+
+.wlg-edit-label input[type="time"] {
+  height: 36px;
+  padding: 0 8px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: .8125rem;
+}
+
+.road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+
+.road-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--background);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: .8125rem;
+}
+
+.road-time-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.road-time-remove:hover { color: var(--danger); }
 
 
 /* ── Work order header: start/status button + meta ─────────── */
@@ -857,6 +900,33 @@ input, select, textarea { font-family: inherit; }
 }
 .fab:hover  { background: var(--blue-900); }
 .fab:active { transform: scale(.92); }
+
+.fab-menu {
+  position: fixed;
+  right: 20px;
+  bottom: calc(28px + var(--fab-size) + 10px);
+  min-width: 200px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  z-index: 91;
+}
+
+.fab-menu-item {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  font-size: .9375rem;
+  color: var(--text-primary);
+}
+.fab-menu-item:last-child { border-bottom: none; }
+.fab-menu-item:hover,
+.fab-menu-item:active { background: var(--blue-50); }
 
 
 /* ============================================================
@@ -1206,6 +1276,22 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   padding: 12px 0;
 }
+
+.decl-customer-row {
+  padding: 12px 14px;
+  font-size: .9375rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+.decl-customer-row:last-child { border-bottom: none; }
+.decl-customer-row:hover,
+.decl-customer-row:active { background: var(--blue-50); }
+
+.decl-customer-info {
+  margin: 4px 0 16px;
+}
+.decl-customer-info .wo-order-label { margin: 0; }
 
 .decl-link-row {
   display: flex;

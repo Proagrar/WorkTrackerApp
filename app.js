@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.10';
+const APP_VERSION = 'v1.12';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -55,6 +55,8 @@ const woStartBtn  = document.getElementById('woStartBtn');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadHourSel = document.getElementById('roadHour');
 const roadMinSel  = document.getElementById('roadMin');
+const roadAddBtn  = document.getElementById('roadAddBtn');
+const roadTimeListEl = document.getElementById('roadTimeList');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
 const tractorInput = document.getElementById('tractor');
 const descInput   = document.getElementById('description');
@@ -75,19 +77,21 @@ const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woSearchSuggestions = document.getElementById('woSearchSuggestions');
 
-// ── Deklaracije tab refs (admin only) ───────────────────────────
-const tabDeklaracije       = document.getElementById('tabDeklaracije');
-const panelDeklaracije     = document.getElementById('panelDeklaracije');
-const declStrankaInput     = document.getElementById('declStranka');
-const declStrankaSuggestions = document.getElementById('declStrankaSuggestions');
-const declEmptyState       = document.getElementById('declEmptyState');
-const declCustomerPanel    = document.getElementById('declCustomerPanel');
-const declYearInput        = document.getElementById('declYear');
-const declLangSel          = document.getElementById('declLang');
-const declGenerateBtn      = document.getElementById('declGenerateBtn');
-const declLinkResult       = document.getElementById('declLinkResult');
-const declLinksList        = document.getElementById('declLinksList');
-const declTableWrap        = document.getElementById('declTableWrap');
+// ── Seznam strank / Deklaracije modal refs (admin only) ──────────
+const fabMenu               = document.getElementById('fabMenu');
+const declModal              = document.getElementById('declModal');
+const declModalClose         = document.getElementById('declModalClose');
+const declListView           = document.getElementById('declListView');
+const declListSearch         = document.getElementById('declListSearch');
+const declCustomerList       = document.getElementById('declCustomerList');
+const declDetailView         = document.getElementById('declDetailView');
+const declBackBtn            = document.getElementById('declBackBtn');
+const declCustomerInfo       = document.getElementById('declCustomerInfo');
+const declYearInput          = document.getElementById('declYear');
+const declGenerateBtn        = document.getElementById('declGenerateBtn');
+const declLinkResult         = document.getElementById('declLinkResult');
+const declLinksList          = document.getElementById('declLinksList');
+const declTableWrap          = document.getElementById('declTableWrap');
 let declCustomerId = null;
 
 // ── Work order modal refs ───────────────────────────────────────
@@ -132,12 +136,6 @@ function buildTimeOptions() {
 
 function getDurationMins(hourSel, minSel) {
   return (parseInt(hourSel.value, 10) || 0) * 60 + (parseInt(minSel.value, 10) || 0);
-}
-
-function setDurationSels(hourSel, minSel, totalMins) {
-  const mins = totalMins || 0;
-  hourSel.value = String(Math.floor(mins / 60));
-  minSel.value  = String(mins % 60).padStart(2, '0');
 }
 
 // ── Date / month helpers ───────────────────────────────────────
@@ -540,39 +538,18 @@ function fmtHM(mins) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function fmtHMS(totalSeconds) {
-  const s  = Math.max(0, totalSeconds);
-  const hh = Math.floor(s / 3600);
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = Math.floor(s % 60);
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+// Local HH:MM for display next to the Start/Konec buttons.
+function fmtClock(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// ── Live per-row ticking timers (mm:ss while running) ───────────
-const activeTickers = new Map(); // gerk_code -> intervalId
-
-// baseSeconds = duration already accumulated from earlier sessions today
-// (Start/Stop can be used more than once per field per day; each session
-// adds its elapsed time on top rather than overwriting the total).
-function startRowTicker(row, baseSeconds = 0) {
-  stopRowTicker(row);
-  const timerEl = row.querySelector('.wlg-timer');
-  const startMs = new Date(row.dataset.start).getTime();
-  const tick = () => {
-    timerEl.textContent = fmtHMS(baseSeconds + Math.floor((Date.now() - startMs) / 1000));
-  };
-  tick();
-  activeTickers.set(row.dataset.code, setInterval(tick, 1000));
-}
-
-function stopRowTicker(row) {
-  const id = activeTickers.get(row.dataset.code);
-  if (id) { clearInterval(id); activeTickers.delete(row.dataset.code); }
-}
-
-function stopAllTickers() {
-  activeTickers.forEach(id => clearInterval(id));
-  activeTickers.clear();
+// Same, but as a value an <input type="time"> will accept.
+function toTimeInputValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function renderWorkLogGerkRows(rows) {
@@ -585,8 +562,8 @@ function renderWorkLogGerkRows(rows) {
     const name = f?.name || '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
-    const running   = !!(r.startTime && !r.endTime);
     const completed = !!r.completed;
+    const hasStart  = !!r.startTime;
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
@@ -594,18 +571,25 @@ function renderWorkLogGerkRows(rows) {
           <span class="wlg-code-line"><span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}</span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
         </div>
-        <span class="wlg-timer" ${running ? '' : 'hidden'}></span>
-        <input type="text" class="field-input wlg-duration-input" placeholder="hh:mm:ss" inputmode="numeric"
-               value="${r.duration != null ? fmtHMS(r.duration) : ''}" ${running ? 'hidden' : ''}>
-        <button type="button" class="wlg-toggle-btn${running ? ' wlg-toggle-btn--running' : ''}" data-action="wlg-toggle">${running ? 'Stop' : 'Start'}</button>
+        <div class="wlg-times">
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-start">Start</button>
+          <span class="wlg-time-value" data-role="start-value">${fmtClock(r.startTime)}</span>
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-end" ${hasStart ? '' : 'disabled'}>Konec</button>
+          <span class="wlg-time-value" data-role="end-value">${fmtClock(r.endTime)}</span>
+          <button type="button" class="btn btn-icon wlg-edit-btn" data-action="wlg-edit-toggle" aria-label="Uredi čas">✎</button>
+        </div>
+        <div class="wlg-edit-panel" hidden>
+          <label class="wlg-edit-label">Začetek
+            <input type="time" class="wlg-edit-start" value="${toTimeInputValue(r.startTime)}">
+          </label>
+          <label class="wlg-edit-label">Konec
+            <input type="time" class="wlg-edit-end" value="${toTimeInputValue(r.endTime)}">
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-save">Shrani</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
+        </div>
       </div>`;
   }).join('');
-
-  workLogGerkRowsEl.querySelectorAll('.wlg-row').forEach(row => {
-    if (row.dataset.start && !row.dataset.end) {
-      startRowTicker(row, parseInt(row.dataset.duration, 10) || 0);
-    }
-  });
 
   wireGerkRowButtons();
 }
@@ -637,6 +621,7 @@ function updateOrderHeader() {
 let currentDetailWorkOrder = null;
 let currentDetailLogId     = null;
 let currentDetailDate      = null;
+let currentRoadTimeEntries = [];
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
@@ -664,7 +649,6 @@ async function openWorkOrderDetail(workOrder) {
 async function loadDetailForDate() {
   currentDetailLogId     = null;
   ensureTodaysLogPromise = null;
-  stopAllTickers();
 
   roadHourSel.value = '0'; roadMinSel.value = '00';
   tractorInput.value = '';
@@ -672,7 +656,7 @@ async function loadDetailForDate() {
 
   const { data: existingLog } = await supabase
     .from('work_logs')
-    .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed)')
+    .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed), work_log_road_time(id, minutes)')
     .eq('operator_id', currentUser.id)
     .eq('work_order_id', currentDetailWorkOrder.id)
     .eq('work_date', currentDetailDate)
@@ -680,10 +664,12 @@ async function loadDetailForDate() {
 
   if (existingLog) {
     currentDetailLogId = existingLog.id;
-    setDurationSels(roadHourSel, roadMinSel, existingLog.road_duration);
     tractorInput.value = existingLog.tractor || '';
     descInput.value    = existingLog.description || '';
   }
+
+  currentRoadTimeEntries = existingLog?.work_log_road_time || [];
+  renderRoadTimeList();
 
   renderWorkLogGerkRows(buildGerkPlanRows(currentDetailWorkOrder, existingLog?.work_log_gerks || []));
   updateOrderHeader();
@@ -696,7 +682,6 @@ workLogDateInput.addEventListener('change', () => {
 });
 
 function closeModal() {
-  stopAllTickers();
   formModal.hidden = true;
   document.body.style.overflow = '';
   // Time logged via the live Start/Stop timers writes straight to Supabase
@@ -791,34 +776,23 @@ function applyGerkRowUpdate(row, updated) {
   row.dataset.end      = updated.end_time || '';
   row.dataset.duration = updated.duration ?? '';
 
-  const btn         = row.querySelector('.wlg-toggle-btn');
-  const timerEl      = row.querySelector('.wlg-timer');
-  const durationInput = row.querySelector('.wlg-duration-input');
-  const running      = !!(updated.start_time && !updated.end_time);
-
   row.classList.toggle('wlg-row--completed', !!updated.completed);
-  btn.textContent = running ? 'Stop' : 'Start';
-  btn.classList.toggle('wlg-toggle-btn--running', running);
+  row.querySelector('[data-role="start-value"]').textContent = fmtClock(updated.start_time);
+  row.querySelector('[data-role="end-value"]').textContent   = fmtClock(updated.end_time);
+  row.querySelector('[data-action="wlg-end"]').disabled = !updated.start_time;
 
-  if (running) {
-    durationInput.hidden = true;
-    timerEl.hidden = false;
-    startRowTicker(row, updated.duration || 0);
-  } else {
-    stopRowTicker(row);
-    timerEl.hidden = true;
-    durationInput.value = updated.duration != null ? fmtHMS(updated.duration) : '';
-    durationInput.hidden = false;
-  }
+  row.querySelector('.wlg-edit-panel').hidden = true;
+  row.querySelector('.wlg-edit-start').value = toTimeInputValue(updated.start_time);
+  row.querySelector('.wlg-edit-end').value   = toTimeInputValue(updated.end_time);
 
   updateOrderHeader();
 }
 
-async function toggleGerkTimer(btn) {
+async function startGerk(btn) {
   const row = btn.closest('.wlg-row');
   btn.disabled = true;
   try {
-    const { data, error } = await supabase.rpc('toggle_gerk_timer', {
+    const { data, error } = await supabase.rpc('start_gerk', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_gerk_code:      row.dataset.code,
       p_work_date:      currentDetailDate,
@@ -832,60 +806,153 @@ async function toggleGerkTimer(btn) {
   }
 }
 
-function parseHMS(text) {
-  const parts = text.trim().split(':').map(p => Math.max(0, parseInt(p, 10) || 0));
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1) return parts[0] * 60; // bare number: treat as minutes
-  return 0;
-}
-
-async function saveGerkDuration(input) {
-  const row     = input.closest('.wlg-row');
-  const seconds = input.value ? parseHMS(input.value) : 0;
-
-  input.disabled = true;
+async function endGerk(btn) {
+  const row = btn.closest('.wlg-row');
+  btn.disabled = true;
   try {
-    const { data, error } = await supabase.rpc('set_gerk_duration', {
+    const { data, error } = await supabase.rpc('end_gerk', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_gerk_code:      row.dataset.code,
-      p_seconds:        seconds,
       p_work_date:      currentDetailDate,
     });
     if (error) throw error;
     applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
   } catch (e) {
-    showFormError('Napaka pri shranjevanju.');
+    showFormError(e.message || 'Napaka pri shranjevanju časa.');
   } finally {
-    input.disabled = false;
+    btn.disabled = false;
+  }
+}
+
+function toggleGerkEdit(btn) {
+  const row = btn.closest('.wlg-row');
+  const panel = row.querySelector('.wlg-edit-panel');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    row.querySelector('.wlg-edit-start').value = toTimeInputValue(row.dataset.start);
+    row.querySelector('.wlg-edit-end').value   = toTimeInputValue(row.dataset.end);
+  }
+}
+
+function cancelGerkEdit(btn) {
+  btn.closest('.wlg-edit-panel').hidden = true;
+}
+
+// Combines the modal's selected work_date with an <input type="time">
+// value (local HH:MM, no timezone) into a proper timestamptz.
+function timeInputToISO(dateStr, timeVal) {
+  if (!timeVal) return null;
+  return new Date(`${dateStr}T${timeVal}:00`).toISOString();
+}
+
+async function saveGerkEdit(btn) {
+  const row      = btn.closest('.wlg-row');
+  const startVal = row.querySelector('.wlg-edit-start').value;
+  const endVal   = row.querySelector('.wlg-edit-end').value;
+
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabase.rpc('set_gerk_times', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_gerk_code:      row.dataset.code,
+      p_start_time:     timeInputToISO(currentDetailDate, startVal),
+      p_end_time:       timeInputToISO(currentDetailDate, endVal),
+      p_work_date:      currentDetailDate,
+    });
+    if (error) throw error;
+    applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri shranjevanju.');
+  } finally {
+    btn.disabled = false;
   }
 }
 
 function wireGerkRowButtons() {
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-toggle"]').forEach(btn => {
-    btn.addEventListener('click', () => toggleGerkTimer(btn));
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-start"]').forEach(btn => {
+    btn.addEventListener('click', () => startGerk(btn));
   });
-  workLogGerkRowsEl.querySelectorAll('.wlg-duration-input').forEach(input => {
-    input.addEventListener('blur', () => saveGerkDuration(input));
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-end"]').forEach(btn => {
+    btn.addEventListener('click', () => endGerk(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-edit-toggle"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleGerkEdit(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-edit-save"]').forEach(btn => {
+    btn.addEventListener('click', () => saveGerkEdit(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-edit-cancel"]').forEach(btn => {
+    btn.addEventListener('click', () => cancelGerkEdit(btn));
   });
 }
+
+// ── Čas na poti: multiple add-a-line entries, summed server-side ──
+function renderRoadTimeList() {
+  if (!currentRoadTimeEntries.length) {
+    roadTimeListEl.innerHTML = '';
+    return;
+  }
+  roadTimeListEl.innerHTML = currentRoadTimeEntries.map(e => `
+    <div class="road-time-row" data-id="${e.id}">
+      <span>${fmtHM(e.minutes)}</span>
+      <button type="button" class="road-time-remove" data-action="road-remove" aria-label="Odstrani">✕</button>
+    </div>`).join('');
+
+  roadTimeListEl.querySelectorAll('[data-action="road-remove"]').forEach(btn => {
+    btn.addEventListener('click', () => removeRoadTime(btn.closest('.road-time-row').dataset.id));
+  });
+}
+
+async function addRoadTime() {
+  const minutes = getDurationMins(roadHourSel, roadMinSel);
+  if (!minutes) return;
+
+  roadAddBtn.disabled = true;
+  try {
+    const { data, error } = await supabase.rpc('add_road_time', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_minutes:        minutes,
+      p_work_date:      currentDetailDate,
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    currentDetailLogId     = result.log_id;
+    currentRoadTimeEntries = result.entries || [];
+    renderRoadTimeList();
+    roadHourSel.value = '0'; roadMinSel.value = '00';
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju časa na poti.');
+  } finally {
+    roadAddBtn.disabled = false;
+  }
+}
+
+async function removeRoadTime(entryId) {
+  try {
+    const { data, error } = await supabase.rpc('remove_road_time', { p_entry_id: entryId });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    currentRoadTimeEntries = result.entries || [];
+    renderRoadTimeList();
+  } catch (e) {
+    showFormError('Napaka pri brisanju.');
+  }
+}
+
+roadAddBtn.addEventListener('click', addRoadTime);
 
 async function saveOrderMeta() {
   try {
     const logId = await ensureTodaysLog();
     await supabase.from('work_logs').update({
-      road_duration: getDurationMins(roadHourSel, roadMinSel) || null,
-      tractor:       tractorInput.value.trim() || null,
-      description:   descInput.value.trim()    || null,
+      tractor:     tractorInput.value.trim() || null,
+      description: descInput.value.trim()    || null,
     }).eq('id', logId);
     saveTractorToHistory(tractorInput.value.trim());
   } catch (e) {
     showFormError('Napaka pri shranjevanju.');
   }
 }
-
-roadHourSel.addEventListener('change', saveOrderMeta);
-roadMinSel.addEventListener('change',  saveOrderMeta);
 tractorInput.addEventListener('blur',  saveOrderMeta);
 descInput.addEventListener('blur',     saveOrderMeta);
 
@@ -941,18 +1008,36 @@ logoutBtn.addEventListener('click', async () => {
   window.location.replace('index.html');
 });
 
-addBtn.addEventListener('click', () => openWorkOrderModal());
+// ── FAB menu ───────────────────────────────────────────────────
+addBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  fabMenu.hidden = !fabMenu.hidden;
+});
+fabMenu.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', () => { fabMenu.hidden = true; });
+
+fabMenu.querySelectorAll('.fab-menu-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    fabMenu.hidden = true;
+    if (btn.dataset.action === 'new-work-order') openWorkOrderModal();
+    if (btn.dataset.action === 'customer-list')  openDeclModal();
+  });
+});
+
 modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
 
 formModal.addEventListener('click', e => { if (e.target === formModal) closeModal(); });
 deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
+declModal.addEventListener('click', e => { if (e.target === declModal) closeDeclModal(); });
+declModalClose.addEventListener('click', closeDeclModal);
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (!formModal.hidden)      closeModal();
     if (!deleteModal.hidden)    closeDeleteModal();
     if (!workOrderModal.hidden) closeWorkOrderModal();
+    if (!declModal.hidden)      closeDeclModal();
   }
 });
 
@@ -961,22 +1046,18 @@ function switchTab(tab) {
   currentTab = tab;
   tabEvidenca.classList.toggle('tab-btn--active', tab === 'evidenca');
   tabNalogi.classList.toggle('tab-btn--active', tab === 'nalogi');
-  tabDeklaracije.classList.toggle('tab-btn--active', tab === 'deklaracije');
-  panelEvidenca.hidden    = tab !== 'evidenca';
-  panelNalogi.hidden      = tab !== 'nalogi';
-  panelDeklaracije.hidden = tab !== 'deklaracije';
+  panelEvidenca.hidden = tab !== 'evidenca';
+  panelNalogi.hidden   = tab !== 'nalogi';
   updateFabVisibility();
   if (tab === 'nalogi' && !workOrdersLoaded) loadWorkOrders();
-  if (tab === 'deklaracije' && !customers.length) loadCustomers();
 }
 
 function updateFabVisibility() {
-  addBtn.hidden = !(currentTab === 'nalogi' && currentRole === 'admin');
+  addBtn.hidden = currentRole !== 'admin';
 }
 
 tabEvidenca.addEventListener('click', () => switchTab('evidenca'));
 tabNalogi.addEventListener('click',   () => switchTab('nalogi'));
-tabDeklaracije.addEventListener('click', () => switchTab('deklaracije'));
 
 // ── Work orders: load + render ───────────────────────────────────
 function slugStatus(status) {
@@ -1099,9 +1180,14 @@ woSearchSuggestions.addEventListener('mousedown', e => {
 async function loadCustomers() {
   const { data } = await supabase
     .from('customers')
-    .select('id, naziv, company_name, email')
+    .select('id, naziv, company_name, contact_name, email')
     .order('naziv');
-  customers = (data ?? []).map(c => ({ id: c.id, name: c.naziv || c.company_name || '—', email: c.email || null }));
+  customers = (data ?? []).map(c => ({
+    id: c.id,
+    name: c.naziv || c.company_name || '—',
+    contactName: c.contact_name || null,
+    email: c.email || null,
+  }));
 }
 
 async function loadOperatorsList() {
@@ -1143,43 +1229,68 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
   woStrankaSuggestions.hidden = true;
 });
 
-// ── Deklaracije tab: customer picker ─────────────────────────────
-function showDeclCustomerSuggestions(matches) {
-  if (!matches.length) { declStrankaSuggestions.hidden = true; return; }
-  declStrankaSuggestions.innerHTML = matches.map(c =>
-    `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
-  ).join('');
-  declStrankaSuggestions.hidden = false;
+// ── Seznam strank modal: open/close + list view ──────────────────
+async function openDeclModal() {
+  if (!customers.length) await loadCustomers();
+  declModal.hidden = false;
+  showDeclList();
 }
 
-declStrankaInput.addEventListener('input', () => {
-  declCustomerId = null;
-  declCustomerPanel.hidden = true;
-  declEmptyState.hidden = false;
-  showDeclCustomerSuggestions(filterCustomers(declStrankaInput.value.trim()));
-});
-declStrankaInput.addEventListener('blur', () => {
-  setTimeout(() => { declStrankaSuggestions.hidden = true; }, 150);
-});
-declStrankaSuggestions.addEventListener('mousedown', e => {
-  const item = e.target.closest('.gerk-suggestion-item');
-  if (!item) return;
-  const c = customers.find(c => c.id === item.dataset.id);
-  declStrankaSuggestions.hidden = true;
-  if (!c) return;
-  declStrankaInput.value = c.name;
-  declCustomerId = c.id;
-  declEmptyState.hidden = true;
-  declCustomerPanel.hidden = false;
+function closeDeclModal() {
+  declModal.hidden = true;
+}
+
+function showDeclList() {
+  declListView.hidden = false;
+  declDetailView.hidden = true;
+  declListSearch.value = '';
+  renderDeclCustomerList();
+}
+
+function renderDeclCustomerList() {
+  const q = declListSearch.value.trim().toLowerCase();
+  const matches = q ? customers.filter(c => c.name.toLowerCase().includes(q)) : customers;
+
+  if (!matches.length) {
+    declCustomerList.innerHTML = `<div class="state-empty"><p>Ni strank.</p></div>`;
+    return;
+  }
+
+  declCustomerList.innerHTML = matches.map(c =>
+    `<div class="decl-customer-row" data-id="${c.id}">${escHtml(c.name)}</div>`
+  ).join('');
+
+  declCustomerList.querySelectorAll('.decl-customer-row').forEach(row => {
+    row.addEventListener('click', () => openDeclDetail(row.dataset.id));
+  });
+}
+
+declListSearch.addEventListener('input', renderDeclCustomerList);
+declBackBtn.addEventListener('click', showDeclList);
+
+// ── Seznam strank modal: one customer's detail view ──────────────
+function openDeclDetail(customerId) {
+  const customer = customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  declCustomerId = customerId;
+  declListView.hidden = true;
+  declDetailView.hidden = false;
   declLinkResult.hidden = true;
+
+  const sub = [customer.contactName, customer.email].filter(Boolean).join(' · ');
+  declCustomerInfo.innerHTML = `
+    <p class="wo-order-label">${escHtml(customer.name)}</p>
+    ${sub ? `<p class="decl-link-sub">${escHtml(sub)}</p>` : ''}`;
+
   if (!declYearInput.value) declYearInput.value = new Date().getFullYear();
   loadDeclCustomerLinks();
   loadDeclCustomerTable();
-});
+}
 
 declYearInput.addEventListener('change', () => { if (declCustomerId) loadDeclCustomerTable(); });
 
-// ── Deklaracije tab: generate a customer link ────────────────────
+// ── Seznam strank modal: generate a customer link ────────────────
 declGenerateBtn.addEventListener('click', async () => {
   if (!declCustomerId) return;
   const year = parseInt(declYearInput.value, 10);
@@ -1189,7 +1300,6 @@ declGenerateBtn.addEventListener('click', async () => {
   const { data: token, error } = await supabase.rpc('create_field_declaration_link', {
     p_customer_id: declCustomerId,
     p_year: year,
-    p_lang: declLangSel.value,
   });
   declGenerateBtn.disabled = false;
 
@@ -1490,7 +1600,6 @@ async function boot() {
   } else {
     adminBadge.hidden = true;
   }
-  tabDeklaracije.hidden = currentRole !== 'admin';
   renderGreeting(displayName);
   updateFabVisibility();
 

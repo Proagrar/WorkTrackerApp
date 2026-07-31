@@ -38,7 +38,6 @@
     <nav class="tab-bar" aria-label="Zavihki">
       <button id="tabNalogi" class="tab-btn tab-btn--active" data-tab="nalogi">Delovni Nalogi</button>
       <button id="tabEvidenca" class="tab-btn" data-tab="evidenca">Evidenca dela</button>
-      <button id="tabDeklaracije" class="tab-btn" data-tab="deklaracije" hidden>Deklaracije</button>
     </nav>
 
     <!-- ── Tab: Evidenca dela (original view) ────────────────── -->
@@ -129,60 +128,14 @@
       </section>
     </div>
 
-    <!-- ── Tab: Deklaracije (customer field-declaration review, admin only) ── -->
-    <div id="panelDeklaracije" class="tab-panel" hidden>
-      <section class="logs-section">
-        <div class="section-header">
-          <h2 class="section-title">Deklaracije strank</h2>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="declStranka">Stranka</label>
-          <div class="gerk-wrap">
-            <input class="field-input" type="text" id="declStranka" placeholder="Išči stranko..." autocomplete="off" />
-            <ul id="declStrankaSuggestions" class="gerk-suggestions" hidden></ul>
-          </div>
-        </div>
-
-        <div id="declEmptyState" class="state-empty"><p>Izberite stranko za pregled deklaracij in ustvarjanje povezav.</p></div>
-
-        <div id="declCustomerPanel" hidden>
-
-          <div class="field-row">
-            <div class="field">
-              <label class="field-label" for="declYear">Leto</label>
-              <input class="field-input" type="number" id="declYear" />
-            </div>
-            <div class="field">
-              <label class="field-label" for="declLang">Jezik povezave</label>
-              <select class="field-input field-select" id="declLang">
-                <option value="sl">Slovenščina</option>
-                <option value="hr">Hrvaščina</option>
-              </select>
-            </div>
-          </div>
-
-          <button type="button" id="declGenerateBtn" class="btn btn-secondary btn-block">Ustvari povezavo</button>
-          <div id="declLinkResult" hidden></div>
-
-          <div class="section-header">
-            <h3 class="section-title">Ustvarjene povezave</h3>
-          </div>
-          <div id="declLinksList"></div>
-
-          <div class="section-header">
-            <h3 class="section-title">Prijavljeni podatki</h3>
-          </div>
-          <div id="declTableWrap"></div>
-
-        </div>
-      </section>
-    </div>
-
   </main>
 
-  <!-- ── FAB ────────────────────────────────────────────────── -->
-  <button id="addBtn" class="fab" aria-label="Dodaj nov delovni nalog">
+  <!-- ── FAB with menu ──────────────────────────────────────── -->
+  <div id="fabMenu" class="fab-menu" hidden>
+    <button type="button" class="fab-menu-item" data-action="new-work-order">+ Nov delovni nalog</button>
+    <button type="button" class="fab-menu-item" data-action="customer-list">Seznam strank</button>
+  </div>
+  <button id="addBtn" class="fab" aria-label="Meni">
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
       <line x1="14" y1="4" x2="14" y2="24" stroke="white" stroke-width="3" stroke-linecap="round"/>
       <line x1="4" y1="14" x2="24" y2="14" stroke="white" stroke-width="3" stroke-linecap="round"/>
@@ -217,11 +170,13 @@
 
         <div class="field">
           <label class="field-label">Čas na poti</label>
+          <div id="roadTimeList" class="road-time-list"></div>
           <div class="time-wrap">
             <select class="field-input field-select" id="roadHour"></select>
             <span class="time-sep">h</span>
             <select class="field-input field-select time-min" id="roadMin"></select>
             <span class="time-sep">min</span>
+            <button type="button" id="roadAddBtn" class="btn btn-secondary btn-sm">Dodaj</button>
           </div>
         </div>
 
@@ -367,6 +322,55 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ── Seznam strank / Deklaracije (admin only) ────────────── -->
+  <div id="declModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="declModalTitle">
+    <div class="modal-sheet">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="declModalTitle" class="modal-title">Seznam strank</h3>
+        <button id="declModalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- List view -->
+      <div id="declListView">
+        <div class="field">
+          <input class="field-input" type="text" id="declListSearch" placeholder="Išči stranko..." autocomplete="off" />
+        </div>
+        <div id="declCustomerList" class="logs-list logs-list--compact"></div>
+      </div>
+
+      <!-- Detail view (one customer) -->
+      <div id="declDetailView" hidden>
+        <button type="button" id="declBackBtn" class="btn btn-secondary btn-sm">← Nazaj na seznam</button>
+
+        <div id="declCustomerInfo" class="decl-customer-info"></div>
+
+        <div class="field">
+          <label class="field-label" for="declYear">Leto</label>
+          <input class="field-input" type="number" id="declYear" />
+        </div>
+
+        <button type="button" id="declGenerateBtn" class="btn btn-secondary btn-block">Ustvari povezavo</button>
+        <div id="declLinkResult" hidden></div>
+
+        <div class="section-header">
+          <h3 class="section-title">Ustvarjene povezave</h3>
+        </div>
+        <div id="declLinksList"></div>
+
+        <div class="section-header">
+          <h3 class="section-title">Prijavljeni podatki</h3>
+        </div>
+        <div id="declTableWrap"></div>
+      </div>
     </div>
   </div>
 
