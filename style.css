@@ -567,6 +567,45 @@ input, select, textarea { font-family: inherit; }
   font-size: .8125rem;
 }
 
+.wlg-samples-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wlg-samples-toggle:hover { color: var(--blue-800); }
+.wlg-samples-chevron { transition: transform .15s; font-size: .7rem; }
+.wlg-samples-toggle--open .wlg-samples-chevron { transform: rotate(180deg); }
+
+.wlg-samples-panel {
+  border-top: 1px solid var(--border-light);
+  padding-top: 8px;
+  overflow-x: auto;
+}
+
+.wlg-samples-table { width: 100%; border-collapse: collapse; font-size: .78125rem; }
+.wlg-samples-table th {
+  text-align: left;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wlg-samples-table td {
+  padding: 4px 8px;
+  font-family: monospace;
+  white-space: nowrap;
+  border-top: 1px solid var(--border-light);
+}
+
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
 .road-time-row {
@@ -1018,6 +1057,27 @@ input, select, textarea { font-family: inherit; }
   .stats-section    { padding: 20px 24px 10px; }
   .logs-section     { padding: 12px 24px 0; }
   .fab              { right: 32px; bottom: 36px; }
+}
+
+/* Laptop/desktop is now the primary target — phone stays fully usable via
+   everything above, this layer just stops the app looking like a stretched
+   phone screen once there's real width to work with. */
+@media (min-width: 900px) {
+  .app-main { max-width: 1100px; }
+
+  .tab-bar { justify-content: flex-start; }
+  .tab-btn { flex: 0 0 auto; min-width: 180px; }
+
+  .wo-search-input       { width: 220px; }
+  .wo-search-input:focus { width: 260px; }
+
+  .header-name { max-width: 240px; }
+
+  /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */
+  .modal-backdrop     { align-items: center; padding: 24px; }
+  .modal-sheet         { border-radius: var(--radius-xl); max-height: 88vh; }
+  .modal-sheet-compact { max-width: 420px; }
+  .modal-handle        { display: none; }
 }
 
 

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.13';
+const APP_VERSION = 'v1.15';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -518,6 +518,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
     endTime:   logByCode[pf.gerk_code]?.end_time ?? null,
     duration:  logByCode[pf.gerk_code]?.duration ?? null,
     completed: logByCode[pf.gerk_code]?.completed ?? false,
+    samples:   pf.delovni_nalogi_vzorci || [],
   }));
 
   const planCodes = new Set(planFields.map(pf => pf.gerk_code));
@@ -525,6 +526,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
     rows.push({
       code: g.gerk_code, hectares: g.hectares, lokacija: null,
       startTime: g.start_time, endTime: g.end_time, duration: g.duration ?? null, completed: g.completed ?? false,
+      samples: [],
     });
   });
 
@@ -542,6 +544,14 @@ function fmtClock(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Short d.m.yyyy for the samples panel; dash for unset dates (common in
+// the historical import — sampling/sending dates weren't always recorded).
+function fmtSampleDate(isoDate) {
+  if (!isoDate) return '—';
+  const [y, m, d] = isoDate.split('-');
+  return `${parseInt(d, 10)}.${parseInt(m, 10)}.${y}`;
 }
 
 // Same, but as a value an <input type="time"> will accept.
@@ -563,6 +573,7 @@ function renderWorkLogGerkRows(rows) {
     const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
     const completed = !!r.completed;
     const hasStart  = !!r.startTime;
+    const samples   = r.samples || [];
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
@@ -587,6 +598,24 @@ function renderWorkLogGerkRows(rows) {
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-save">Shrani</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
         </div>
+        ${samples.length ? `
+        <button type="button" class="wlg-samples-toggle" data-action="wlg-samples-toggle">
+          <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
+          <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div class="wlg-samples-panel" hidden>
+          <table class="wlg-samples-table">
+            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th></tr></thead>
+            <tbody>
+              ${samples.map(s => `
+                <tr>
+                  <td>${escHtml(s.sample_no)}</td>
+                  <td>${fmtSampleDate(s.sampling_date)}</td>
+                  <td>${fmtSampleDate(s.sending_date)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : ''}
       </div>`;
   }).join('');
 
@@ -837,6 +866,12 @@ function cancelGerkEdit(btn) {
   btn.closest('.wlg-edit-panel').hidden = true;
 }
 
+function toggleGerkSamples(btn) {
+  const panel = btn.closest('.wlg-row').querySelector('.wlg-samples-panel');
+  panel.hidden = !panel.hidden;
+  btn.classList.toggle('wlg-samples-toggle--open', !panel.hidden);
+}
+
 // Combines the modal's selected work_date with an <input type="time">
 // value (local HH:MM, no timezone) into a proper timestamptz.
 function timeInputToISO(dateStr, timeVal) {
@@ -882,6 +917,9 @@ function wireGerkRowButtons() {
   });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-edit-cancel"]').forEach(btn => {
     btn.addEventListener('click', () => cancelGerkEdit(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-samples-toggle"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleGerkSamples(btn));
   });
 }
 
@@ -1072,7 +1110,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija)')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(sample_no, sampling_date, sending_date))')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
