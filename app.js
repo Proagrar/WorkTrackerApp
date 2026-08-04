@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.15';
+const APP_VERSION = 'v1.16';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1101,6 +1101,34 @@ function slugStatus(status) {
   return { 'Plan': 'plan', 'V delu': 'delo', 'Izvedeno': 'izvedeno', 'Izdan Račun': 'racun' }[status] || 'plan';
 }
 
+const WO_STATUS_ORDER = { 'Plan': 0, 'V delu': 1, 'Izvedeno': 2, 'Izdan Račun': 3 };
+const WO_SORT_COLUMNS = [
+  { key: 'stevilka', label: 'Št.' },
+  { key: 'stranka',  label: 'Stranka' },
+  { key: 'gerki',    label: 'GERKI', center: true },
+  { key: 'ha',       label: 'Ha' },
+  { key: 'status',   label: 'Status' },
+];
+
+let woSortKey = null;   // 'stevilka' | 'stranka' | 'gerki' | 'ha' | 'status'
+let woSortDir = 'asc';
+
+function sortWorkOrderRows(rows) {
+  if (!woSortKey) return rows;
+  const dir = woSortDir === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let cmp = 0;
+    switch (woSortKey) {
+      case 'stevilka': cmp = String(a.stevilka).localeCompare(String(b.stevilka), undefined, { numeric: true }); break;
+      case 'stranka':  cmp = a.stranka.localeCompare(b.stranka); break;
+      case 'gerki':    cmp = a.gerkCount - b.gerkCount; break;
+      case 'ha':       cmp = a.totalHa - b.totalHa; break;
+      case 'status':   cmp = (WO_STATUS_ORDER[a.status] ?? 99) - (WO_STATUS_ORDER[b.status] ?? 99); break;
+    }
+    return cmp * dir;
+  });
+}
+
 async function loadWorkOrders() {
   workOrdersList.innerHTML = `
     <div class="state-loading">
@@ -1142,28 +1170,37 @@ function renderWorkOrders() {
   }
 
   workOrdersList.className = 'logs-list logs-list--compact';
+
+  const rowData = fwo.map(wo => {
+    const gerks = wo.delovni_nalogi_gerki || [];
+    return {
+      id:        wo.id,
+      stevilka:  wo.stevilka,
+      stranka:   wo.customers?.naziv || wo.customers?.company_name || '—',
+      gerkCount: gerks.length,
+      totalHa:   gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
+      status:    wo.status,
+    };
+  });
+
   const header = `
-    <div class="lc-header wo-lc-header" aria-hidden="true">
-      <span>Št.</span>
-      <span>Stranka</span>
-      <span>GERKI</span>
-      <span>Ha</span>
-      <span>Status</span>
+    <div class="lc-header wo-lc-header">
+      ${WO_SORT_COLUMNS.map(col => {
+        const active = woSortKey === col.key;
+        const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
+      }).join('')}
     </div>`;
 
-  const rows = fwo.map(wo => {
-    const gerks   = wo.delovni_nalogi_gerki || [];
-    const totalHa = gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0);
-    const haStr   = totalHa > 0 ? totalHa.toFixed(2) : '—';
-    const stranka = wo.customers?.naziv || wo.customers?.company_name || '—';
-
+  const rows = sortWorkOrderRows(rowData).map(r => {
+    const haStr = r.totalHa > 0 ? r.totalHa.toFixed(2) : '—';
     return `
-      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${wo.id}">
-        <span class="lc-date">${escHtml(wo.stevilka)}</span>
-        <span class="wo-c-stranka">${escHtml(stranka)}</span>
-        <span class="wo-c-gerki">${gerks.length || '—'}</span>
+      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${r.id}">
+        <span class="lc-date">${escHtml(r.stevilka)}</span>
+        <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
+        <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
-        <span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>
+        <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
       </div>`;
   }).join('');
 
@@ -1176,6 +1213,14 @@ function wireWorkOrderButtons() {
     row.addEventListener('click', () => {
       const wo = workOrders.find(w => w.id === row.dataset.id);
       if (wo) openWorkOrderDetail(wo);
+    });
+  });
+  workOrdersList.querySelectorAll('.wo-th').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.sort;
+      woSortDir = (woSortKey === key && woSortDir === 'asc') ? 'desc' : 'asc';
+      woSortKey = key;
+      renderWorkOrders();
     });
   });
 }

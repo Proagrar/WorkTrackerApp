@@ -436,6 +436,28 @@ input, select, textarea { font-family: inherit; }
 
 .wo-compact { cursor: pointer; }
 
+.wo-th {
+  appearance: none;
+  border: none;
+  background: none;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: .6875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.wo-th:hover,
+.wo-th:focus-visible { color: var(--blue-800); }
+.wo-th--active { color: var(--blue-800); }
+.wo-th-center { text-align: center; }
+
 .wo-c-stranka {
   font-size: .8125rem;
   color: var(--text-primary);
@@ -1077,7 +1099,23 @@ input, select, textarea { font-family: inherit; }
   .modal-backdrop     { align-items: center; padding: 24px; }
   .modal-sheet         { border-radius: var(--radius-xl); max-height: 88vh; }
   .modal-sheet-compact { max-width: 420px; }
+  .modal-sheet-wide    { max-width: 880px; }
   .modal-handle        { display: none; }
+
+  /* GERK rows in the work-order detail read as one line per record
+     (info | times side by side) instead of a stacked mobile card. The
+     edit panel and samples toggle/panel still expand to full width. */
+  .wlg-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto;
+    column-gap: 20px;
+    align-items: center;
+  }
+  .wlg-edit-panel,
+  .wlg-samples-toggle,
+  .wlg-samples-panel {
+    grid-column: 1 / -1;
+  }
 }
 
 
