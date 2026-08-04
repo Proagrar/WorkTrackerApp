@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.17';
+const APP_VERSION = 'v1.18';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -506,9 +506,23 @@ function getFormGerks(container = woGerksListEl) {
 // ── Work log GERK entry table (fixed to the work order's fields) ──
 // Rows = the work order's planned fields, plus any field today's log
 // already carries but the current plan no longer lists.
+// Every fetched entry that ISN'T "me, on the date currently being viewed"
+// (that one is already represented by the row's own Start/Konec state) —
+// grouped by GERK so each row can show who else has worked it, and when.
+function otherGerkEntriesByCode() {
+  const map = {};
+  for (const e of currentAllGerkEntries) {
+    const wl = e.work_logs;
+    if (wl.operator_id === currentUser.id && wl.work_date === currentDetailDate) continue;
+    (map[e.gerk_code] ??= []).push(e);
+  }
+  return map;
+}
+
 function buildGerkPlanRows(workOrder, todaysGerks) {
   const planFields = workOrder?.delovni_nalogi_gerki || [];
   const logByCode   = Object.fromEntries((todaysGerks || []).map(g => [g.gerk_code, g]));
+  const othersByCode = otherGerkEntriesByCode();
 
   const rows = planFields.map(pf => ({
     code:      pf.gerk_code,
@@ -519,6 +533,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
     duration:  logByCode[pf.gerk_code]?.duration ?? null,
     completed: logByCode[pf.gerk_code]?.completed ?? false,
     samples:   pf.delovni_nalogi_vzorci || [],
+    otherEntries: othersByCode[pf.gerk_code] || [],
   }));
 
   const planCodes = new Set(planFields.map(pf => pf.gerk_code));
@@ -527,6 +542,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
       code: g.gerk_code, hectares: g.hectares, lokacija: null,
       startTime: g.start_time, endTime: g.end_time, duration: g.duration ?? null, completed: g.completed ?? false,
       samples: [],
+      otherEntries: othersByCode[g.gerk_code] || [],
     });
   });
 
@@ -574,6 +590,7 @@ function renderWorkLogGerkRows(rows) {
     const completed = !!r.completed;
     const hasStart  = !!r.startTime;
     const samples   = r.samples || [];
+    const others    = r.otherEntries || [];
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
@@ -598,6 +615,15 @@ function renderWorkLogGerkRows(rows) {
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-save">Shrani</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
         </div>
+        ${others.length ? `
+        <div class="wlg-others">
+          ${others.map(o => {
+            const opName = o.work_logs.profiles?.full_name || '—';
+            const when   = fmtSampleDate(o.work_logs.work_date);
+            const time   = o.end_time ? `${fmtClock(o.start_time)}–${fmtClock(o.end_time)}` : (o.start_time ? 'v teku' : '');
+            return `<span class="wlg-others-item">${o.completed ? '✓' : '•'} ${escHtml(opName)} · ${when}${time ? ' · ' + time : ''}</span>`;
+          }).join('')}
+        </div>` : ''}
         ${samples.length ? `
         <button type="button" class="wlg-samples-toggle wlg-samples-toggle--open" data-action="wlg-samples-toggle">
           <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
@@ -638,9 +664,13 @@ function updateOrderHeader() {
     woStartBtn.disabled = true;
   }
 
-  const opName = wo.profiles?.full_name;
+  // Everyone who's actually logged a GERK on this order, not just whoever
+  // originally claimed it — a second operator picking up mid-order doesn't
+  // replace the first in this list, both show.
+  const contributors = [...new Set(currentAllGerkEntries.map(e => e.work_logs.profiles?.full_name).filter(Boolean))];
+  const izvajaLabel = contributors.length ? contributors.join(', ') : wo.profiles?.full_name;
   const metaParts = [];
-  if (wo.status !== 'Plan' && opName) metaParts.push(`Izvaja: ${opName}`);
+  if (wo.status !== 'Plan' && izvajaLabel) metaParts.push(`Izvaja: ${izvajaLabel}`);
   if (totalMin > 0) metaParts.push(`Skupaj: ${fmtHM(totalMin)}`);
   woHeaderMeta.textContent = metaParts.join(' · ');
 }
@@ -650,6 +680,7 @@ let currentDetailWorkOrder = null;
 let currentDetailLogId     = null;
 let currentDetailDate      = null;
 let currentRoadTimeEntries = [];
+let currentAllGerkEntries  = []; // every operator's work_log_gerks for this work order — powers the "who else worked on this" view
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
@@ -682,13 +713,21 @@ async function loadDetailForDate() {
   tractorInput.value = '';
   descInput.value = '';
 
-  const { data: existingLog } = await supabase
-    .from('work_logs')
-    .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed), work_log_road_time(id, minutes)')
-    .eq('operator_id', currentUser.id)
-    .eq('work_order_id', currentDetailWorkOrder.id)
-    .eq('work_date', currentDetailDate)
-    .maybeSingle();
+  const [{ data: existingLog }, { data: allEntries }] = await Promise.all([
+    supabase
+      .from('work_logs')
+      .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed), work_log_road_time(id, minutes)')
+      .eq('operator_id', currentUser.id)
+      .eq('work_order_id', currentDetailWorkOrder.id)
+      .eq('work_date', currentDetailDate)
+      .maybeSingle(),
+    // Every operator's GERK entries for this work order (any date) — lets
+    // someone taking over mid-order see what's already been done, and by whom.
+    supabase
+      .from('work_log_gerks')
+      .select('gerk_code, start_time, end_time, duration, completed, work_logs!inner(operator_id, work_date, profiles(full_name))')
+      .eq('work_logs.work_order_id', currentDetailWorkOrder.id),
+  ]);
 
   if (existingLog) {
     currentDetailLogId = existingLog.id;
@@ -699,6 +738,7 @@ async function loadDetailForDate() {
   currentRoadTimeEntries = existingLog?.work_log_road_time || [];
   renderRoadTimeList();
 
+  currentAllGerkEntries = allEntries || [];
   renderWorkLogGerkRows(buildGerkPlanRows(currentDetailWorkOrder, existingLog?.work_log_gerks || []));
   updateOrderHeader();
 }
