@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.16';
+const APP_VERSION = 'v1.17';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -599,19 +599,19 @@ function renderWorkLogGerkRows(rows) {
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
         </div>
         ${samples.length ? `
-        <button type="button" class="wlg-samples-toggle" data-action="wlg-samples-toggle">
+        <button type="button" class="wlg-samples-toggle wlg-samples-toggle--open" data-action="wlg-samples-toggle">
           <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
           <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
         </button>
-        <div class="wlg-samples-panel" hidden>
+        <div class="wlg-samples-panel">
           <table class="wlg-samples-table">
             <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th></tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${escHtml(s.sample_no)}</td>
-                  <td>${fmtSampleDate(s.sampling_date)}</td>
-                  <td>${fmtSampleDate(s.sending_date)}</td>
+                  <td>${s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date)}</td>
+                  <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -1138,7 +1138,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(sample_no, sampling_date, sending_date))')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(sample_no, sampling_date, sending_date, sampling_note, sending_note))')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
