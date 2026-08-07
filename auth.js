@@ -45,14 +45,27 @@ function setMode(newMode) {
   forgotLink.hidden = mode !== 'login';
 }
 
-// Detect password recovery link (user clicked email link)
-supabase.auth.onAuthStateChange((event) => {
-  if (event === 'PASSWORD_RECOVERY') setMode('recovery');
-});
+// If the URL itself says this is a password-recovery redirect, switch mode
+// immediately — synchronously, before any async Supabase call resolves.
+// Needed because the PASSWORD_RECOVERY event below and an already-restored
+// session can settle in either order; relying on the event alone let a
+// race send some users straight into the app before they ever saw the
+// "set new password" screen, leaving them still not knowing their password.
+if (window.location.hash.includes('type=recovery') || new URLSearchParams(window.location.search).get('type') === 'recovery') {
+  setMode('recovery');
+}
 
-// Redirect if already logged in
-supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session && mode !== 'recovery') window.location.replace('app.html');
+// Single source of truth for what happens on load after that: both
+// INITIAL_SESSION (an existing/restored session) and PASSWORD_RECOVERY
+// (user clicked a reset-password email link) come through this one
+// listener, in order — nothing left to race between two independent
+// async calls the way getSession() + a separate listener did.
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    setMode('recovery');
+  } else if (event === 'INITIAL_SESSION' && session && mode !== 'recovery') {
+    window.location.replace('app.html');
+  }
 });
 
 
