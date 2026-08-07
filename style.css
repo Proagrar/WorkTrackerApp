@@ -656,6 +656,11 @@ input, select, textarea { font-family: inherit; }
   font-size: .8125rem;
 }
 
+.road-time-type {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .road-time-remove {
   background: none;
   border: none;

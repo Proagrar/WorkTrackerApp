@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.21';
+const APP_VERSION = 'v1.22';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -53,6 +53,7 @@ const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const workLogDateInput = document.getElementById('workLogDate');
 const woStartBtn  = document.getElementById('woStartBtn');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
+const roadTypeSel = document.getElementById('roadType');
 const roadHourSel = document.getElementById('roadHour');
 const roadMinSel  = document.getElementById('roadMin');
 const roadAddBtn  = document.getElementById('roadAddBtn');
@@ -986,7 +987,7 @@ function renderRoadTimeList() {
   }
   roadTimeListEl.innerHTML = currentRoadTimeEntries.map(e => `
     <div class="road-time-row" data-id="${e.id}">
-      <span>${fmtHM(e.minutes)}</span>
+      <span><span class="road-time-type">${escHtml(e.vehicle_type || 'Traktor')}</span> · ${fmtHM(e.minutes)}</span>
       <button type="button" class="road-time-remove" data-action="road-remove" aria-label="Odstrani">✕</button>
     </div>`).join('');
 
@@ -1004,6 +1005,7 @@ async function addRoadTime() {
     const { data, error } = await supabase.rpc('add_road_time', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_minutes:        minutes,
+      p_vehicle_type:   roadTypeSel.value,
       p_work_date:      currentDetailDate,
     });
     if (error) throw error;
