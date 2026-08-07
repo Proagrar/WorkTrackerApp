@@ -643,6 +643,16 @@ input, select, textarea { font-family: inherit; }
   border-top: 1px solid var(--border-light);
 }
 
+.sample-field-select {
+  font-family: inherit;
+  font-size: .78125rem;
+  padding: 2px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
 .road-time-row {

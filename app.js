@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.22';
+const APP_VERSION = 'v1.23';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -577,6 +577,53 @@ function toTimeInputValue(iso) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// ── Sample action / sampling depth — admin-editable, everyone else read-only ──
+// Matches the "Admins can manage samples" RLS policy: only admins can
+// actually write, so only admins get the dropdown.
+const SAMPLE_ACTIONS = ['ne pobereš', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
+const SAMPLE_DEPTHS  = [12, 20, 25, 30, 60, 90];
+
+function renderSampleActionCell(s) {
+  if (currentRole !== 'admin') return s.action ? escHtml(s.action) : '—';
+  const opts = ['<option value="">-</option>']
+    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.action === a ? ' selected' : ''}>${escHtml(a)}</option>`))
+    .join('');
+  return `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="action">${opts}</select>`;
+}
+
+function renderSampleDepthCell(s) {
+  if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
+  const opts = ['<option value="">-</option>']
+    .concat(SAMPLE_DEPTHS.map(d => `<option value="${d}"${s.sampling_depth_cm === d ? ' selected' : ''}>${d} cm</option>`))
+    .join('');
+  return `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="sampling_depth_cm">${opts}</select>`;
+}
+
+// Updates one sample's action/depth in place — direct table write (no
+// RPC needed, RLS already restricts this to admins) — and patches the
+// in-memory copy so it stays correct if the panel re-renders without
+// a full reload.
+async function updateSampleField(selectEl) {
+  const sampleId = selectEl.dataset.sampleId;
+  const field    = selectEl.dataset.field;
+  let value = selectEl.value || null;
+  if (field === 'sampling_depth_cm' && value !== null) value = parseInt(value, 10);
+
+  selectEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ [field]: value }).eq('id', sampleId);
+    if (error) throw error;
+    for (const g of currentDetailWorkOrder.delovni_nalogi_gerki || []) {
+      const sample = (g.delovni_nalogi_vzorci || []).find(s => s.id === sampleId);
+      if (sample) { sample[field] = value; break; }
+    }
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju vzorca.');
+  } finally {
+    selectEl.disabled = false;
+  }
+}
+
 function renderWorkLogGerkRows(rows) {
   if (!rows.length) {
     workLogGerkRowsEl.innerHTML = `<p class="field-hint">Ta delovni nalog nima dodanih GERKOV.</p>`;
@@ -634,13 +681,15 @@ function renderWorkLogGerkRows(rows) {
         </button>
         <div class="wlg-samples-panel">
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th></tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Akcija</th><th>Globina</th></tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${escHtml(s.sample_no)}</td>
                   <td>${s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date)}</td>
                   <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
+                  <td>${renderSampleActionCell(s)}</td>
+                  <td>${renderSampleDepthCell(s)}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -977,6 +1026,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-samples-toggle"]').forEach(btn => {
     btn.addEventListener('click', () => toggleGerkSamples(btn));
   });
+  workLogGerkRowsEl.querySelectorAll('.sample-field-select').forEach(sel => {
+    sel.addEventListener('change', () => updateSampleField(sel));
+  });
 }
 
 // ── Čas na poti: multiple add-a-line entries, summed server-side ──
@@ -1195,7 +1247,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(sample_no, sampling_date, sending_date, sampling_note, sending_note))')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, action, sampling_depth_cm))')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
