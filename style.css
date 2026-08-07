@@ -595,7 +595,8 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
 }
 
-.wlg-edit-label input[type="time"] {
+.wlg-edit-label input[type="time"],
+.wlg-edit-label input[type="date"] {
   height: 36px;
   padding: 0 8px;
   border: 1.5px solid var(--border);

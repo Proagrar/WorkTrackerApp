@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.18';
+const APP_VERSION = 'v1.21';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -372,24 +372,23 @@ function updateTractorDatalist() {
 }
 
 // ── GERK autocomplete ──────────────────────────────────────────
+// Reads WorkTracker's own fields table (not the CRM's FIELD) — the two
+// were consolidated so there's a single source of truth for what fields
+// exist. See supabase/migration_import_field_only_rows.sql.
 async function loadFields() {
   const { data } = await supabase
-    .from('FIELD')
-    .select('CODE, NAME, TOTAL_AREA, B_FIELD_X_CUSTOMER(DATE_TO, CUSTOMER(FULL_NAME))')
-    .order('NAME');
+    .from('fields')
+    .select('cadastre_id, name, area_ha, customers(naziv, company_name)')
+    .order('name');
   const seen = new Set();
   fields = (data ?? [])
-    .filter(f => f.CODE)
-    .map(f => {
-      const activeLink = (f.B_FIELD_X_CUSTOMER ?? [])
-        .find(l => !l.DATE_TO || new Date(l.DATE_TO) >= new Date());
-      return {
-        code:     f.CODE,
-        name:     f.NAME ?? null,
-        area:     f.TOTAL_AREA ?? null,
-        customer: activeLink?.CUSTOMER?.FULL_NAME ?? null,
-      };
-    })
+    .filter(f => f.cadastre_id)
+    .map(f => ({
+      code:     f.cadastre_id,
+      name:     f.name ?? null,
+      area:     f.area_ha ?? null,
+      customer: f.customers?.naziv || f.customers?.company_name || null,
+    }))
     .filter(f => { if (seen.has(f.code)) return false; seen.add(f.code); return true; });
 }
 
@@ -606,6 +605,9 @@ function renderWorkLogGerkRows(rows) {
           <button type="button" class="btn btn-icon wlg-edit-btn" data-action="wlg-edit-toggle" aria-label="Uredi čas">✎</button>
         </div>
         <div class="wlg-edit-panel" hidden>
+          <label class="wlg-edit-label">Datum
+            <input type="date" class="wlg-edit-date" max="${todayISO()}" value="${currentDetailDate}">
+          </label>
           <label class="wlg-edit-label">Začetek
             <input type="time" class="wlg-edit-start" value="${toTimeInputValue(r.startTime)}">
           </label>
@@ -897,6 +899,7 @@ function toggleGerkEdit(btn) {
   const panel = row.querySelector('.wlg-edit-panel');
   panel.hidden = !panel.hidden;
   if (!panel.hidden) {
+    row.querySelector('.wlg-edit-date').value  = currentDetailDate;
     row.querySelector('.wlg-edit-start').value = toTimeInputValue(row.dataset.start);
     row.querySelector('.wlg-edit-end').value   = toTimeInputValue(row.dataset.end);
   }
@@ -921,20 +924,32 @@ function timeInputToISO(dateStr, timeVal) {
 
 async function saveGerkEdit(btn) {
   const row      = btn.closest('.wlg-row');
+  const dateVal  = row.querySelector('.wlg-edit-date').value || currentDetailDate;
   const startVal = row.querySelector('.wlg-edit-start').value;
   const endVal   = row.querySelector('.wlg-edit-end').value;
+  const moved    = dateVal !== currentDetailDate;
 
   btn.disabled = true;
   try {
     const { data, error } = await supabase.rpc('set_gerk_times', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_gerk_code:      row.dataset.code,
-      p_start_time:     timeInputToISO(currentDetailDate, startVal),
-      p_end_time:       timeInputToISO(currentDetailDate, endVal),
-      p_work_date:      currentDetailDate,
+      p_start_time:     timeInputToISO(dateVal, startVal),
+      p_end_time:       timeInputToISO(dateVal, endVal),
+      p_work_date:      dateVal,
+      p_previous_work_date: currentDetailDate,
     });
     if (error) throw error;
-    applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
+    if (moved) {
+      // Entry now belongs to a different day's log. Rows are one-per-
+      // planned-field, not one-per-entry, so this row stays in the list —
+      // it just needs to drop back to "not started" for currentDetailDate.
+      // Reloading is simplest and matches what a fresh open would show.
+      await loadDetailForDate();
+      showFormSuccess(`Vnos prestavljen na ${fmtSampleDate(dateVal)}.`);
+    } else {
+      applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
+    }
   } catch (e) {
     showFormError(e.message || 'Napaka pri shranjevanju.');
   } finally {
