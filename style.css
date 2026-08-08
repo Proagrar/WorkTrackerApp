@@ -429,8 +429,16 @@ input, select, textarea { font-family: inherit; }
 
 
 /* ── Work orders: compact table ────────────────────────────── */
-.wo-lc-header,
-.wo-compact {
+/* Combined-class selectors, not comma-separated single classes — these
+   rows carry both .log-compact and .wo-compact (same for the header),
+   and .lc-header/.log-compact's own grid-template-columns (further
+   down, for Evidenca dela's date/duration/gerks/ha/actions layout)
+   has identical specificity. Whichever rule came later in the file
+   used to win regardless of which one actually applied here — Stranka
+   was silently getting Evidenca dela's 55px "duration" slot instead
+   of its own 1fr, while GERKI got the 1fr meant for Stranka. */
+.wo-lc-header.wo-lc-header,
+.wo-compact.wo-compact {
   grid-template-columns: 34px 1fr 40px 48px 80px;
 }
 
@@ -473,6 +481,14 @@ input, select, textarea { font-family: inherit; }
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Maps + confirmed columns — desktop-only (900px+ below), hidden here
+   so the base 5-column grid-template-columns stays accurate on mobile
+   even though these elements are always present in the markup. */
+.wo-c-maps,
+.wo-c-confirmed { display: none; }
+.wo-c-maps--empty { color: var(--text-muted); }
+.wo-confirm-checkbox { width: 16px; height: 16px; cursor: pointer; }
 
 
 /* ── Work log: work-order label + compact GERK entry table ──── */
@@ -1137,6 +1153,23 @@ input, select, textarea { font-family: inherit; }
   .wo-search-input:focus { width: 260px; }
 
   .header-name { max-width: 240px; }
+
+  /* Work order list: room for a map-link column, plus a confirmed
+     checkbox column for admins. Combined-class selectors (not just
+     .wo-lc-header--enhanced) to keep beating .lc-header/.log-compact's
+     own grid-template-columns on specificity — see the base rule's
+     comment further up for why that matters here. */
+  .wo-c-maps,
+  .wo-c-confirmed { display: flex; align-items: center; justify-content: center; }
+
+  .wo-lc-header.wo-lc-header--enhanced,
+  .wo-compact.wo-compact--enhanced {
+    grid-template-columns: 34px 1fr 40px 48px 80px 40px;
+  }
+  .wo-lc-header.wo-lc-header--admin,
+  .wo-compact.wo-compact--admin {
+    grid-template-columns: 34px 1fr 40px 48px 80px 40px 70px;
+  }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */
   .modal-backdrop     { align-items: center; padding: 24px; }

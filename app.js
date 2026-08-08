@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.27';
+const APP_VERSION = 'v1.28';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -22,6 +22,7 @@ let currentMonth = new Date().toISOString().slice(0, 7);
 let currentTab       = 'nalogi'; // 'evidenca' | 'nalogi'
 let workOrders       = [];
 let workOrdersLoaded = false;
+let workOrderCenterPoints = {}; // work_order_id -> {lat, lng}, from get_work_orders_center_points
 let customers        = [];
 let operatorsList    = [];
 
@@ -1343,16 +1344,24 @@ async function loadWorkOrders() {
       <p>Nalaganje...</p>
     </div>`;
 
-  const { data, error } = await supabase
-    .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
-    .order('ustvarjen', { ascending: false });
+  const [{ data, error }, { data: centerPoints }] = await Promise.all([
+    supabase
+      .from('delovni_nalogi')
+      .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
+      .order('ustvarjen', { ascending: false }),
+    // One batched call for every row's map point, instead of one RPC
+    // round trip per row — see get_work_orders_center_points.
+    supabase.rpc('get_work_orders_center_points'),
+  ]);
 
   if (error) {
     workOrdersList.innerHTML = `<div class="state-empty"><p>Napaka pri nalaganju. Poskusite znova.</p></div>`;
     return;
   }
 
+  workOrderCenterPoints = Object.fromEntries(
+    (centerPoints || []).map(p => [p.work_order_id, { lat: p.lat, lng: p.lng }])
+  );
   workOrders = data ?? [];
   workOrdersLoaded = true;
   renderWorkOrders();
@@ -1378,8 +1387,17 @@ function renderWorkOrders() {
 
   workOrdersList.className = 'logs-list logs-list--compact';
 
+  const isAdmin = currentRole === 'admin';
+  // Maps + confirmed are desktop-only additions (see the 900px+ media
+  // query) — modifier classes pick which grid-template-columns applies;
+  // the elements themselves render unconditionally (aside from the
+  // admin-only checkbox), CSS just doesn't give them room below 900px.
+  const rowMod = `wo-compact--enhanced${isAdmin ? ' wo-compact--admin' : ''}`;
+  const headMod = `wo-lc-header--enhanced${isAdmin ? ' wo-lc-header--admin' : ''}`;
+
   const rowData = fwo.map(wo => {
     const gerks = wo.delovni_nalogi_gerki || [];
+    const point = workOrderCenterPoints[wo.id];
     return {
       id:        wo.id,
       stevilka:  wo.stevilka,
@@ -1387,27 +1405,40 @@ function renderWorkOrders() {
       gerkCount: gerks.length,
       totalHa:   gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
       status:    wo.status,
+      lat:       point?.lat ?? null,
+      lng:       point?.lng ?? null,
+      confirmed: !!wo.confirmed,
     };
   });
 
   const header = `
-    <div class="lc-header wo-lc-header">
+    <div class="lc-header wo-lc-header ${headMod}">
       ${WO_SORT_COLUMNS.map(col => {
         const active = woSortKey === col.key;
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
         return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
       }).join('')}
+      <span class="wo-th wo-th-center">Zemljevid</span>
+      ${isAdmin ? '<span class="wo-th wo-th-center">Potrjeno</span>' : ''}
     </div>`;
 
   const rows = sortWorkOrderRows(rowData).map(r => {
     const haStr = r.totalHa > 0 ? r.totalHa.toFixed(2) : '—';
+    const mapsCell = r.lat != null && r.lng != null
+      ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
+      : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
+    const confirmCell = isAdmin
+      ? `<span class="wo-c-confirmed"><input type="checkbox" class="wo-confirm-checkbox" data-id="${escHtml(r.id)}" ${r.confirmed ? 'checked' : ''}></span>`
+      : '';
     return `
-      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${r.id}">
+      <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
+        ${mapsCell}
+        ${confirmCell}
       </div>`;
   }).join('');
 
@@ -1422,7 +1453,11 @@ function wireWorkOrderButtons() {
       if (wo) openWorkOrderDetail(wo);
     });
   });
-  workOrdersList.querySelectorAll('.wo-th').forEach(btn => {
+  // Scoped to <button> — the static Zemljevid/Potrjeno header labels
+  // share the .wo-th class purely for visual consistency and aren't
+  // sortable (no data-sort), so they're plain <span> elements, not
+  // buttons — matching this selector to them would sort by "undefined".
+  workOrdersList.querySelectorAll('button.wo-th').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.sort;
       woSortDir = (woSortKey === key && woSortDir === 'asc') ? 'desc' : 'asc';
@@ -1430,6 +1465,26 @@ function wireWorkOrderButtons() {
       renderWorkOrders();
     });
   });
+  workOrdersList.querySelectorAll('.wo-confirm-checkbox').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation()); // don't also open the detail modal
+    cb.addEventListener('change', () => updateWorkOrderConfirmed(cb));
+  });
+}
+
+async function updateWorkOrderConfirmed(cb) {
+  const id        = cb.dataset.id;
+  const confirmed = cb.checked;
+  cb.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi').update({ confirmed }).eq('id', id);
+    if (error) throw error;
+    const wo = workOrders.find(w => w.id === id);
+    if (wo) wo.confirmed = confirmed;
+  } catch (e) {
+    cb.checked = !confirmed; // revert — the list isn't reloaded on failure
+  } finally {
+    cb.disabled = false;
+  }
 }
 
 function getAvailableStranke() {
