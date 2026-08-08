@@ -512,6 +512,8 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-name { font-size: .8125rem; font-weight: 600; color: var(--text-primary); }
 
+.wlg-field-map { margin-left: 4px; text-decoration: none; }
+
 .wlg-meta {
   font-size: .75rem;
   color: var(--text-secondary);
@@ -643,7 +645,7 @@ input, select, textarea { font-family: inherit; }
   border-top: 1px solid var(--border-light);
 }
 
-.sample-field-select {
+.sample-field-input {
   font-family: inherit;
   font-size: .78125rem;
   padding: 2px 4px;
@@ -653,12 +655,16 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
+.sample-area-input { width: 64px; }
+
 .sample-raw-note {
   margin-top: 2px;
   font-size: .71875rem;
   color: var(--text-muted);
   white-space: normal;
 }
+
+.wlg-add-sample { margin-top: 8px; }
 
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.24';
+const APP_VERSION = 'v1.27';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -52,6 +52,7 @@ const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const workLogDateInput = document.getElementById('workLogDate');
 const woStartBtn  = document.getElementById('woStartBtn');
+const woMapsLink  = document.getElementById('woMapsLink');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
 const roadHourSel = document.getElementById('roadHour');
@@ -379,7 +380,7 @@ function updateTractorDatalist() {
 async function loadFields() {
   const { data } = await supabase
     .from('fields')
-    .select('cadastre_id, name, area_ha, customers(naziv, company_name)')
+    .select('cadastre_id, name, area_ha, centroid_lat, centroid_lng, customers(naziv, company_name)')
     .order('name');
   const seen = new Set();
   fields = (data ?? [])
@@ -388,6 +389,8 @@ async function loadFields() {
       code:     f.cadastre_id,
       name:     f.name ?? null,
       area:     f.area_ha ?? null,
+      lat:      f.centroid_lat ?? null,
+      lng:      f.centroid_lng ?? null,
       customer: f.customers?.naziv || f.customers?.company_name || null,
     }))
     .filter(f => { if (seen.has(f.code)) return false; seen.add(f.code); return true; });
@@ -526,6 +529,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
 
   const rows = planFields.map(pf => ({
     code:      pf.gerk_code,
+    gerkId:    pf.id,
     hectares:  pf.kolicina_ha ?? logByCode[pf.gerk_code]?.hectares ?? null,
     lokacija:  pf.lokacija ?? null,
     startTime: logByCode[pf.gerk_code]?.start_time ?? null,
@@ -600,7 +604,7 @@ function renderSamplingCell(s) {
   const opts = ['<option value="">-</option>']
     .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.sampling_note === a ? ' selected' : ''}>${escHtml(a)}</option>`))
     .join('');
-  const select = `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="sampling_note">${opts}</select>`;
+  const select = `<select class="sample-field-input" data-sample-id="${escHtml(s.id)}" data-field="sampling_note">${opts}</select>`;
   // Raw import text/date fragments the dropdown can't represent as one
   // of its own options — keep it visible instead of silently hiding it
   // behind a "-" selection.
@@ -615,20 +619,27 @@ function renderSampleDepthCell(s) {
   const opts = ['<option value="">-</option>']
     .concat(SAMPLE_DEPTHS.map(d => `<option value="${d}"${s.sampling_depth_cm === d ? ' selected' : ''}>${d} cm</option>`))
     .join('');
-  return `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="sampling_depth_cm">${opts}</select>`;
+  return `<select class="sample-field-input" data-sample-id="${escHtml(s.id)}" data-field="sampling_depth_cm">${opts}</select>`;
 }
 
-// Updates one sample's action/depth in place — direct table write (no
-// RPC needed, RLS already restricts this to admins) — and patches the
-// in-memory copy so it stays correct if the panel re-renders without
-// a full reload.
-async function updateSampleField(selectEl) {
-  const sampleId = selectEl.dataset.sampleId;
-  const field    = selectEl.dataset.field;
-  let value = selectEl.value || null;
-  if (field === 'sampling_depth_cm' && value !== null) value = parseInt(value, 10);
+function renderSampleAreaCell(s) {
+  if (currentRole !== 'admin') return s.area_ha != null ? `${s.area_ha} ha` : '—';
+  return `<input type="number" step="0.01" min="0" class="sample-field-input sample-area-input"
+            data-sample-id="${escHtml(s.id)}" data-field="area_ha" value="${s.area_ha ?? ''}" placeholder="ha">`;
+}
 
-  selectEl.disabled = true;
+// Updates one sample's action/depth/area in place — direct table
+// write (no RPC needed, RLS already restricts this to admins) — and
+// patches the in-memory copy so it stays correct if the panel
+// re-renders without a full reload.
+async function updateSampleField(fieldEl) {
+  const sampleId = fieldEl.dataset.sampleId;
+  const field    = fieldEl.dataset.field;
+  let value = fieldEl.value === '' ? null : fieldEl.value;
+  if (field === 'sampling_depth_cm' && value !== null) value = parseInt(value, 10);
+  if (field === 'area_ha' && value !== null) value = parseFloat(value);
+
+  fieldEl.disabled = true;
   try {
     const { error } = await supabase.from('delovni_nalogi_vzorci').update({ [field]: value }).eq('id', sampleId);
     if (error) throw error;
@@ -639,7 +650,7 @@ async function updateSampleField(selectEl) {
   } catch (e) {
     showFormError('Napaka pri shranjevanju vzorca.');
   } finally {
-    selectEl.disabled = false;
+    fieldEl.disabled = false;
   }
 }
 
@@ -661,7 +672,10 @@ function renderWorkLogGerkRows(rows) {
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info">
-          <span class="wlg-code-line"><span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}</span>
+          <span class="wlg-code-line">
+            <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
+            ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
+          </span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
         </div>
         <div class="wlg-times">
@@ -693,29 +707,42 @@ function renderWorkLogGerkRows(rows) {
             return `<span class="wlg-others-item">${o.completed ? '✓' : '•'} ${escHtml(opName)} · ${when}${time ? ' · ' + time : ''}</span>`;
           }).join('')}
         </div>` : ''}
-        ${samples.length ? `
+        ${renderSamplesSection(samples, r.gerkId)}
+      </div>`;
+  }).join('');
+
+  wireGerkRowButtons();
+}
+
+// Admins can always see + add segments (even zero today — that's the
+// point of the + button), everyone else only sees the panel when
+// there's actually something to show.
+function renderSamplesSection(samples, gerkId) {
+  if (!samples.length && currentRole !== 'admin') return '';
+  const addBtn = currentRole === 'admin' && gerkId
+    ? `<button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample" data-gerk-id="${escHtml(gerkId)}">+ Dodaj segment</button>`
+    : '';
+  return `
         <button type="button" class="wlg-samples-toggle wlg-samples-toggle--open" data-action="wlg-samples-toggle">
           <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
           <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
         </button>
         <div class="wlg-samples-panel">
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th></tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th></tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${escHtml(s.sample_no)}</td>
+                  <td>${renderSampleAreaCell(s)}</td>
                   <td>${renderSamplingCell(s)}</td>
                   <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
-        </div>` : ''}
-      </div>`;
-  }).join('');
-
-  wireGerkRowButtons();
+          ${addBtn}
+        </div>`;
 }
 
 function updateOrderHeader() {
@@ -766,10 +793,26 @@ async function openWorkOrderDetail(workOrder) {
   workLogDateInput.max   = todayISO();
   workLogDateInput.value = currentDetailDate;
 
+  woMapsLink.hidden = true;
+  loadWorkOrderCenterPoint(workOrder.id); // fire-and-forget, don't block modal open on a geometry query
+
   await loadDetailForDate();
 
   formModal.hidden = false;
   document.body.style.overflow = 'hidden';
+}
+
+// Combines every GERK's CENTER_POINT on this work order into one
+// point server-side (see get_work_order_center_point). Guards against
+// the modal having moved on to a different work order by the time
+// this resolves (rapid open/close/reopen).
+async function loadWorkOrderCenterPoint(workOrderId) {
+  const { data, error } = await supabase.rpc('get_work_order_center_point', { p_work_order_id: workOrderId });
+  if (error || currentDetailWorkOrder?.id !== workOrderId) return;
+  const result = Array.isArray(data) ? data[0] : data;
+  if (result?.lat == null || result?.lng == null) return;
+  woMapsLink.href = `https://www.google.com/maps?q=${result.lat},${result.lng}`;
+  woMapsLink.hidden = false;
 }
 
 // Re-fetches and re-renders the modal's contents for currentDetailDate —
@@ -1044,9 +1087,46 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-samples-toggle"]').forEach(btn => {
     btn.addEventListener('click', () => toggleGerkSamples(btn));
   });
-  workLogGerkRowsEl.querySelectorAll('.sample-field-select').forEach(sel => {
+  workLogGerkRowsEl.querySelectorAll('.sample-field-input').forEach(sel => {
     sel.addEventListener('change', () => updateSampleField(sel));
   });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample"]').forEach(btn => {
+    btn.addEventListener('click', () => addSample(btn));
+  });
+}
+
+// Adds one new segment/sample row for a GERK — sample_no auto-suggested
+// as (highest existing number for that GERK) + 1, everything else left
+// blank to fill in afterward via the existing dropdowns/inputs.
+// currentDetailWorkOrder.delovni_nalogi_gerki isn't kept in sync by
+// loadDetailForDate() (that only re-fetches work_logs/work_log_gerks
+// for the day), so the freshly inserted row is fetched directly and
+// patched in before re-rendering.
+async function addSample(btn) {
+  const gerkId = btn.dataset.gerkId;
+  const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
+  const existing = gerk?.delovni_nalogi_vzorci || [];
+  const maxNo = existing.reduce((max, s) => {
+    const n = parseInt(s.sample_no, 10);
+    return Number.isFinite(n) && n > max ? n : max;
+  }, 0);
+
+  btn.disabled = true;
+  try {
+    const { data, error } = await supabase
+      .from('delovni_nalogi_vzorci')
+      .insert({ delovni_nalog_gerk_id: gerkId, sample_no: String(maxNo + 1) })
+      .select('id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha')
+      .single();
+    if (error) throw error;
+
+    gerk.delovni_nalogi_vzorci = [...existing, data];
+    await loadDetailForDate();
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri dodajanju segmenta.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Čas na poti: multiple add-a-line entries, summed server-side ──
@@ -1265,7 +1345,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm))')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
