@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.29';
+const APP_VERSION = 'v1.30';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1426,13 +1426,11 @@ function renderWorkOrders() {
 
   workOrdersList.className = 'logs-list logs-list--compact';
 
-  const isAdmin = currentRole === 'admin';
-  // Maps + confirmed are desktop-only additions (see the 900px+ media
-  // query) — modifier classes pick which grid-template-columns applies;
-  // the elements themselves render unconditionally (aside from the
-  // admin-only checkbox), CSS just doesn't give them room below 900px.
-  const rowMod = `wo-compact--enhanced${isAdmin ? ' wo-compact--admin' : ''}`;
-  const headMod = `wo-lc-header--enhanced${isAdmin ? ' wo-lc-header--admin' : ''}`;
+  // Zemljevid/Potrjeno columns disabled for now — overlapped in the
+  // header on real devices. Data fetch (workOrderCenterPoints,
+  // wo.confirmed) and updateWorkOrderConfirmed() are left in place so
+  // this is just a rendering toggle, not a full rip-out, when the
+  // layout issue gets fixed.
 
   const rowData = fwo.map(wo => {
     const gerks = wo.delovni_nalogi_gerki || [];
@@ -1451,33 +1449,23 @@ function renderWorkOrders() {
   });
 
   const header = `
-    <div class="lc-header wo-lc-header ${headMod}">
+    <div class="lc-header wo-lc-header">
       ${WO_SORT_COLUMNS.map(col => {
         const active = woSortKey === col.key;
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
         return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
       }).join('')}
-      <span class="wo-th wo-th-center">Zemljevid</span>
-      ${isAdmin ? '<span class="wo-th wo-th-center">Potrjeno</span>' : ''}
     </div>`;
 
   const rows = sortWorkOrderRows(rowData).map(r => {
     const haStr = r.totalHa > 0 ? r.totalHa.toFixed(2) : '—';
-    const mapsCell = r.lat != null && r.lng != null
-      ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
-      : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
-    const confirmCell = isAdmin
-      ? `<span class="wo-c-confirmed"><input type="checkbox" class="wo-confirm-checkbox" data-id="${escHtml(r.id)}" ${r.confirmed ? 'checked' : ''}></span>`
-      : '';
     return `
-      <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
+      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
-        ${mapsCell}
-        ${confirmCell}
       </div>`;
   }).join('');
 
