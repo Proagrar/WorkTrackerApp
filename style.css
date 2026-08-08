@@ -653,6 +653,13 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
+.sample-raw-note {
+  margin-top: 2px;
+  font-size: .71875rem;
+  color: var(--text-muted);
+  white-space: normal;
+}
+
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
 .road-time-row {

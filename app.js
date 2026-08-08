@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.23';
+const APP_VERSION = 'v1.24';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -577,18 +577,37 @@ function toTimeInputValue(iso) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// ── Sample action / sampling depth — admin-editable, everyone else read-only ──
-// Matches the "Admins can manage samples" RLS policy: only admins can
-// actually write, so only admins get the dropdown.
-const SAMPLE_ACTIONS = ['ne pobereš', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
+// ── Vzorčenje (sampling_note) action dropdown / sampling depth ──
+// admin-editable, everyone else read-only. Matches the "Admins can
+// manage samples" RLS policy: only admins can actually write, so only
+// admins get the dropdown.
+//
+// The action concept lives in sampling_note, not a separate column —
+// that's already where "ne pobereš" shows up 251 times from the
+// original import. "združi" (bare, no group number, 148 rows) is kept
+// as its own option alongside združi_1..5: the original Excel used
+// cell color to show which segments group together, and only the
+// word itself survived the import, not which group — so these rows
+// genuinely don't have a group number to default to.
+const SAMPLE_ACTIONS = ['ne pobereš', 'združi', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
 const SAMPLE_DEPTHS  = [12, 20, 25, 30, 60, 90];
 
-function renderSampleActionCell(s) {
-  if (currentRole !== 'admin') return s.action ? escHtml(s.action) : '—';
+function renderSamplingCell(s) {
+  if (currentRole !== 'admin') {
+    return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
+  }
+  const matchesAction = s.sampling_note && SAMPLE_ACTIONS.includes(s.sampling_note);
   const opts = ['<option value="">-</option>']
-    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.action === a ? ' selected' : ''}>${escHtml(a)}</option>`))
+    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.sampling_note === a ? ' selected' : ''}>${escHtml(a)}</option>`))
     .join('');
-  return `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="action">${opts}</select>`;
+  const select = `<select class="sample-field-select" data-sample-id="${escHtml(s.id)}" data-field="sampling_note">${opts}</select>`;
+  // Raw import text/date fragments the dropdown can't represent as one
+  // of its own options — keep it visible instead of silently hiding it
+  // behind a "-" selection.
+  const raw = !matchesAction && (s.sampling_note || s.sampling_date)
+    ? `<div class="sample-raw-note">${s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date)}</div>`
+    : '';
+  return `${select}${raw}`;
 }
 
 function renderSampleDepthCell(s) {
@@ -681,14 +700,13 @@ function renderWorkLogGerkRows(rows) {
         </button>
         <div class="wlg-samples-panel">
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Akcija</th><th>Globina</th></tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th></tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${escHtml(s.sample_no)}</td>
-                  <td>${s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date)}</td>
+                  <td>${renderSamplingCell(s)}</td>
                   <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
-                  <td>${renderSampleActionCell(s)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
                 </tr>`).join('')}
             </tbody>
@@ -1247,7 +1265,7 @@ async function loadWorkOrders() {
 
   const { data, error } = await supabase
     .from('delovni_nalogi')
-    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, action, sampling_depth_cm))')
+    .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm))')
     .order('ustvarjen', { ascending: false });
 
   if (error) {
