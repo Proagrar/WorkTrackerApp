@@ -538,6 +538,14 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
+.wlg-lab-type {
+  display: block;
+  font-size: .75rem;
+  color: var(--text-secondary);
+}
+
+.wlg-lab-type-select { margin-top: 2px; }
+
 .wlg-row--completed {
   background: var(--success-bg);
   border-color: #BBF7D0;

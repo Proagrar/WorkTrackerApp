@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.28';
+const APP_VERSION = 'v1.29';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -531,6 +531,7 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
   const rows = planFields.map(pf => ({
     code:      pf.gerk_code,
     gerkId:    pf.id,
+    tipLabAnalize: pf.tip_lab_analize ?? null,
     hectares:  pf.kolicina_ha ?? logByCode[pf.gerk_code]?.hectares ?? null,
     lokacija:  pf.lokacija ?? null,
     startTime: logByCode[pf.gerk_code]?.start_time ?? null,
@@ -615,6 +616,40 @@ function renderSamplingCell(s) {
   return `${select}${raw}`;
 }
 
+// Tip LAB analize — one per GERK-on-this-work-order (not per segment;
+// a GERK can carry several segments/samples, but only one analysis
+// type covers all of them). Admin-write via "Admins can manage work
+// order fields", same as everything else at this level (kolicina_ha,
+// lokacija).
+const LAB_ANALYSIS_TYPES = ['basic', 'micro elements'];
+
+function renderGerkLabTypeCell(r) {
+  if (!r.gerkId) return '';
+  if (currentRole !== 'admin') {
+    return r.tipLabAnalize ? `<span class="wlg-lab-type">${escHtml(r.tipLabAnalize)}</span>` : '';
+  }
+  const opts = ['<option value="">-</option>']
+    .concat(LAB_ANALYSIS_TYPES.map(v => `<option value="${escHtml(v)}"${r.tipLabAnalize === v ? ' selected' : ''}>${escHtml(v)}</option>`))
+    .join('');
+  return `<select class="wlg-lab-type-select sample-field-input" data-gerk-row-id="${escHtml(r.gerkId)}">${opts}</select>`;
+}
+
+async function updateGerkLabType(selectEl) {
+  const gerkId = selectEl.dataset.gerkRowId;
+  const value  = selectEl.value || null;
+  selectEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_gerki').update({ tip_lab_analize: value }).eq('id', gerkId);
+    if (error) throw error;
+    const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
+    if (gerk) gerk.tip_lab_analize = value;
+  } catch (e) {
+    showFormError('Napaka pri shranjevanju.');
+  } finally {
+    selectEl.disabled = false;
+  }
+}
+
 function renderSampleDepthCell(s) {
   if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
   const opts = ['<option value="">-</option>']
@@ -678,6 +713,7 @@ function renderWorkLogGerkRows(rows) {
             ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
           </span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
+          ${renderGerkLabTypeCell(r)}
         </div>
         <div class="wlg-times">
           <button type="button" class="wlg-toggle-btn" data-action="wlg-start">Start</button>
@@ -1094,6 +1130,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample"]').forEach(btn => {
     btn.addEventListener('click', () => addSample(btn));
   });
+  workLogGerkRowsEl.querySelectorAll('.wlg-lab-type-select').forEach(sel => {
+    sel.addEventListener('change', () => updateGerkLabType(sel));
+  });
 }
 
 // Adds one new segment/sample row for a GERK — sample_no auto-suggested
@@ -1347,7 +1386,7 @@ async function loadWorkOrders() {
   const [{ data, error }, { data: centerPoints }] = await Promise.all([
     supabase
       .from('delovni_nalogi')
-      .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
+      .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, tip_lab_analize, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
       .order('ustvarjen', { ascending: false }),
     // One batched call for every row's map point, instead of one RPC
     // round trip per row — see get_work_orders_center_points.
