@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.32';
+const APP_VERSION = 'v1.33';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -53,6 +53,14 @@ const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const workLogDateInput = document.getElementById('workLogDate');
 const woStartBtn  = document.getElementById('woStartBtn');
+const woReleaseBtn = document.getElementById('woReleaseBtn');
+const woStatusEditWrap = document.getElementById('woStatusEditWrap');
+const woStatusEdit = document.getElementById('woStatusEdit');
+const woDeleteBtn = document.getElementById('woDeleteBtn');
+const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
+const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
+const woExistingGerkList = document.getElementById('woExistingGerkList');
+const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
 const woMapsLink  = document.getElementById('woMapsLink');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
@@ -107,6 +115,10 @@ const woStrankaIdInput    = document.getElementById('woStrankaId');
 const woStrankaSuggestions = document.getElementById('woStrankaSuggestions');
 const woIzvajalecSel      = document.getElementById('woIzvajalec');
 const woTipSel            = document.getElementById('woTip');
+const woCustomerGerksWrap = document.getElementById('woCustomerGerksWrap');
+const woCustomerGerksList = document.getElementById('woCustomerGerksList');
+const woGerkPasteInput    = document.getElementById('woGerkPaste');
+const woGerkPasteBtn      = document.getElementById('woGerkPasteBtn');
 const woGerksListEl       = document.getElementById('woGerksList');
 const woAddGerkBtn        = document.getElementById('woAddGerkBtn');
 const woStrosekOcenaInput = document.getElementById('woStrosekOcena');
@@ -490,6 +502,14 @@ function addGerkRow(container = woGerksListEl, code = '', hectares = '', lokacij
   });
 
   removeBtn.addEventListener('click', () => {
+    // If this code is also checked in the customer GERK checklist,
+    // uncheck it too — otherwise the checklist would claim it's still
+    // included after the row backing it is gone.
+    const codeNow = codeInput.value.trim();
+    if (codeNow && container === woGerksListEl) {
+      const cb = woCustomerGerksList.querySelector(`.wo-gerk-checkbox[data-code="${CSS.escape(codeNow)}"]`);
+      if (cb) cb.checked = false;
+    }
     row.remove();
     if (!container.querySelector('.gerk-row')) addGerkRow(container);
   });
@@ -734,6 +754,7 @@ function renderWorkLogGerkRows(rows) {
           </label>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-save">Shrani</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
+          ${currentRole === 'admin' && r.gerkId ? `<button type="button" class="btn btn-danger btn-sm" data-action="wlg-remove-gerk" data-gerk-row-id="${escHtml(r.gerkId)}">Odstrani GERK</button>` : ''}
         </div>
         ${others.length ? `
         <div class="wlg-others">
@@ -799,6 +820,18 @@ function updateOrderHeader() {
     woStartBtn.disabled = true;
   }
 
+  // Release: undo "Prevzemi nalog" — the current izvajalec or an admin,
+  // only while it's actually claimed.
+  const isAdmin = currentRole === 'admin';
+  woReleaseBtn.hidden = !(wo.status === 'V delu' && (wo.izvajalec === currentUser.id || isAdmin));
+
+  // Admin-only: change status directly, add a GERK after creation, delete
+  // the order outright — none of these are reachable any other way.
+  woStatusEditWrap.hidden = !isAdmin;
+  if (isAdmin) woStatusEdit.value = wo.status;
+  woAddExistingGerkWrap.hidden = !isAdmin;
+  woDeleteBtn.hidden = !isAdmin;
+
   // Everyone who's actually logged a GERK on this order, not just whoever
   // originally claimed it — a second operator picking up mid-order doesn't
   // replace the first in this list, both show.
@@ -833,6 +866,9 @@ async function openWorkOrderDetail(workOrder) {
 
   woMapsLink.hidden = true;
   loadWorkOrderCenterPoint(workOrder.id); // fire-and-forget, don't block modal open on a geometry query
+
+  woAddExistingGerkCode.value = '';
+  if (currentRole === 'admin') loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
 
   await loadDetailForDate();
 
@@ -1122,6 +1158,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-edit-cancel"]').forEach(btn => {
     btn.addEventListener('click', () => cancelGerkEdit(btn));
   });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-remove-gerk"]').forEach(btn => {
+    btn.addEventListener('click', () => removeGerkFromOrder(btn));
+  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-samples-toggle"]').forEach(btn => {
     btn.addEventListener('click', () => toggleGerkSamples(btn));
   });
@@ -1177,6 +1216,42 @@ async function addSample(btn) {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Removing a GERK from an already-created order — blocked if it has
+// any recorded segments or logged time, same "don't destroy real
+// data" rule as deleting a whole work order. delovni_nalogi_vzorci
+// would otherwise cascade-delete silently along with it.
+async function removeGerkFromOrder(btn) {
+  const gerkRowId = btn.dataset.gerkRowId;
+  const gerkCode  = btn.closest('.wlg-row').dataset.code;
+
+  const { count: sampleCount } = await supabase
+    .from('delovni_nalogi_vzorci')
+    .select('id', { count: 'exact', head: true })
+    .eq('delovni_nalog_gerk_id', gerkRowId);
+  if (sampleCount > 0) {
+    return showFormError('Ni mogoče odstraniti — GERK ima zabeležene segmente/vzorce.');
+  }
+
+  // currentAllGerkEntries already holds every operator's work_log_gerks
+  // rows for this order (loaded once in loadDetailForDate) — no need for
+  // a second round trip to check for logged time.
+  const hasLoggedTime = currentAllGerkEntries.some(e => e.gerk_code === gerkCode && (e.start_time || e.completed));
+  if (hasLoggedTime) {
+    return showFormError('Ni mogoče odstraniti — na GERKU je že zabeležen čas dela.');
+  }
+
+  if (!confirm('Odstranim ta GERK iz naloga?')) return;
+
+  btn.disabled = true;
+  const { error } = await supabase.from('delovni_nalogi_gerki').delete().eq('id', gerkRowId);
+  btn.disabled = false;
+  if (error) return showFormError(error.message || 'Napaka pri odstranjevanju GERKA.');
+
+  currentDetailWorkOrder.delovni_nalogi_gerki = (currentDetailWorkOrder.delovni_nalogi_gerki || []).filter(g => g.id !== gerkRowId);
+  await loadDetailForDate();
+  await loadWorkOrders();
 }
 
 async function removeSample(btn) {
@@ -1280,6 +1355,98 @@ woStartBtn.addEventListener('click', async () => {
   currentDetailWorkOrder.profiles  = { full_name: currentUserName };
   showFormSuccess('✓ Nalog prevzet!');
   updateOrderHeader();
+  await loadWorkOrders();
+});
+
+woReleaseBtn.addEventListener('click', async () => {
+  if (!confirm('Sprostim ta nalog nazaj na Plan?')) return;
+  woReleaseBtn.disabled = true;
+  const { error } = await supabase.rpc('release_work_order', { p_work_order_id: currentDetailWorkOrder.id });
+  woReleaseBtn.disabled = false;
+  if (error) return showFormError(error.message || 'Napaka pri sproščanju naloga.');
+  currentDetailWorkOrder.status    = 'Plan';
+  currentDetailWorkOrder.izvajalec = null;
+  showFormSuccess('✓ Nalog sproščen.');
+  updateOrderHeader();
+  await loadWorkOrders();
+});
+
+woStatusEdit.addEventListener('change', async () => {
+  const newStatus = woStatusEdit.value;
+  woStatusEdit.disabled = true;
+  const { error } = await supabase
+    .from('delovni_nalogi')
+    .update({ status: newStatus })
+    .eq('id', currentDetailWorkOrder.id);
+  woStatusEdit.disabled = false;
+  if (error) {
+    woStatusEdit.value = currentDetailWorkOrder.status; // revert the select
+    return showFormError('Napaka pri spreminjanju statusa.');
+  }
+  currentDetailWorkOrder.status = newStatus;
+  updateOrderHeader();
+  await loadWorkOrders();
+});
+
+woDeleteBtn.addEventListener('click', async () => {
+  woDeleteBtn.disabled = true;
+  // Pre-check for a clear message — the DB itself also refuses via
+  // work_logs' NO ACTION foreign key either way, this is just a nicer
+  // error than a raw constraint violation.
+  const { count } = await supabase
+    .from('work_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('work_order_id', currentDetailWorkOrder.id);
+  if (count > 0) {
+    woDeleteBtn.disabled = false;
+    return showFormError('Ni mogoče izbrisati — nalog ima že beležen čas dela.');
+  }
+  if (!confirm('Izbrišem ta delovni nalog? Tega ni mogoče razveljaviti.')) {
+    woDeleteBtn.disabled = false;
+    return;
+  }
+  const { error } = await supabase.from('delovni_nalogi').delete().eq('id', currentDetailWorkOrder.id);
+  woDeleteBtn.disabled = false;
+  if (error) return showFormError('Napaka pri brisanju naloga.');
+  closeModal();
+  await loadWorkOrders();
+});
+
+// Customer-scoped suggestions for the "add GERK to existing order"
+// datalist — same customer this work order already belongs to.
+async function loadCustomerGerkDatalist(customerId) {
+  if (!customerId) { woExistingGerkList.innerHTML = ''; return; }
+  const { data } = await supabase.from('fields').select('cadastre_id, name').eq('customer_id', customerId).order('name');
+  woExistingGerkList.innerHTML = (data || [])
+    .map(f => `<option value="${escHtml(f.cadastre_id)}">${escHtml(f.name || '')}</option>`)
+    .join('');
+}
+
+woAddExistingGerkBtn.addEventListener('click', async () => {
+  const code = woAddExistingGerkCode.value.trim();
+  if (!code) return;
+  const known = (await supabase.from('fields').select('id, area_ha').eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', code).maybeSingle()).data;
+  if (!known && !/^\d{7}$/.test(code)) {
+    return showFormError(`Neveljaven GERK: "${code}" (mora biti 7-mestna številka).`);
+  }
+
+  woAddExistingGerkBtn.disabled = true;
+  const { data, error } = await supabase
+    .from('delovni_nalogi_gerki')
+    .insert({
+      delovni_nalog_id: currentDetailWorkOrder.id,
+      gerk_code:        code,
+      field_id:         known?.id || null,
+      kolicina_ha:      known?.area_ha ?? null,
+    })
+    .select('id, gerk_code, kolicina_ha, lokacija, tip_lab_analize')
+    .single();
+  woAddExistingGerkBtn.disabled = false;
+  if (error) return showFormError(error.message || 'Napaka pri dodajanju GERKA.');
+
+  currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), { ...data, delovni_nalogi_vzorci: [] }];
+  woAddExistingGerkCode.value = '';
+  await loadDetailForDate();
   await loadWorkOrders();
 });
 
@@ -1456,11 +1623,9 @@ function renderWorkOrders() {
 
   workOrdersList.className = 'logs-list logs-list--compact';
 
-  // Zemljevid/Potrjeno columns disabled for now — overlapped in the
-  // header on real devices. Data fetch (workOrderCenterPoints,
-  // wo.confirmed) and updateWorkOrderConfirmed() are left in place so
-  // this is just a rendering toggle, not a full rip-out, when the
-  // layout issue gets fixed.
+  const isAdmin = currentRole === 'admin';
+  const rowMod  = `wo-compact--enhanced${isAdmin ? ' wo-compact--admin' : ''}`;
+  const headMod = `wo-lc-header--enhanced${isAdmin ? ' wo-lc-header--admin' : ''}`;
 
   const rowData = fwo.map(wo => {
     const gerks = wo.delovni_nalogi_gerki || [];
@@ -1479,23 +1644,33 @@ function renderWorkOrders() {
   });
 
   const header = `
-    <div class="lc-header wo-lc-header">
+    <div class="lc-header wo-lc-header ${headMod}">
       ${WO_SORT_COLUMNS.map(col => {
         const active = woSortKey === col.key;
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
         return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
       }).join('')}
+      <span class="wo-th wo-th-center" title="Zemljevid">📍</span>
+      ${isAdmin ? '<span class="wo-th wo-th-center" title="Potrjeno">✓</span>' : ''}
     </div>`;
 
   const rows = sortWorkOrderRows(rowData).map(r => {
     const haStr = r.totalHa > 0 ? r.totalHa.toFixed(2) : '—';
+    const mapsCell = r.lat != null && r.lng != null
+      ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
+      : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
+    const confirmCell = isAdmin
+      ? `<span class="wo-c-confirmed"><input type="checkbox" class="wo-confirm-checkbox" data-id="${escHtml(r.id)}" ${r.confirmed ? 'checked' : ''}></span>`
+      : '';
     return `
-      <div class="log-compact wo-compact" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
+      <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
+        ${mapsCell}
+        ${confirmCell}
       </div>`;
   }).join('');
 
@@ -1626,8 +1801,87 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
   if (c) {
     woStrankaInput.value = c.name;
     woStrankaIdInput.value = c.id;
+    loadCustomerGerkChecklist(c.id);
   }
   woStrankaSuggestions.hidden = true;
+});
+
+// ── GERK checklist: the selected customer's own fields, checked ──
+// instead of typed/searched one at a time. Checking/unchecking stays
+// in sync with the plain row list below it (still the actual source
+// of truth getFormGerks() reads at submit) — checking adds a row (or
+// fills the first still-empty one), unchecking removes it.
+async function loadCustomerGerkChecklist(customerId) {
+  woCustomerGerksWrap.hidden = true;
+  woCustomerGerksList.innerHTML = '';
+  if (!customerId) return;
+
+  const { data } = await supabase
+    .from('fields')
+    .select('cadastre_id, name, area_ha')
+    .eq('customer_id', customerId)
+    .order('name');
+  if (!data || !data.length) return;
+
+  woCustomerGerksList.innerHTML = data.map(f => `
+    <label class="wo-gerk-check-item">
+      <input type="checkbox" class="wo-gerk-checkbox" data-code="${escHtml(f.cadastre_id)}" data-area="${f.area_ha ?? ''}">
+      <span class="wo-gerk-check-code">${escHtml(f.cadastre_id)}</span>
+      <span class="wo-gerk-check-name">${escHtml(f.name || '')}${f.area_ha ? ` · ${f.area_ha} ha` : ''}</span>
+    </label>`).join('');
+  woCustomerGerksWrap.hidden = false;
+
+  woCustomerGerksList.querySelectorAll('.wo-gerk-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => toggleGerkChecklistItem(cb));
+  });
+}
+
+function findGerkRowByCode(code) {
+  return Array.from(woGerksListEl.querySelectorAll('.gerk-row'))
+    .find(r => r.querySelector('.gerk-code-input').value.trim() === code);
+}
+
+// Fills the first still-empty manual row instead of piling on a new
+// one, if there is one (there always is exactly one on a fresh form).
+function addOrFillGerkRow(code, hectares) {
+  const emptyRow = Array.from(woGerksListEl.querySelectorAll('.gerk-row'))
+    .find(r => !r.querySelector('.gerk-code-input').value.trim());
+  if (emptyRow) {
+    emptyRow.querySelector('.gerk-code-input').value = code;
+    if (hectares) emptyRow.querySelector('.gerk-ha-input').value = hectares;
+  } else {
+    addGerkRow(woGerksListEl, code, hectares);
+  }
+}
+
+function toggleGerkChecklistItem(cb) {
+  const code = cb.dataset.code;
+  if (cb.checked) {
+    if (!findGerkRowByCode(code)) addOrFillGerkRow(code, cb.dataset.area);
+  } else {
+    const row = findGerkRowByCode(code);
+    if (row) row.remove();
+    if (!woGerksListEl.querySelector('.gerk-row')) addGerkRow(woGerksListEl);
+  }
+}
+
+woGerkPasteBtn.addEventListener('click', () => {
+  // Comma-delimited as asked, but also newline/semicolon — pasting a
+  // column copied straight out of Excel is at least as likely as a
+  // literal comma-separated list, and treating the whole blob as one
+  // giant "code" otherwise just fails validation with no clear reason.
+  const codes = woGerkPasteInput.value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  if (!codes.length) return;
+
+  for (const code of codes) {
+    const checklistCb = woCustomerGerksList.querySelector(`.wo-gerk-checkbox[data-code="${CSS.escape(code)}"]`);
+    if (checklistCb) {
+      if (!checklistCb.checked) { checklistCb.checked = true; toggleGerkChecklistItem(checklistCb); }
+    } else if (!findGerkRowByCode(code)) {
+      addOrFillGerkRow(code);
+    }
+  }
+  woGerkPasteInput.value = '';
 });
 
 // ── Seznam strank modal: open/close + list view ──────────────────
@@ -1783,15 +2037,37 @@ function renderDeclLinks(links) {
         <div class="decl-link-actions">
           <button type="button" class="btn btn-secondary btn-sm" data-copy="${escHtml(url.toString())}">Kopiraj</button>
           ${customer?.email ? `<button type="button" class="btn btn-secondary btn-sm decl-send-btn" data-token="${l.token}">${emailSent ? 'Pošlji ponovno' : 'Pošlji e-pošto'}</button>` : ''}
+          ${!expired ? `<button type="button" class="btn btn-danger btn-sm decl-revoke-btn" data-token="${l.token}">Prekliči</button>` : ''}
         </div>
       </div>`;
   }).join('');
 
   declLinksList.querySelectorAll('.decl-send-btn').forEach(wireSendEmailButton);
+  declLinksList.querySelectorAll('.decl-revoke-btn').forEach(btn => {
+    btn.addEventListener('click', () => revokeDeclLink(btn));
+  });
 
   declLinksList.querySelectorAll('[data-copy]').forEach(btn => {
     btn.addEventListener('click', () => navigator.clipboard.writeText(btn.dataset.copy));
   });
+}
+
+// Soft-revoke, not delete — sets expires_at to now so the link stops
+// working immediately, same as natural expiry, rather than removing
+// the row (keeps the "created/last used" history intact).
+async function revokeDeclLink(btn) {
+  if (!confirm('Prekličem to povezavo?')) return;
+  btn.disabled = true;
+  try {
+    const { error } = await supabase
+      .from('customer_links')
+      .update({ expires_at: new Date().toISOString() })
+      .eq('token', btn.dataset.token);
+    if (error) throw error;
+    await loadDeclCustomerLinks();
+  } catch (e) {
+    btn.disabled = false;
+  }
 }
 
 // ── Deklaracije tab: review table ────────────────────────────────
@@ -1836,6 +2112,7 @@ function renderDeclTable(rows, year) {
         <td>${yn(d?.organic_fertilizer_used)}</td>
         <td>${escHtml(d?.organic_fertilizer_type || '—')}</td>
         <td>${kolicina}</td>
+        <td>${d ? `<button type="button" class="btn btn-danger btn-sm decl-clear-btn" data-decl-id="${escHtml(d.id)}">Počisti</button>` : ''}</td>
       </tr>`;
   }).join('');
 
@@ -1847,12 +2124,31 @@ function renderDeclTable(rows, year) {
             <th>Polje</th><th>GERK</th><th>Ha</th>
             <th>Kultura ${year}</th><th>Kultura ${year + 1}</th>
             <th>Zel. gnojidba</th><th>Slama ostane</th><th>Prid. (t/ha)</th>
-            <th>Org. gnojilo</th><th>Tip</th><th>Količina</th>
+            <th>Org. gnojilo</th><th>Tip</th><th>Količina</th><th></th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;
+
+  declTableWrap.querySelectorAll('.decl-clear-btn').forEach(btn => {
+    btn.addEventListener('click', () => clearDeclaration(btn));
+  });
+}
+
+// Deletes one field's submitted declaration for the year — admin
+// correcting/resetting bad data the customer submitted, not something
+// a customer can do themselves (they can only overwrite via the link).
+async function clearDeclaration(btn) {
+  if (!confirm('Počistim prijavljene podatke za to polje?')) return;
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.from('field_declarations').delete().eq('id', btn.dataset.declId);
+    if (error) throw error;
+    await loadDeclCustomerTable();
+  } catch (e) {
+    btn.disabled = false;
+  }
 }
 
 // ── Work order modal (create only — there is no edit entry point) ──
@@ -1863,6 +2159,9 @@ async function openWorkOrderModal() {
   hideWoFormFeedback();
   woStatusSel.value = 'Plan';
   woGerksListEl.innerHTML = '';
+  woCustomerGerksWrap.hidden = true;
+  woCustomerGerksList.innerHTML = '';
+  woGerkPasteInput.value = '';
   woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
 
   if (!customers.length) await loadCustomers();

@@ -167,6 +167,20 @@
 
         <button type="button" id="woStartBtn" class="btn btn-primary btn-block">Prevzemi nalog</button>
 
+        <button type="button" id="woReleaseBtn" class="btn btn-secondary btn-block" hidden>Sprosti nalog</button>
+
+        <!-- Admin only: change status directly, and change GERK selection on
+             an already-created order — both unreachable any other way. -->
+        <div class="field" id="woStatusEditWrap" hidden>
+          <label class="field-label" for="woStatusEdit">Status</label>
+          <select class="field-input field-select" id="woStatusEdit">
+            <option value="Plan">Plan</option>
+            <option value="V delu">V delu</option>
+            <option value="Izvedeno">Izvedeno</option>
+            <option value="Izdan Račun">Izdan Račun</option>
+          </select>
+        </div>
+
         <!-- Placeholder — download link for the work order's attached files (zip), not yet wired up -->
         <button type="button" id="woDownloadFilesBtn" class="btn btn-secondary btn-block" disabled>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -205,6 +219,14 @@
         <div class="field">
           <label class="field-label">GERKI</label>
           <div id="workLogGerkRows" class="wlg-table"></div>
+          <!-- Admin only: add a GERK to an already-created order — the create
+               form's own +/− only works before the first save. -->
+          <div class="gerk-wrap" id="woAddExistingGerkWrap" hidden>
+            <input type="text" class="field-input" id="woAddExistingGerkCode"
+                   placeholder="GERK številka" autocomplete="off" list="woExistingGerkList">
+            <datalist id="woExistingGerkList"></datalist>
+            <button type="button" class="btn btn-secondary btn-sm" id="woAddExistingGerkBtn">+ Dodaj GERK</button>
+          </div>
         </div>
 
         <!-- Tractor -->
@@ -227,6 +249,8 @@
 
         <div id="formError"   class="alert alert-error"   hidden role="alert"></div>
         <div id="formSuccess" class="alert alert-success" hidden role="status"></div>
+
+        <button type="button" id="woDeleteBtn" class="btn btn-danger btn-block" hidden>Izbriši nalog</button>
 
         <div class="form-actions">
           <button type="button" id="cancelBtn" class="btn btn-secondary btn-block">Zapri</button>
@@ -297,8 +321,22 @@
 
         <div class="field">
           <label class="field-label">GERKI <span class="required">*</span></label>
+
+          <!-- Populated once a customer is selected — check the ones this
+               order covers instead of typing/searching each one. -->
+          <div id="woCustomerGerksWrap" hidden>
+            <p class="field-hint">GERKI stranke — obkljukajte, kar sodi v ta nalog:</p>
+            <div id="woCustomerGerksList" class="wo-gerk-checklist"></div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="woGerkPaste">Ali prilepite GERK šifre (ločene z vejico)</label>
+            <textarea class="field-input field-textarea" id="woGerkPaste" rows="2" placeholder="npr. 830635, 1367184, 1319486"></textarea>
+            <button type="button" class="btn btn-secondary btn-sm" id="woGerkPasteBtn">Dodaj iz seznama</button>
+          </div>
+
           <div id="woGerksList"></div>
-          <button type="button" id="woAddGerkBtn" class="btn-add-gerk">+ Dodaj GERK</button>
+          <button type="button" id="woAddGerkBtn" class="btn-add-gerk">+ Dodaj GERK ročno</button>
         </div>
 
         <div class="field-row">
