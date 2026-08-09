@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.30';
+const APP_VERSION = 'v1.32';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -766,7 +766,7 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel">
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th></tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
@@ -775,6 +775,7 @@ function renderSamplesSection(samples, gerkId) {
                   <td>${renderSamplingCell(s)}</td>
                   <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
+                  ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -1133,6 +1134,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('.wlg-lab-type-select').forEach(sel => {
     sel.addEventListener('change', () => updateGerkLabType(sel));
   });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-remove-sample"]').forEach(btn => {
+    btn.addEventListener('click', () => removeSample(btn));
+  });
 }
 
 // Adds one new segment/sample row for a GERK — sample_no auto-suggested
@@ -1163,8 +1167,34 @@ async function addSample(btn) {
     gerk.delovni_nalogi_vzorci = [...existing, data];
     await loadDetailForDate();
   } catch (e) {
-    showFormError(e.message || 'Napaka pri dodajanju segmenta.');
+    // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) —
+    // someone else added a segment on this GERK between computing
+    // maxNo and this insert landing. Rare, but the constraint means it
+    // can happen instead of silently landing two segments on one number.
+    showFormError(e.code === '23505'
+      ? 'Št. vzorca je bila medtem že uporabljena — poskusite znova.'
+      : (e.message || 'Napaka pri dodajanju segmenta.'));
   } finally {
+    btn.disabled = false;
+  }
+}
+
+async function removeSample(btn) {
+  const sampleId = btn.dataset.sampleId;
+  if (!confirm('Izbrišem ta segment?')) return;
+
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').delete().eq('id', sampleId);
+    if (error) throw error;
+
+    for (const g of currentDetailWorkOrder.delovni_nalogi_gerki || []) {
+      const idx = (g.delovni_nalogi_vzorci || []).findIndex(s => s.id === sampleId);
+      if (idx !== -1) { g.delovni_nalogi_vzorci.splice(idx, 1); break; }
+    }
+    await loadDetailForDate();
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri brisanju segmenta.');
     btn.disabled = false;
   }
 }
@@ -1913,11 +1943,26 @@ workOrderForm.addEventListener('submit', async e => {
     return;
   }
 
+  // Resolve field_id per GERK scoped to this work order's own customer —
+  // not the client-side `fields` array, which dedupes by code alone and
+  // could resolve to the wrong customer if the same cadastre_id exists
+  // under more than one (rare, but happened before this session's
+  // customer dedup work). A code with no match yet (a brand new GERK)
+  // just gets a null field_id — gerk_code is still the record of what
+  // was actually entered.
+  const { data: matchedFields } = await supabase
+    .from('fields')
+    .select('id, cadastre_id')
+    .eq('customer_id', payload.stranka_id)
+    .in('cadastre_id', gerkRows.map(g => g.code));
+  const fieldIdByCode = Object.fromEntries((matchedFields || []).map(f => [f.cadastre_id, f.id]));
+
   const { error: gerkError } = await supabase
     .from('delovni_nalogi_gerki')
     .insert(gerkRows.map(g => ({
       delovni_nalog_id: workOrderId,
       gerk_code:        g.code,
+      field_id:         fieldIdByCode[g.code] || null,
       kolicina_ha:      g.hectares,
       lokacija:         g.lokacija,
     })));
