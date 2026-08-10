@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.34';
+const APP_VERSION = 'v1.36';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -121,8 +121,6 @@ const woGerkPasteInput    = document.getElementById('woGerkPaste');
 const woGerkPasteBtn      = document.getElementById('woGerkPasteBtn');
 const woGerksListEl       = document.getElementById('woGerksList');
 const woAddGerkBtn        = document.getElementById('woAddGerkBtn');
-const woStrosekOcenaInput = document.getElementById('woStrosekOcena');
-const woStrosekInput      = document.getElementById('woStrosek');
 const woStatusSel         = document.getElementById('woStatus');
 const woPodrobnostiInput  = document.getElementById('woPodrobnosti');
 const woFormError         = document.getElementById('woFormError');
@@ -391,12 +389,24 @@ function updateTractorDatalist() {
 // were consolidated so there's a single source of truth for what fields
 // exist. See supabase/migration_import_field_only_rows.sql.
 async function loadFields() {
-  const { data } = await supabase
-    .from('fields')
-    .select('cadastre_id, name, area_ha, centroid_lat, centroid_lng, customers(naziv, company_name)')
-    .order('name');
+  // PostgREST caps a single response at 1000 rows; fields is well past
+  // that (5000+), so this has to page through in batches or everything
+  // past the 1000th row (alphabetically, by name) silently vanishes
+  // from the client — including its map pin.
+  const pageSize = 1000;
+  const data = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data: page } = await supabase
+      .from('fields')
+      .select('cadastre_id, name, area_ha, centroid_lat, centroid_lng, customers(naziv, company_name)')
+      .order('name')
+      .range(from, from + pageSize - 1);
+    if (!page?.length) break;
+    data.push(...page);
+    if (page.length < pageSize) break;
+  }
   const seen = new Set();
-  fields = (data ?? [])
+  fields = data
     .filter(f => f.cadastre_id)
     .map(f => ({
       code:     f.cadastre_id,
@@ -2227,8 +2237,6 @@ workOrderForm.addEventListener('submit', async e => {
     stranka_id:    woStrankaIdInput.value || null,
     izvajalec:     woIzvajalecSel.value || null,
     tip_storitve:  woTipSel.value || null,
-    strosek_ocena: woStrosekOcenaInput.value ? parseFloat(woStrosekOcenaInput.value) : null,
-    strosek:       woStrosekInput.value ? parseFloat(woStrosekInput.value) : null,
     status:        woStatusSel.value,
     podrobnosti:   woPodrobnostiInput.value.trim() || null,
   };
