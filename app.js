@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.33';
+const APP_VERSION = 'v1.34';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1650,8 +1650,8 @@ function renderWorkOrders() {
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
         return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
       }).join('')}
-      <span class="wo-th wo-th-center" title="Zemljevid">📍</span>
-      ${isAdmin ? '<span class="wo-th wo-th-center" title="Potrjeno">✓</span>' : ''}
+      <span class="wo-th wo-th-center wo-c-maps" title="Zemljevid">📍</span>
+      ${isAdmin ? '<span class="wo-th wo-th-center wo-c-confirmed" title="Potrjeno">✓</span>' : ''}
     </div>`;
 
   const rows = sortWorkOrderRows(rowData).map(r => {

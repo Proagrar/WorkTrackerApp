@@ -486,7 +486,11 @@ input, select, textarea { font-family: inherit; }
 
 /* Maps + confirmed columns — desktop-only (900px+ below), hidden here
    so the base 5-column grid-template-columns stays accurate on mobile
-   even though these elements are always present in the markup. */
+   even though these elements are always present in the markup. Shared
+   by both the header spans (wo-th wo-th-center wo-c-maps/confirmed)
+   and the row cells — the header spans previously only had .wo-th and
+   were never hidden on mobile, so the header ended up with more grid
+   items than the rows below it and the two fell out of alignment. */
 .wo-c-maps,
 .wo-c-confirmed { display: none; }
 .wo-c-maps--empty { color: var(--text-muted); }
