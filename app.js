@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.37';
+const APP_VERSION = 'v1.39';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -940,9 +940,33 @@ async function loadDetailForDate() {
   updateOrderHeader();
 }
 
-workLogDateInput.addEventListener('change', () => {
-  currentDetailDate = workLogDateInput.value || todayISO();
+// Changing the date used to just re-fetch a *different* work_logs row
+// (one row per operator/order/day) — any hours already entered under
+// the old date stayed in the DB but vanished from view, looking like
+// they'd been erased (they'd reappear if you switched the date back).
+// move_work_log_date moves the in-progress log itself to the new date
+// (merging into that day's log if one already exists there), so
+// entering hours and picking the date can happen in either order.
+workLogDateInput.addEventListener('change', async () => {
+  const oldDate = currentDetailDate;
+  const oldLogId = currentDetailLogId;
+  const newDate = workLogDateInput.value || todayISO();
   hideFormFeedback();
+
+  if (oldLogId && newDate !== oldDate) {
+    const { error } = await supabase.rpc('move_work_log_date', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_old_date: oldDate,
+      p_new_date: newDate,
+    });
+    if (error) {
+      workLogDateInput.value = oldDate;
+      showFormError('Napaka pri spreminjanju datuma.');
+      return;
+    }
+  }
+
+  currentDetailDate = newDate;
   loadDetailForDate();
 });
 
@@ -1876,19 +1900,34 @@ function toggleGerkChecklistItem(cb) {
 }
 
 woGerkPasteBtn.addEventListener('click', () => {
-  // Comma-delimited as asked, but also newline/semicolon — pasting a
-  // column copied straight out of Excel is at least as likely as a
-  // literal comma-separated list, and treating the whole blob as one
-  // giant "code" otherwise just fails validation with no clear reason.
-  const codes = woGerkPasteInput.value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
-  if (!codes.length) return;
+  // Each line is one row. A row copied out of Excel carries a tab
+  // between columns (e.g. GERK code + ha) — split on that first so a
+  // two-column selection doesn't collapse into one garbled "code" that
+  // just fails validation with no clear reason. A row with no tab falls
+  // back to comma/semicolon splitting, so a flat single-line list
+  // ("830635, 1367184, 1319486") still works exactly as before.
+  const lines = woGerkPasteInput.value.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const entries = [];
+  for (const line of lines) {
+    if (line.includes('\t')) {
+      const [code, hectares] = line.split('\t').map(s => s.trim());
+      // Slovenian Excel exports use a comma decimal separator, but
+      // <input type="number"> only accepts a period — silently rejects
+      // "2,5" otherwise, leaving the field empty with no explanation.
+      if (code) entries.push({ code, hectares: hectares ? hectares.replace(',', '.') : null });
+    } else {
+      line.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+        .forEach(code => entries.push({ code, hectares: null }));
+    }
+  }
+  if (!entries.length) return;
 
-  for (const code of codes) {
+  for (const { code, hectares } of entries) {
     const checklistCb = woCustomerGerksList.querySelector(`.wo-gerk-checkbox[data-code="${CSS.escape(code)}"]`);
     if (checklistCb) {
       if (!checklistCb.checked) { checklistCb.checked = true; toggleGerkChecklistItem(checklistCb); }
     } else if (!findGerkRowByCode(code)) {
-      addOrFillGerkRow(code);
+      addOrFillGerkRow(code, hectares);
     }
   }
   woGerkPasteInput.value = '';
