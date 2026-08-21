@@ -440,6 +440,11 @@ input, select, textarea { font-family: inherit; }
   min-width: 0;
   flex-shrink: 0;
 }
+
+/* As a grid item it stretches to fill its (now fr-weighted, wider)
+   column by default — pin it back to its own content width so it
+   still reads as a compact pill instead of a wide bar. */
+.wo-compact .wo-status-badge { justify-self: start; }
 .wo-status--plan     { background: var(--border-light); color: var(--text-secondary); }
 .wo-status--delo     { background: var(--blue-100);      color: var(--blue-800); }
 .wo-status--izvedeno { background: var(--success-bg);    color: var(--success); }
@@ -1249,13 +1254,18 @@ input, select, textarea { font-family: inherit; }
   .wo-c-maps,
   .wo-c-confirmed { display: flex; align-items: center; justify-content: center; }
 
+  /* fr-weighted (not fixed px) on every column except the icon-only
+     ones — otherwise Stranka's 1fr soaks up 100% of the extra width on
+     a wide screen while Čas/GERKI/Ha/Status stay pinned to their tiny
+     minimums, leaving one huge gap after Stranka and everything else
+     cramped together at the right edge. */
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
-    grid-template-columns: 34px 1fr 52px 40px 48px 80px 40px;
+    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(100px,.9fr) 44px;
   }
   .wo-lc-header.wo-lc-header--admin,
   .wo-compact.wo-compact--admin {
-    grid-template-columns: 34px 1fr 52px 40px 48px 80px 40px 70px;
+    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(100px,.9fr) 44px 60px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */
