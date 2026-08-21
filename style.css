@@ -457,7 +457,7 @@ input, select, textarea { font-family: inherit; }
    of its own 1fr, while GERKI got the 1fr meant for Stranka. */
 .wo-lc-header.wo-lc-header,
 .wo-compact.wo-compact {
-  grid-template-columns: 34px 1fr 40px 48px 80px;
+  grid-template-columns: 34px 1fr 52px 40px 48px 80px;
 }
 
 .wo-compact { cursor: pointer; }
@@ -502,6 +502,17 @@ input, select, textarea { font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
+.wo-c-duration {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--blue-800);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Maps + confirmed columns — desktop-only (900px+ below), hidden here
    so the base 5-column grid-template-columns stays accurate on mobile
    even though these elements are always present in the markup. Shared
@@ -526,6 +537,39 @@ input, select, textarea { font-family: inherit; }
   padding: 8px 12px;
   margin: -4px 0 4px;
 }
+
+/* Detail modal header: Stranka | Datum | Status, compacted into one row. */
+.wo-summary-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 10px;
+  margin: -4px 0 4px;
+}
+
+.wo-summary-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.wo-summary-label {
+  font-size: .6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.wo-summary-value {
+  font-size: .9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wo-summary-cell .wo-status-badge { align-self: flex-start; }
+
+.wo-summary-date { height: 40px; padding: 0 10px; font-size: .875rem; }
+
+.wo-icon-actions { display: flex; gap: 8px; margin: -4px 0 4px; }
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
 
@@ -1207,11 +1251,11 @@ input, select, textarea { font-family: inherit; }
 
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
-    grid-template-columns: 34px 1fr 40px 48px 80px 40px;
+    grid-template-columns: 34px 1fr 52px 40px 48px 80px 40px;
   }
   .wo-lc-header.wo-lc-header--admin,
   .wo-compact.wo-compact--admin {
-    grid-template-columns: 34px 1fr 40px 48px 80px 40px 70px;
+    grid-template-columns: 34px 1fr 52px 40px 48px 80px 40px 70px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */

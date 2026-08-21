@@ -157,45 +157,47 @@
       </div>
 
       <div id="workLogForm" class="work-form">
-        <!-- Work order (read-only — set by which order was opened) -->
-        <p id="workLogOrderLabel" class="wo-order-label"></p>
-
-        <div class="field">
-          <label class="field-label" for="workLogDate">Datum</label>
-          <input class="field-input" type="date" id="workLogDate" />
+        <div class="wo-summary-row">
+          <div class="wo-summary-cell">
+            <span class="wo-summary-label">Stranka</span>
+            <span id="workLogOrderLabel" class="wo-summary-value"></span>
+          </div>
+          <div class="wo-summary-cell">
+            <label class="wo-summary-label" for="workLogDate">Datum</label>
+            <input class="field-input wo-summary-date" type="date" id="workLogDate" />
+          </div>
+          <div class="wo-summary-cell">
+            <span class="wo-summary-label">Status</span>
+            <!-- Admin only: change status directly — unreachable any other way. -->
+            <select class="field-input field-select" id="woStatusEdit" hidden>
+              <option value="Plan">Plan</option>
+              <option value="V delu">V delu</option>
+              <option value="Izvedeno">Izvedeno</option>
+              <option value="Izdan Račun">Izdan Račun</option>
+            </select>
+            <span id="woStatusBadge" class="wo-status-badge" hidden></span>
+          </div>
         </div>
-
-        <button type="button" id="woStartBtn" class="btn btn-primary btn-block">Prevzemi nalog</button>
 
         <button type="button" id="woReleaseBtn" class="btn btn-secondary btn-block" hidden>Sprosti nalog</button>
 
-        <!-- Admin only: change status directly, and change GERK selection on
-             an already-created order — both unreachable any other way. -->
-        <div class="field" id="woStatusEditWrap" hidden>
-          <label class="field-label" for="woStatusEdit">Status</label>
-          <select class="field-input field-select" id="woStatusEdit">
-            <option value="Plan">Plan</option>
-            <option value="V delu">V delu</option>
-            <option value="Izvedeno">Izvedeno</option>
-            <option value="Izdan Račun">Izdan Račun</option>
-          </select>
+        <div class="wo-icon-actions">
+          <!-- Placeholder — download link for the work order's attached files (zip), not yet wired up -->
+          <button type="button" id="woDownloadFilesBtn" class="btn btn-icon" disabled title="Prenesi datoteke" aria-label="Prenesi datoteke">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3 2h7l3 3v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M5 2v3h5V2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              <path d="M4.5 9.5h7v4h-7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <a id="woMapsLink" class="btn btn-icon" href="#" target="_blank" rel="noopener" hidden title="Odpri v Google Maps" aria-label="Odpri v Google Maps">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5c0-2.5-2-4.5-4.5-4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <circle cx="8" cy="6" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+          </a>
         </div>
-
-        <!-- Placeholder — download link for the work order's attached files (zip), not yet wired up -->
-        <button type="button" id="woDownloadFilesBtn" class="btn btn-secondary btn-block" disabled>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 2v8m0 0-3-3m3 3 3-3M2.5 12.5v1a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Prenesi datoteke
-        </button>
-
-        <a id="woMapsLink" class="btn btn-secondary btn-block" href="#" target="_blank" rel="noopener" hidden>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5c0-2.5-2-4.5-4.5-4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-            <circle cx="8" cy="6" r="1.5" stroke="currentColor" stroke-width="1.5"/>
-          </svg>
-          Odpri v Google Maps
-        </a>
 
         <p id="woHeaderMeta" class="wo-header-meta"></p>
 
@@ -229,15 +231,16 @@
           </div>
         </div>
 
-        <!-- Tractor -->
-        <div class="field">
+        <!-- Tractor — temporarily hidden per request 2026-08-22, JS wiring
+             left intact so this is a one-line revert (drop the hidden). -->
+        <div class="field" hidden>
           <label class="field-label" for="tractor">Traktor</label>
           <input class="field-input" type="text" id="tractor" placeholder="npr. Fendt 724" autocomplete="off" list="tractorList" />
           <datalist id="tractorList"></datalist>
         </div>
 
-        <!-- Notes -->
-        <div class="field">
+        <!-- Notes — temporarily hidden per request 2026-08-22, same as above. -->
+        <div class="field" hidden>
           <label class="field-label" for="description">Opombe</label>
           <textarea
             class="field-input field-textarea"

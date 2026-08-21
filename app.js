@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.39';
+const APP_VERSION = 'v1.40';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -23,6 +23,7 @@ let currentTab       = 'nalogi'; // 'evidenca' | 'nalogi'
 let workOrders       = [];
 let workOrdersLoaded = false;
 let workOrderCenterPoints = {}; // work_order_id -> {lat, lng}, from get_work_orders_center_points
+let workOrderDurations    = {}; // work_order_id -> total logged minutes, from get_work_orders_durations
 let customers        = [];
 let operatorsList    = [];
 
@@ -52,10 +53,9 @@ const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const workLogDateInput = document.getElementById('workLogDate');
-const woStartBtn  = document.getElementById('woStartBtn');
 const woReleaseBtn = document.getElementById('woReleaseBtn');
-const woStatusEditWrap = document.getElementById('woStatusEditWrap');
 const woStatusEdit = document.getElementById('woStatusEdit');
+const woStatusBadge = document.getElementById('woStatusBadge');
 const woDeleteBtn = document.getElementById('woDeleteBtn');
 const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
 const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
@@ -791,11 +791,11 @@ function renderSamplesSection(samples, gerkId) {
     ? `<button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample" data-gerk-id="${escHtml(gerkId)}">+ Dodaj segment</button>`
     : '';
   return `
-        <button type="button" class="wlg-samples-toggle wlg-samples-toggle--open" data-action="wlg-samples-toggle">
+        <button type="button" class="wlg-samples-toggle" data-action="wlg-samples-toggle">
           <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
           <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
         </button>
-        <div class="wlg-samples-panel">
+        <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
             <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
@@ -817,29 +817,25 @@ function renderSamplesSection(samples, gerkId) {
 function updateOrderHeader() {
   const wo = currentDetailWorkOrder;
   const rows = Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row'));
-  const allCompleted = rows.length > 0 && rows.every(r => r.classList.contains('wlg-row--completed'));
   const totalSec = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
   const totalMin = Math.round(totalSec / 60);
 
-  woStartBtn.classList.toggle('btn-started', wo.status !== 'Plan');
-  if (wo.status === 'Plan') {
-    woStartBtn.textContent = 'Prevzemi nalog';
-    woStartBtn.disabled = false;
-  } else {
-    woStartBtn.textContent = allCompleted ? 'Končan' : 'V delu';
-    woStartBtn.disabled = true;
-  }
-
-  // Release: undo "Prevzemi nalog" — the current izvajalec or an admin,
-  // only while it's actually claimed.
+  // Release: only meaningful once claimed — the current izvajalec or an
+  // admin, only while it's actually claimed.
   const isAdmin = currentRole === 'admin';
   woReleaseBtn.hidden = !(wo.status === 'V delu' && (wo.izvajalec === currentUser.id || isAdmin));
 
-  // Admin-only: change status directly, add a GERK after creation, delete
-  // the order outright — none of these are reachable any other way.
-  woStatusEditWrap.hidden = !isAdmin;
+  // Status: admin gets an editable dropdown (only way to change it now
+  // that there's no claim button); everyone else gets a read-only badge.
+  woStatusEdit.hidden = !isAdmin;
   if (isAdmin) woStatusEdit.value = wo.status;
-  woAddExistingGerkWrap.hidden = !isAdmin;
+  woStatusBadge.hidden = isAdmin;
+  if (!isAdmin) {
+    woStatusBadge.textContent = wo.status;
+    woStatusBadge.className = `wo-status-badge wo-summary-value wo-status--${slugStatus(wo.status)}`;
+  }
+
+  // Admin-only: delete the order outright — unreachable any other way.
   woDeleteBtn.hidden = !isAdmin;
 
   // Everyone who's actually logged a GERK on this order, not just whoever
@@ -864,12 +860,11 @@ async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
   currentDetailDate       = todayISO();
 
-  modalTitle.textContent = 'Delovni nalog';
+  modalTitle.textContent = workOrder.stevilka || 'Delovni nalog';
   hideFormFeedback();
   updateTractorDatalist();
 
-  const stranka = workOrder.customers?.naziv || workOrder.customers?.company_name;
-  workLogOrderLabel.textContent = [workOrder.stevilka, stranka].filter(Boolean).join(' — ');
+  workLogOrderLabel.textContent = workOrder.customers?.naziv || workOrder.customers?.company_name || '—';
 
   workLogDateInput.max   = todayISO();
   workLogDateInput.value = currentDetailDate;
@@ -1379,19 +1374,6 @@ async function saveOrderMeta() {
 tractorInput.addEventListener('blur',  saveOrderMeta);
 descInput.addEventListener('blur',     saveOrderMeta);
 
-woStartBtn.addEventListener('click', async () => {
-  if (currentDetailWorkOrder.status !== 'Plan') return;
-  woStartBtn.disabled = true;
-  const { error } = await supabase.rpc('start_work_order', { p_work_order_id: currentDetailWorkOrder.id });
-  if (error) { showFormError('Napaka pri prevzemu naloga.'); woStartBtn.disabled = false; return; }
-  currentDetailWorkOrder.status    = 'V delu';
-  currentDetailWorkOrder.izvajalec = currentUser.id;
-  currentDetailWorkOrder.profiles  = { full_name: currentUserName };
-  showFormSuccess('✓ Nalog prevzet!');
-  updateOrderHeader();
-  await loadWorkOrders();
-});
-
 woReleaseBtn.addEventListener('click', async () => {
   if (!confirm('Sprostim ta nalog nazaj na Plan?')) return;
   woReleaseBtn.disabled = true;
@@ -1583,6 +1565,7 @@ const WO_STATUS_ORDER = { 'Plan': 0, 'V delu': 1, 'Izvedeno': 2, 'Izdan Račun':
 const WO_SORT_COLUMNS = [
   { key: 'stevilka', label: 'Št.' },
   { key: 'stranka',  label: 'Stranka' },
+  { key: 'trajanje', label: 'Čas', center: true },
   { key: 'gerki',    label: 'GERKI', center: true },
   { key: 'ha',       label: 'Ha' },
   { key: 'status',   label: 'Status' },
@@ -1599,6 +1582,7 @@ function sortWorkOrderRows(rows) {
     switch (woSortKey) {
       case 'stevilka': cmp = String(a.stevilka).localeCompare(String(b.stevilka), undefined, { numeric: true }); break;
       case 'stranka':  cmp = a.stranka.localeCompare(b.stranka); break;
+      case 'trajanje': cmp = a.totalMinutes - b.totalMinutes; break;
       case 'gerki':    cmp = a.gerkCount - b.gerkCount; break;
       case 'ha':       cmp = a.totalHa - b.totalHa; break;
       case 'status':   cmp = (WO_STATUS_ORDER[a.status] ?? 99) - (WO_STATUS_ORDER[b.status] ?? 99); break;
@@ -1614,7 +1598,7 @@ async function loadWorkOrders() {
       <p>Nalaganje...</p>
     </div>`;
 
-  const [{ data, error }, { data: centerPoints }] = await Promise.all([
+  const [{ data, error }, { data: centerPoints }, { data: durations }] = await Promise.all([
     supabase
       .from('delovni_nalogi')
       .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, tip_lab_analize, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
@@ -1622,6 +1606,9 @@ async function loadWorkOrders() {
     // One batched call for every row's map point, instead of one RPC
     // round trip per row — see get_work_orders_center_points.
     supabase.rpc('get_work_orders_center_points'),
+    // Same batching reasoning, for the Trajanje column — see
+    // get_work_orders_durations.
+    supabase.rpc('get_work_orders_durations'),
   ]);
 
   if (error) {
@@ -1631,6 +1618,9 @@ async function loadWorkOrders() {
 
   workOrderCenterPoints = Object.fromEntries(
     (centerPoints || []).map(p => [p.work_order_id, { lat: p.lat, lng: p.lng }])
+  );
+  workOrderDurations = Object.fromEntries(
+    (durations || []).map(d => [d.work_order_id, d.total_minutes])
   );
   workOrders = data ?? [];
   workOrdersLoaded = true;
@@ -1665,15 +1655,16 @@ function renderWorkOrders() {
     const gerks = wo.delovni_nalogi_gerki || [];
     const point = workOrderCenterPoints[wo.id];
     return {
-      id:        wo.id,
-      stevilka:  wo.stevilka,
-      stranka:   wo.customers?.naziv || wo.customers?.company_name || '—',
-      gerkCount: gerks.length,
-      totalHa:   gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
-      status:    wo.status,
-      lat:       point?.lat ?? null,
-      lng:       point?.lng ?? null,
-      confirmed: !!wo.confirmed,
+      id:           wo.id,
+      stevilka:     wo.stevilka,
+      stranka:      wo.customers?.naziv || wo.customers?.company_name || '—',
+      totalMinutes: workOrderDurations[wo.id] || 0,
+      gerkCount:    gerks.length,
+      totalHa:      gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
+      status:       wo.status,
+      lat:          point?.lat ?? null,
+      lng:          point?.lng ?? null,
+      confirmed:    !!wo.confirmed,
     };
   });
 
@@ -1700,6 +1691,7 @@ function renderWorkOrders() {
       <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
+        <span class="wo-c-duration">${r.totalMinutes > 0 ? fmtHM(r.totalMinutes) : '—'}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
