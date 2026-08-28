@@ -1478,6 +1478,37 @@ input, select, textarea { font-family: inherit; }
   border-color: var(--blue-700);
 }
 
+/* Segments (FMS + Sample no) on a GERK row in the create-order form —
+   reuses the detail view's .wlg-samples-toggle/.wlg-samples-panel look
+   for visual consistency, collapsed by default, auto-expanded when a
+   paste actually fills it. */
+.gerk-segments-section { margin-top: 2px; }
+
+.gerk-segments-list { display: flex; flex-direction: column; gap: 6px; }
+
+.gerk-segment-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gerk-segment-fms    { flex: 0 0 72px; }
+.gerk-segment-sample { flex: 1 1 auto; }
+
+.gerk-segment-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: .875rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.gerk-segment-remove:hover { color: var(--danger); }
+
+.gerk-segment-add { margin-top: 4px; }
+
 .log-ha-text {
   font-size: .8125rem;
   color: var(--text-secondary);

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.41';
+const APP_VERSION = 'v1.42';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -486,7 +486,17 @@ function addGerkRow(container = woGerksListEl, code = '', hectares = '', lokacij
       <button type="button" class="gerk-remove-btn" aria-label="Odstrani">✕</button>
     </div>
     <input type="text" class="field-input gerk-lokacija-input"
-           placeholder="Lokacija (npr. GPS koordinate)" autocomplete="off">`;
+           placeholder="Lokacija (npr. GPS koordinate)" autocomplete="off">
+    <div class="gerk-segments-section">
+      <button type="button" class="wlg-samples-toggle gerk-segments-toggle" data-action="gerk-segments-toggle">
+        <span class="gerk-segments-count">0 segmentov</span>
+        <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="wlg-samples-panel gerk-segments-panel" hidden>
+        <div class="gerk-segments-list"></div>
+        <button type="button" class="btn btn-secondary btn-sm gerk-segment-add" data-action="gerk-segment-add">+ Dodaj segment</button>
+      </div>
+    </div>`;
 
   const codeInput     = row.querySelector('.gerk-code-input');
   const haInput       = row.querySelector('.gerk-ha-input');
@@ -524,8 +534,63 @@ function addGerkRow(container = woGerksListEl, code = '', hectares = '', lokacij
     if (!container.querySelector('.gerk-row')) addGerkRow(container);
   });
 
+  row.querySelector('[data-action="gerk-segments-toggle"]').addEventListener('click', e => {
+    const panel = row.querySelector('.gerk-segments-panel');
+    panel.hidden = !panel.hidden;
+    e.currentTarget.classList.toggle('wlg-samples-toggle--open', !panel.hidden);
+  });
+  row.querySelector('[data-action="gerk-segment-add"]').addEventListener('click', () => {
+    addGerkSegmentRow(row);
+    updateGerkSegmentsCount(row);
+  });
+
   container.appendChild(row);
   return codeInput;
+}
+
+// One FMS + Sample no line inside a GERK row's (initially collapsed)
+// segments panel — filled from the Excel paste, or added/edited by hand.
+function addGerkSegmentRow(row, fms = '', sampleNo = '') {
+  const list = row.querySelector('.gerk-segments-list');
+  const segRow = document.createElement('div');
+  segRow.className = 'gerk-segment-row';
+  segRow.innerHTML = `
+    <input type="text" class="sample-field-input gerk-segment-fms" placeholder="FMS">
+    <input type="text" class="sample-field-input gerk-segment-sample" placeholder="Vzorec št.">
+    <button type="button" class="gerk-segment-remove" aria-label="Odstrani segment">✕</button>`;
+  segRow.querySelector('.gerk-segment-fms').value = fms;
+  segRow.querySelector('.gerk-segment-sample').value = sampleNo;
+  segRow.querySelector('.gerk-segment-remove').addEventListener('click', () => {
+    segRow.remove();
+    updateGerkSegmentsCount(row);
+  });
+  list.appendChild(segRow);
+}
+
+function updateGerkSegmentsCount(row) {
+  const n = row.querySelectorAll('.gerk-segment-row').length;
+  row.querySelector('.gerk-segments-count').textContent = `${n} ${n === 1 ? 'segment' : 'segmentov'}`;
+}
+
+// Appends a batch of parsed {fms, sampleNo} segments to a GERK row's
+// panel (deduped against what's already there by sample_no — pasting
+// the same range twice, or a code that also matched a manual add,
+// shouldn't produce duplicate lines), expands the panel so they're
+// immediately visible, and refreshes the count label.
+function addGerkSegments(row, segments) {
+  if (!segments.length) return;
+  const existing = new Set(
+    Array.from(row.querySelectorAll('.gerk-segment-sample')).map(el => el.value.trim())
+  );
+  for (const { fms, sampleNo } of segments) {
+    if (!sampleNo || existing.has(sampleNo)) continue;
+    addGerkSegmentRow(row, fms, sampleNo);
+    existing.add(sampleNo);
+  }
+  updateGerkSegmentsCount(row);
+  const panel = row.querySelector('.gerk-segments-panel');
+  panel.hidden = false;
+  row.querySelector('.gerk-segments-toggle').classList.add('wlg-samples-toggle--open');
 }
 
 function getFormGerks(container = woGerksListEl) {
@@ -534,6 +599,10 @@ function getFormGerks(container = woGerksListEl) {
     hectares: row.querySelector('.gerk-ha-input').value
               ? parseFloat(row.querySelector('.gerk-ha-input').value) : null,
     lokacija: row.querySelector('.gerk-lokacija-input').value.trim() || null,
+    segments: Array.from(row.querySelectorAll('.gerk-segment-row')).map(sr => ({
+      fms:      sr.querySelector('.gerk-segment-fms').value.trim() || null,
+      sampleNo: sr.querySelector('.gerk-segment-sample').value.trim(),
+    })).filter(s => s.sampleNo),
   })).filter(g => g.code);
 }
 
@@ -1891,16 +1960,79 @@ function toggleGerkChecklistItem(cb) {
   }
 }
 
+// Ensures `code` has a GERK row (via the customer checklist if it's a
+// known field, otherwise a manual row) and returns that row.
+function ensureGerkRowForPaste(code, hectares) {
+  const checklistCb = woCustomerGerksList.querySelector(`.wo-gerk-checkbox[data-code="${CSS.escape(code)}"]`);
+  if (checklistCb) {
+    if (!checklistCb.checked) { checklistCb.checked = true; toggleGerkChecklistItem(checklistCb); }
+    return findGerkRowByCode(code);
+  }
+  let row = findGerkRowByCode(code);
+  if (!row) {
+    addOrFillGerkRow(code, hectares);
+    row = findGerkRowByCode(code);
+  }
+  return row;
+}
+
 woGerkPasteBtn.addEventListener('click', () => {
-  // Each line is one row. A row copied out of Excel carries a tab
-  // between columns (e.g. GERK code + ha) — split on that first so a
-  // two-column selection doesn't collapse into one garbled "code" that
-  // just fails validation with no clear reason. A row with no tab falls
-  // back to comma/semicolon splitting, so a flat single-line list
-  // ("830635, 1367184, 1319486") still works exactly as before.
-  const lines = woGerkPasteInput.value.split(/\n/).map(l => l.trim()).filter(Boolean);
+  // Don't trim whole lines here — a continuation row copied out of a
+  // lab's 4-column sheet ("GERK/Ha/FMS/Sample no") is literally
+  // "\t\t\t11722" (blank GERK/Ha/FMS, only the sample number), and
+  // trimming would eat those leading tabs and destroy which column
+  // the "11722" actually came from.
+  const rawLines = woGerkPasteInput.value.split('\n').filter(l => l.trim() !== '');
+  if (!rawLines.length) return;
+
+  // A header row ("GERK  Ha  FMS  Sample no") starts with a non-numeric
+  // first cell — drop it rather than choke on it as a bogus GERK code.
+  let lines = rawLines;
+  const firstCode = (lines[0].split('\t')[0] || '').trim();
+  if (firstCode && !/^\d+$/.test(firstCode)) lines = lines.slice(1);
+
+  // 4+ tab-separated cells on any row means this is the lab's GERK +
+  // segment sheet, not a plain code (+ha) list — handle the whole
+  // paste as one batch of segments rather than per-line codes.
+  const isSegmentPaste = lines.some(l => l.split('\t').length >= 4);
+
+  if (isSegmentPaste) {
+    // GERK/FMS are blank on every row but a group's first (merged-cell
+    // style paste) — carry the last-seen value forward. Sample no is
+    // the only cell that's always present; Ha is deliberately ignored
+    // here (auto-filled from the known field instead, same as manual
+    // entry) since the pasted value is only ever present on a group's
+    // first row anyway and duplicating it per segment would be wrong.
+    const codesInOrder = [];
+    const segmentsByCode = new Map();
+    let lastCode = null, lastFms = null;
+    for (const line of lines) {
+      const cells = line.split('\t');
+      const code = (cells[0] || '').trim();
+      const fms  = (cells[2] || '').trim();
+      const sampleNo = (cells[3] || '').trim();
+      if (!sampleNo) continue;
+      if (code) lastCode = code;
+      if (fms)  lastFms  = fms;
+      if (!lastCode) continue;
+      if (!segmentsByCode.has(lastCode)) { segmentsByCode.set(lastCode, []); codesInOrder.push(lastCode); }
+      segmentsByCode.get(lastCode).push({ fms: lastFms || null, sampleNo });
+    }
+
+    for (const code of codesInOrder) {
+      const known = fields.find(f => f.code === code);
+      const row = ensureGerkRowForPaste(code, known?.area ?? null);
+      if (row) addGerkSegments(row, segmentsByCode.get(code));
+    }
+    woGerkPasteInput.value = '';
+    return;
+  }
+
+  // Plain code list (comma/semicolon-separated, or one code[+ha] per
+  // line) — unchanged from before.
   const entries = [];
-  for (const line of lines) {
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
     if (line.includes('\t')) {
       const [code, hectares] = line.split('\t').map(s => s.trim());
       // Slovenian Excel exports use a comma decimal separator, but
@@ -1914,14 +2046,7 @@ woGerkPasteBtn.addEventListener('click', () => {
   }
   if (!entries.length) return;
 
-  for (const { code, hectares } of entries) {
-    const checklistCb = woCustomerGerksList.querySelector(`.wo-gerk-checkbox[data-code="${CSS.escape(code)}"]`);
-    if (checklistCb) {
-      if (!checklistCb.checked) { checklistCb.checked = true; toggleGerkChecklistItem(checklistCb); }
-    } else if (!findGerkRowByCode(code)) {
-      addOrFillGerkRow(code, hectares);
-    }
-  }
+  for (const { code, hectares } of entries) ensureGerkRowForPaste(code, hectares);
   woGerkPasteInput.value = '';
 });
 
@@ -2260,6 +2385,11 @@ workOrderForm.addEventListener('submit', async e => {
     const known = fields.find(f => f.code === g.code);
     if (!known && !/^\d{7}$/.test(g.code))
       return showWoFormError(`Neveljaven GERK: "${g.code}" (mora biti 7-mestna številka).`);
+    const seen = new Set();
+    for (const s of g.segments) {
+      if (seen.has(s.sampleNo)) return showWoFormError(`GERK ${g.code}: podvojena št. vzorca "${s.sampleNo}".`);
+      seen.add(s.sampleNo);
+    }
   }
 
   setWoSaveLoading(true);
@@ -2295,7 +2425,7 @@ workOrderForm.addEventListener('submit', async e => {
     .in('cadastre_id', gerkRows.map(g => g.code));
   const fieldIdByCode = Object.fromEntries((matchedFields || []).map(f => [f.cadastre_id, f.id]));
 
-  const { error: gerkError } = await supabase
+  const { data: insertedGerks, error: gerkError } = await supabase
     .from('delovni_nalogi_gerki')
     .insert(gerkRows.map(g => ({
       delovni_nalog_id: workOrderId,
@@ -2303,13 +2433,38 @@ workOrderForm.addEventListener('submit', async e => {
       field_id:         fieldIdByCode[g.code] || null,
       kolicina_ha:      g.hectares,
       lokacija:         g.lokacija,
-    })));
+    })))
+    .select('id, gerk_code');
+
+  if (gerkError) {
+    setWoSaveLoading(false);
+    showWoFormError('Napaka pri shranjevanju GERKOV.');
+    return;
+  }
+
+  // Segments (FMS + Sample no) pasted in from the lab's sheet — inserted
+  // now that the GERK rows have real ids to hang off. gerk_code alone
+  // would be ambiguous here (a code can repeat across other work
+  // orders); every gerkIdByCode lookup below is scoped to the rows this
+  // submit just created.
+  const gerkIdByCode = Object.fromEntries((insertedGerks || []).map(g => [g.gerk_code, g.id]));
+  const segmentRows = gerkRows.flatMap(g =>
+    g.segments.map(s => ({
+      delovni_nalog_gerk_id: gerkIdByCode[g.code],
+      sample_no: s.sampleNo,
+      fms:       s.fms,
+    }))
+  );
 
   setWoSaveLoading(false);
 
-  if (gerkError) {
-    showWoFormError('Napaka pri shranjevanju GERKOV.');
-    return;
+  if (segmentRows.length) {
+    const { error: segError } = await supabase.from('delovni_nalogi_vzorci').insert(segmentRows);
+    if (segError) {
+      showWoFormError('Nalog in GERKI so shranjeni, a segmenti niso — preverite jih v nalogu.');
+      await loadWorkOrders();
+      return;
+    }
   }
 
   showWoFormSuccess('✓ Nalog shranjen!');
