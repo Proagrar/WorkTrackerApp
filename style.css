@@ -588,7 +588,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: var(--radius-md);
 }
 
-.wlg-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wlg-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
 
 .wlg-code-line {
   display: block;
@@ -633,6 +633,14 @@ input, select, textarea { font-family: inherit; }
 .wlg-row--completed {
   background: var(--success-bg);
   border-color: #BBF7D0;
+}
+
+/* box-shadow rather than border-color — layers cleanly on top of
+   --completed's own border-color instead of fighting it on cascade
+   order. Triggered both ways: hovering the matching shape/marker on
+   the map, and clicking this row to highlight it there. */
+.wlg-row--map-hover {
+  box-shadow: 0 0 0 2px var(--blue-800);
 }
 
 .wlg-times {

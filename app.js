@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.47';
+const APP_VERSION = 'v1.48';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -825,7 +825,7 @@ function renderWorkLogGerkRows(rows) {
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
-        <div class="wlg-info">
+        <div class="wlg-info" data-action="wlg-highlight-map">
           <span class="wlg-code-line">
             <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
             ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
@@ -1000,6 +1000,45 @@ let woMapGerkLayer  = null;
 let woMapMeMarker   = null;
 let woMapMeWatchId  = null;
 let woMapHasFitBounds = false;
+let woMapLayersByCode = new Map(); // gerk_code -> { marker, shape, latlng } — for the list<->map highlight
+let woMapHighlightedCode = null;
+let woMapHighlightRing   = null;   // circleMarker used as a highlight ring when a code has no shape
+
+const WO_MAP_SHAPE_STYLE = { color: '#2455AA', weight: 2, fillColor: '#2455AA', fillOpacity: .15 };
+const WO_MAP_SHAPE_HIGHLIGHT_STYLE = { color: '#F59E0B', weight: 4, fillColor: '#F59E0B', fillOpacity: .35 };
+
+// Map → list: hovering a GERK's marker/shape highlights its row.
+function highlightGerkRow(code, on) {
+  const row = workLogGerkRowsEl.querySelector(`.wlg-row[data-code="${CSS.escape(code)}"]`);
+  if (row) row.classList.toggle('wlg-row--map-hover', on);
+}
+
+// List → map: clicking a GERK row highlights its marker/shape (only
+// one at a time — clicking another clears the previous highlight).
+function highlightGerkOnWoMap(code) {
+  if (!code || !woMap) return;
+
+  if (woMapHighlightedCode && woMapHighlightedCode !== code) {
+    const prev = woMapLayersByCode.get(woMapHighlightedCode);
+    if (prev?.shape) prev.shape.setStyle(WO_MAP_SHAPE_STYLE);
+  }
+  if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
+
+  const entry = woMapLayersByCode.get(code);
+  woMapHighlightedCode = code;
+  if (!entry) return; // no marker/shape for this GERK (no known field coords) — nothing to show
+
+  if (entry.shape) {
+    entry.shape.setStyle(WO_MAP_SHAPE_HIGHLIGHT_STYLE);
+    entry.shape.bringToFront();
+    woMap.fitBounds(entry.shape.getBounds(), { padding: [40, 40], maxZoom: 17 });
+  } else if (entry.latlng) {
+    woMapHighlightRing = L.circleMarker(entry.latlng, {
+      radius: 16, color: '#F59E0B', weight: 3, fillOpacity: 0,
+    }).addTo(woMap);
+    woMap.setView(entry.latlng, Math.max(woMap.getZoom(), 15));
+  }
+}
 
 function ensureWoMap() {
   if (woMap) return woMap;
@@ -1020,6 +1059,9 @@ async function showWoDetailMap(workOrder) {
   const map = ensureWoMap();
   woMapGerkLayer.clearLayers();
   woMapHasFitBounds = false;
+  woMapLayersByCode = new Map();
+  woMapHighlightedCode = null;
+  if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
 
   // invalidateSize() has to run — with the container actually part of
   // the visible layout — before any setView/fitBounds call below, or
@@ -1039,7 +1081,10 @@ async function showWoDetailMap(workOrder) {
   for (const code of gerkCodes) {
     const f = fields.find(f => f.code === code);
     if (f?.lat != null && f?.lng != null) {
-      L.marker([f.lat, f.lng]).bindTooltip(code).addTo(woMapGerkLayer);
+      const marker = L.marker([f.lat, f.lng]).bindTooltip(code).addTo(woMapGerkLayer);
+      marker.on('mouseover', () => highlightGerkRow(code, true));
+      marker.on('mouseout',  () => highlightGerkRow(code, false));
+      woMapLayersByCode.set(code, { marker, shape: null, latlng: [f.lat, f.lng] });
       markerBounds.push([f.lat, f.lng]);
     }
   }
@@ -1062,9 +1107,13 @@ async function showWoDetailMap(workOrder) {
   const shapeLayers = [];
   for (const row of (shapes || [])) {
     if (!row.geojson) continue;
-    const layer = L.geoJSON(row.geojson, {
-      style: { color: '#2455AA', weight: 2, fillColor: '#2455AA', fillOpacity: .15 },
-    }).bindTooltip(row.gerk_code).addTo(woMapGerkLayer);
+    const layer = L.geoJSON(row.geojson, { style: WO_MAP_SHAPE_STYLE })
+      .bindTooltip(row.gerk_code).addTo(woMapGerkLayer);
+    layer.on('mouseover', () => highlightGerkRow(row.gerk_code, true));
+    layer.on('mouseout',  () => highlightGerkRow(row.gerk_code, false));
+    const entry = woMapLayersByCode.get(row.gerk_code) || { marker: null, latlng: null };
+    entry.shape = layer;
+    woMapLayersByCode.set(row.gerk_code, entry);
     shapeLayers.push(layer);
   }
   if (shapeLayers.length) {
@@ -1414,6 +1463,12 @@ function wireGerkRowButtons() {
   });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-open-map"]').forEach(btn => {
     btn.addEventListener('click', () => openMapModal(Number(btn.dataset.lat), Number(btn.dataset.lng), btn.dataset.label));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-highlight-map"]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('a, button, select, input')) return; // let their own handlers run undisturbed
+      highlightGerkOnWoMap(el.closest('.wlg-row')?.dataset.code);
+    });
   });
 }
 
