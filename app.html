@@ -14,6 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="app-page">
@@ -420,6 +422,29 @@
     </div>
   </div>
 
+  <!-- ── Map (Leaflet — embedded preview, "Odpri v Google Maps" still
+       there for actual turn-by-turn navigation) ─────────────────── -->
+  <div id="mapModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="mapModalTitle">
+    <div class="modal-sheet modal-sheet-compact">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="mapModalTitle" class="modal-title">Lokacija</h3>
+        <button id="mapModalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div id="mapContainer" class="map-container"></div>
+      <div class="form-actions" style="padding: 12px 20px 20px;">
+        <a id="mapOpenExternalLink" class="btn btn-secondary btn-flex" href="#" target="_blank" rel="noopener">Odpri v Google Maps</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

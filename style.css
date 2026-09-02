@@ -601,7 +601,18 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-name { font-size: .8125rem; font-weight: 600; color: var(--text-primary); }
 
-.wlg-field-map { margin-left: 4px; text-decoration: none; }
+/* Used both as an <a> (GERK-level, opens Google Maps directly) and a
+   <button> (sample-level, opens the embedded map modal) — the reset
+   properties are harmless no-ops on the <a> case. */
+.wlg-field-map {
+  margin-left: 4px;
+  text-decoration: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 1em;
+  cursor: pointer;
+}
 
 .wlg-meta {
   font-size: .75rem;
@@ -802,6 +813,22 @@ input, select, textarea { font-family: inherit; }
   padding: 2px 6px;
 }
 .wlg-remove-sample:hover { color: var(--danger); }
+
+.wlg-capture-location {
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--blue-800);
+  font-size: .71875rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: 3px 6px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.wlg-capture-location:hover { background: var(--blue-50); }
+.wlg-capture-location:disabled { opacity: .5; cursor: not-allowed; }
 
 
 /* ── Work order header: start/status button + meta ─────────── */
@@ -1214,6 +1241,14 @@ input, select, textarea { font-family: inherit; }
   padding: 8px 20px 16px;
   font-size: .9375rem;
   color: var(--text-secondary);
+}
+
+.map-container {
+  height: 320px;
+  width: 100%;
+}
+@media (min-width: 900px) {
+  .map-container { height: 420px; }
 }
 
 

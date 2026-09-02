@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.42';
+const APP_VERSION = 'v1.44';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -103,6 +103,13 @@ const declLinkResult         = document.getElementById('declLinkResult');
 const declLinksList          = document.getElementById('declLinksList');
 const declTableWrap          = document.getElementById('declTableWrap');
 let declCustomerId = null;
+
+// ── Map modal refs ────────────────────────────────────────────
+const mapModal            = document.getElementById('mapModal');
+const mapModalClose       = document.getElementById('mapModalClose');
+const mapModalTitle       = document.getElementById('mapModalTitle');
+const mapContainer        = document.getElementById('mapContainer');
+const mapOpenExternalLink = document.getElementById('mapOpenExternalLink');
 
 // ── Work order modal refs ───────────────────────────────────────
 const workOrderModal      = document.getElementById('workOrderModal');
@@ -749,6 +756,17 @@ async function updateGerkLabType(selectEl) {
   }
 }
 
+// Available to anyone (not admin-gated like the other cells) — capturing
+// the sample's GPS spot is a field action, not desk data entry. Shows a
+// capture button until a point exists, then a maps pin + a small redo
+// button to recapture if the operator wasn't standing in the right spot.
+function renderSampleLocationCell(s) {
+  const captureBtn = `<button type="button" class="wlg-capture-location" data-action="wlg-capture-location" data-sample-id="${escHtml(s.id)}" aria-label="${s.lat != null ? 'Znova zajemi lokacijo' : 'Zajemi lokacijo'}">${s.lat != null ? '↻' : '📍 Zajemi'}</button>`;
+  if (s.lat == null || s.lng == null) return captureBtn;
+  const mapBtn = `<button type="button" class="wlg-field-map" data-action="wlg-open-map" data-lat="${s.lat}" data-lng="${s.lng}" data-label="${escHtml('Vzorec ' + s.sample_no)}" aria-label="Prikaži na zemljevidu">📍</button>`;
+  return `${mapBtn}${captureBtn}`;
+}
+
 function renderSampleDepthCell(s) {
   if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
   const opts = ['<option value="">-</option>']
@@ -866,7 +884,7 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th><th>Lokacija</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
@@ -875,6 +893,7 @@ function renderSamplesSection(samples, gerkId) {
                   <td>${renderSamplingCell(s)}</td>
                   <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
+                  <td>${renderSampleLocationCell(s)}</td>
                   ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
@@ -1274,6 +1293,12 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-remove-sample"]').forEach(btn => {
     btn.addEventListener('click', () => removeSample(btn));
   });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-capture-location"]').forEach(btn => {
+    btn.addEventListener('click', () => captureSampleLocation(btn));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-open-map"]').forEach(btn => {
+    btn.addEventListener('click', () => openMapModal(Number(btn.dataset.lat), Number(btn.dataset.lng), btn.dataset.label));
+  });
 }
 
 // Adds one new segment/sample row for a GERK — sample_no auto-suggested
@@ -1368,6 +1393,47 @@ async function removeSample(btn) {
     await loadDetailForDate();
   } catch (e) {
     showFormError(e.message || 'Napaka pri brisanju segmenta.');
+    btn.disabled = false;
+  }
+}
+
+function getCurrentPositionAsync(options) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('Geolokacija ni podprta v tem brskalniku.')); return; }
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+// Standard GeolocationPositionError codes (1=denied, 2=unavailable, 3=timeout).
+function geolocationErrorMessage(e) {
+  switch (e?.code) {
+    case 1: return 'Dostop do lokacije je bil zavrnjen. Omogočite dovoljenje za lokacijo v brskalniku.';
+    case 2: return 'Lokacije trenutno ni mogoče določiti.';
+    case 3: return 'Pridobivanje lokacije je preteklo (timeout). Poskusite znova.';
+    default: return e?.message || 'Napaka pri zajemu lokacije.';
+  }
+}
+
+async function captureSampleLocation(btn) {
+  const sampleId = btn.dataset.sampleId;
+  btn.disabled = true;
+  try {
+    const pos = await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    const { data, error } = await supabase.rpc('capture_sample_location', {
+      p_sample_id: sampleId,
+      p_lat: pos.coords.latitude,
+      p_lng: pos.coords.longitude,
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+
+    for (const g of currentDetailWorkOrder.delovni_nalogi_gerki || []) {
+      const s = (g.delovni_nalogi_vzorci || []).find(s => s.id === sampleId);
+      if (s) { s.lat = result.lat; s.lng = result.lng; break; }
+    }
+    await loadDetailForDate();
+  } catch (e) {
+    showFormError(geolocationErrorMessage(e));
     btn.disabled = false;
   }
 }
@@ -1604,8 +1670,74 @@ document.addEventListener('keydown', e => {
     if (!deleteModal.hidden)    closeDeleteModal();
     if (!workOrderModal.hidden) closeWorkOrderModal();
     if (!declModal.hidden)      closeDeclModal();
+    if (!mapModal.hidden)       closeMapModal();
   }
 });
+
+// ── Map modal (Leaflet) ───────────────────────────────────────
+// One map instance, reused across opens — Leaflet can't size itself
+// inside a container that's still `hidden` (0×0) at init time, so the
+// first open waits a frame for the modal to actually be laid out.
+let leafletMap  = null;
+let mapTargetMarker = null;
+let mapMeMarker = null;
+let mapMeWatchId = null;
+
+function openMapModal(lat, lng, label) {
+  mapModalTitle.textContent = label || 'Lokacija';
+  mapOpenExternalLink.href = `https://www.google.com/maps?q=${lat},${lng}`;
+  mapModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  requestAnimationFrame(() => {
+    if (!leafletMap) {
+      leafletMap = L.map(mapContainer);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(leafletMap);
+    }
+    leafletMap.invalidateSize();
+    leafletMap.setView([lat, lng], 17);
+
+    if (mapTargetMarker) mapTargetMarker.remove();
+    mapTargetMarker = L.marker([lat, lng]).addTo(leafletMap);
+  });
+
+  startWatchingMyLocationOnMap();
+}
+
+// "You are here" — a live-updating marker, separate from the fixed
+// target marker above, so you can see how far you are from the point
+// you're looking at (e.g. walking back to a previously captured sample).
+function startWatchingMyLocationOnMap() {
+  if (!navigator.geolocation) return;
+  stopWatchingMyLocationOnMap();
+  mapMeWatchId = navigator.geolocation.watchPosition(pos => {
+    if (!leafletMap) return;
+    const { latitude, longitude } = pos.coords;
+    if (mapMeMarker) {
+      mapMeMarker.setLatLng([latitude, longitude]);
+    } else {
+      mapMeMarker = L.circleMarker([latitude, longitude], {
+        radius: 8, color: '#fff', weight: 2, fillColor: '#2455AA', fillOpacity: 1,
+      }).addTo(leafletMap).bindTooltip('Vi');
+    }
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
+}
+
+function stopWatchingMyLocationOnMap() {
+  if (mapMeWatchId != null) { navigator.geolocation.clearWatch(mapMeWatchId); mapMeWatchId = null; }
+}
+
+function closeMapModal() {
+  mapModal.hidden = true;
+  document.body.style.overflow = '';
+  stopWatchingMyLocationOnMap();
+}
+
+mapModalClose.addEventListener('click', closeMapModal);
+mapModal.addEventListener('click', e => { if (e.target === mapModal) closeMapModal(); });
 
 // ── Tabs ───────────────────────────────────────────────────────
 function switchTab(tab) {
