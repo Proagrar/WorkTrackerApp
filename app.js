@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.45';
+const APP_VERSION = 'v1.46';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -960,7 +960,6 @@ async function openWorkOrderDetail(workOrder) {
 
   woMapsLink.hidden = true;
   loadWorkOrderCenterPoint(workOrder.id); // fire-and-forget, don't block modal open on a geometry query
-  showWoDetailMap(workOrder); // fire-and-forget, same reasoning
 
   woAddExistingGerkCode.value = '';
   if (currentRole === 'admin') loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
@@ -968,6 +967,13 @@ async function openWorkOrderDetail(workOrder) {
   await loadDetailForDate();
 
   formModal.hidden = false;
+  // Only now, with the modal (and #woDetailMap inside it) actually
+  // visible — Leaflet computes its tile viewport from the container's
+  // real layout size at init time. Calling this any earlier, while
+  // formModal was still `hidden` (0×0), left the map permanently
+  // broken: controls rendered but tiles never did, even after the
+  // modal opened, because nothing re-measured the container afterward.
+  showWoDetailMap(workOrder); // fire-and-forget, don't block modal open on a geometry query
   document.body.style.overflow = 'hidden';
 }
 
@@ -998,9 +1004,13 @@ let woMapHasFitBounds = false;
 function ensureWoMap() {
   if (woMap) return woMap;
   woMap = L.map(woDetailMap);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Esri World Imagery (free, no API key) — satellite detail matters
+  // more here than street-map labels for seeing actual field/crop
+  // conditions, and unlike Google's tiles this is fine to embed
+  // directly without their JS API/billing.
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   }).addTo(woMap);
   woMapGerkLayer = L.layerGroup().addTo(woMap);
   return woMap;
@@ -1011,10 +1021,15 @@ async function showWoDetailMap(workOrder) {
   woMapGerkLayer.clearLayers();
   woMapHasFitBounds = false;
 
-  requestAnimationFrame(() => {
-    map.invalidateSize();
-    map.setView([46.1512, 14.9955], 8); // Slovenia-wide fallback until something better is known
-  });
+  // invalidateSize() has to run — with the container actually part of
+  // the visible layout — before any setView/fitBounds call below, or
+  // those compute against Leaflet's stale cached size (usually 0×0,
+  // from whenever the map was first constructed) instead of the real
+  // one. Awaiting a frame here (this function is only ever called
+  // after formModal.hidden = false) is the earliest point the
+  // container has real dimensions to measure.
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  map.invalidateSize();
 
   // Plain center-point markers immediately from field data already
   // loaded client-side — the boundary shapes below can take a moment,
@@ -1031,6 +1046,8 @@ async function showWoDetailMap(workOrder) {
   if (markerBounds.length) {
     map.fitBounds(markerBounds, { padding: [30, 30], maxZoom: 16 });
     woMapHasFitBounds = true;
+  } else {
+    map.setView([46.1512, 14.9955], 8); // Slovenia-wide fallback until something better is known
   }
 
   startWatchingMyLocationOnWoMap();
@@ -1791,9 +1808,9 @@ function openMapModal(lat, lng, label) {
   requestAnimationFrame(() => {
     if (!leafletMap) {
       leafletMap = L.map(mapContainer);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
       }).addTo(leafletMap);
     }
     leafletMap.invalidateSize();
