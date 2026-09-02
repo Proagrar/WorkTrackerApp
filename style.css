@@ -1237,6 +1237,43 @@ input, select, textarea { font-family: inherit; }
   padding-top: 4px;
 }
 
+/* Work order detail: map pane stays put, only the form content
+   scrolls underneath/beside it. Overrides .modal-sheet's own
+   overflow-y so the sheet itself doesn't ALSO scroll as one block —
+   scoped to #formModal only, other modals keep the shared behavior. */
+#formModal .modal-sheet {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wo-detail-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.wo-detail-map {
+  height: 42vh;
+  max-height: 380px;
+  flex-shrink: 0;
+}
+
+.wo-detail-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 900px) {
+  .wo-detail-layout { flex-direction: row; }
+  .wo-detail-map    { width: 50%; height: auto; max-height: none; order: 2; }
+  .wo-detail-content { width: 50%; order: 1; }
+}
+
 .dialog-body {
   padding: 8px 20px 16px;
   font-size: .9375rem;

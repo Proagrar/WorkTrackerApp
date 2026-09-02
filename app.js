@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.44';
+const APP_VERSION = 'v1.45';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -62,6 +62,7 @@ const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
 const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
 const woMapsLink  = document.getElementById('woMapsLink');
+const woDetailMap = document.getElementById('woDetailMap');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
 const roadHourSel = document.getElementById('roadHour');
@@ -959,6 +960,7 @@ async function openWorkOrderDetail(workOrder) {
 
   woMapsLink.hidden = true;
   loadWorkOrderCenterPoint(workOrder.id); // fire-and-forget, don't block modal open on a geometry query
+  showWoDetailMap(workOrder); // fire-and-forget, same reasoning
 
   woAddExistingGerkCode.value = '';
   if (currentRole === 'admin') loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
@@ -980,6 +982,102 @@ async function loadWorkOrderCenterPoint(workOrderId) {
   if (result?.lat == null || result?.lng == null) return;
   woMapsLink.href = `https://www.google.com/maps?q=${result.lat},${result.lng}`;
   woMapsLink.hidden = false;
+}
+
+// ── Work order detail: persistent split-view map ─────────────────
+// Separate Leaflet instance from the popup map modal (openMapModal) —
+// this one lives inside the detail sheet itself and stays up for as
+// long as the order is open, rather than being opened on demand for
+// one point.
+let woMap           = null;
+let woMapGerkLayer  = null;
+let woMapMeMarker   = null;
+let woMapMeWatchId  = null;
+let woMapHasFitBounds = false;
+
+function ensureWoMap() {
+  if (woMap) return woMap;
+  woMap = L.map(woDetailMap);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(woMap);
+  woMapGerkLayer = L.layerGroup().addTo(woMap);
+  return woMap;
+}
+
+async function showWoDetailMap(workOrder) {
+  const map = ensureWoMap();
+  woMapGerkLayer.clearLayers();
+  woMapHasFitBounds = false;
+
+  requestAnimationFrame(() => {
+    map.invalidateSize();
+    map.setView([46.1512, 14.9955], 8); // Slovenia-wide fallback until something better is known
+  });
+
+  // Plain center-point markers immediately from field data already
+  // loaded client-side — the boundary shapes below can take a moment,
+  // and not every GERK has one, so this gives an instant baseline.
+  const gerkCodes = (workOrder.delovni_nalogi_gerki || []).map(g => g.gerk_code);
+  const markerBounds = [];
+  for (const code of gerkCodes) {
+    const f = fields.find(f => f.code === code);
+    if (f?.lat != null && f?.lng != null) {
+      L.marker([f.lat, f.lng]).bindTooltip(code).addTo(woMapGerkLayer);
+      markerBounds.push([f.lat, f.lng]);
+    }
+  }
+  if (markerBounds.length) {
+    map.fitBounds(markerBounds, { padding: [30, 30], maxZoom: 16 });
+    woMapHasFitBounds = true;
+  }
+
+  startWatchingMyLocationOnWoMap();
+
+  // Actual GERK boundary polygons, when the CRM has shape data for
+  // them — drawn on top of the plain markers once they arrive (guarded
+  // against the modal having moved to a different order by the time
+  // this resolves, same pattern as loadWorkOrderCenterPoint).
+  const { data: shapes, error } = await supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id });
+  if (error || currentDetailWorkOrder?.id !== workOrder.id) return;
+
+  const shapeLayers = [];
+  for (const row of (shapes || [])) {
+    if (!row.geojson) continue;
+    const layer = L.geoJSON(row.geojson, {
+      style: { color: '#2455AA', weight: 2, fillColor: '#2455AA', fillOpacity: .15 },
+    }).bindTooltip(row.gerk_code).addTo(woMapGerkLayer);
+    shapeLayers.push(layer);
+  }
+  if (shapeLayers.length) {
+    let combined = shapeLayers[0].getBounds();
+    for (const layer of shapeLayers.slice(1)) combined = combined.extend(layer.getBounds());
+    map.fitBounds(combined, { padding: [30, 30] });
+    woMapHasFitBounds = true;
+  }
+}
+
+function startWatchingMyLocationOnWoMap() {
+  if (!navigator.geolocation || !woMap) return;
+  stopWatchingMyLocationOnWoMap();
+  woMapMeWatchId = navigator.geolocation.watchPosition(pos => {
+    if (!woMap) return;
+    const { latitude, longitude } = pos.coords;
+    if (woMapMeMarker) {
+      woMapMeMarker.setLatLng([latitude, longitude]);
+    } else {
+      woMapMeMarker = L.circleMarker([latitude, longitude], {
+        radius: 8, color: '#fff', weight: 2, fillColor: '#2455AA', fillOpacity: 1,
+      }).addTo(woMap).bindTooltip('Vi');
+      if (!woMapHasFitBounds) woMap.setView([latitude, longitude], 15);
+    }
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 5000 });
+}
+
+function stopWatchingMyLocationOnWoMap() {
+  if (woMapMeWatchId != null) { navigator.geolocation.clearWatch(woMapMeWatchId); woMapMeWatchId = null; }
+  if (woMapMeMarker) { woMapMeMarker.remove(); woMapMeMarker = null; }
 }
 
 // Re-fetches and re-renders the modal's contents for currentDetailDate —
@@ -1056,6 +1154,7 @@ workLogDateInput.addEventListener('change', async () => {
 function closeModal() {
   formModal.hidden = true;
   document.body.style.overflow = '';
+  stopWatchingMyLocationOnWoMap();
   // Time logged via the live Start/Stop timers writes straight to Supabase
   // without updating the in-memory `logs` array — refresh it so Evidenca
   // dela reflects what was just logged.
