@@ -1344,7 +1344,11 @@ input, select, textarea { font-family: inherit; }
   .modal-backdrop     { align-items: center; padding: 24px; }
   .modal-sheet         { border-radius: var(--radius-xl); max-height: 88vh; }
   .modal-sheet-compact { max-width: 420px; }
-  .modal-sheet-wide    { max-width: 760px; }
+  /* Scales with the viewport (80% of width) instead of a fixed cap —
+     the split-view map+form layout wants real room to breathe, and a
+     flat 760px looked cramped once the map pane was added. Capped at
+     1400px so it doesn't stretch absurdly wide on an ultrawide monitor. */
+  .modal-sheet-wide    { width: 80vw; max-width: 1400px; }
   .modal-handle        { display: none; }
 
   /* GERK rows in the work-order detail read as one line per record
