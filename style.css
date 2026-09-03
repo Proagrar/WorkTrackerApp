@@ -782,16 +782,25 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
-.sample-area-input { width: 64px; }
+.wlg-add-sample { margin-top: 8px; }
 
-.sample-raw-note {
-  margin-top: 2px;
-  font-size: .71875rem;
-  color: var(--text-muted);
-  white-space: normal;
+.wlg-add-sample-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
 }
 
-.wlg-add-sample { margin-top: 8px; }
+.wlg-new-sample-input {
+  font-family: inherit;
+  font-size: .78125rem;
+  padding: 4px 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+}
 
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 

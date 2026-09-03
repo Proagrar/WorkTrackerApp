@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.49';
+const APP_VERSION = 'v1.50';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -689,10 +689,10 @@ function toTimeInputValue(iso) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// ── Vzorčenje (sampling_note) action dropdown / sampling depth ──
-// admin-editable, everyone else read-only. Matches the "Admins can
-// manage samples" RLS policy: only admins can actually write, so only
-// admins get the dropdown.
+// ── Vzorčenje (sampling_note) action / sampling depth ──
+// Both set once, by an admin, when a segment is added (the "+ Dodaj
+// segment" form in renderSamplesSection) — read-only everywhere else,
+// including in the table itself, for everyone.
 //
 // The action concept lives in sampling_note, not a separate column —
 // that's already where "ne pobereš" shows up 251 times from the
@@ -704,22 +704,11 @@ function toTimeInputValue(iso) {
 const SAMPLE_ACTIONS = ['ne pobereš', 'združi', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
 const SAMPLE_DEPTHS  = [12, 20, 25, 30, 60, 90];
 
+// Read-only everywhere, including for admins — set once when the
+// segment is added (see the "+ Dodaj segment" form), never edited
+// afterward in this table.
 function renderSamplingCell(s) {
-  if (currentRole !== 'admin') {
-    return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
-  }
-  const matchesAction = s.sampling_note && SAMPLE_ACTIONS.includes(s.sampling_note);
-  const opts = ['<option value="">-</option>']
-    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.sampling_note === a ? ' selected' : ''}>${escHtml(a)}</option>`))
-    .join('');
-  const select = `<select class="sample-field-input" data-sample-id="${escHtml(s.id)}" data-field="sampling_note">${opts}</select>`;
-  // Raw import text/date fragments the dropdown can't represent as one
-  // of its own options — keep it visible instead of silently hiding it
-  // behind a "-" selection.
-  const raw = !matchesAction && (s.sampling_note || s.sampling_date)
-    ? `<div class="sample-raw-note">${s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date)}</div>`
-    : '';
-  return `${select}${raw}`;
+  return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
 }
 
 // Tip LAB analize — one per GERK-on-this-work-order (not per segment;
@@ -767,45 +756,11 @@ function renderSampleLocationCell(s) {
   return `${mapBtn}${captureBtn}`;
 }
 
+// Read-only, same reasoning as renderSamplingCell — set once at entry.
 function renderSampleDepthCell(s) {
-  if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
-  const opts = ['<option value="">-</option>']
-    .concat(SAMPLE_DEPTHS.map(d => `<option value="${d}"${s.sampling_depth_cm === d ? ' selected' : ''}>${d} cm</option>`))
-    .join('');
-  return `<select class="sample-field-input" data-sample-id="${escHtml(s.id)}" data-field="sampling_depth_cm">${opts}</select>`;
+  return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
 }
 
-function renderSampleAreaCell(s) {
-  if (currentRole !== 'admin') return s.area_ha != null ? `${s.area_ha} ha` : '—';
-  return `<input type="number" step="0.01" min="0" class="sample-field-input sample-area-input"
-            data-sample-id="${escHtml(s.id)}" data-field="area_ha" value="${s.area_ha ?? ''}" placeholder="ha">`;
-}
-
-// Updates one sample's action/depth/area in place — direct table
-// write (no RPC needed, RLS already restricts this to admins) — and
-// patches the in-memory copy so it stays correct if the panel
-// re-renders without a full reload.
-async function updateSampleField(fieldEl) {
-  const sampleId = fieldEl.dataset.sampleId;
-  const field    = fieldEl.dataset.field;
-  let value = fieldEl.value === '' ? null : fieldEl.value;
-  if (field === 'sampling_depth_cm' && value !== null) value = parseInt(value, 10);
-  if (field === 'area_ha' && value !== null) value = parseFloat(value);
-
-  fieldEl.disabled = true;
-  try {
-    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ [field]: value }).eq('id', sampleId);
-    if (error) throw error;
-    for (const g of currentDetailWorkOrder.delovni_nalogi_gerki || []) {
-      const sample = (g.delovni_nalogi_vzorci || []).find(s => s.id === sampleId);
-      if (sample) { sample[field] = value; break; }
-    }
-  } catch (e) {
-    showFormError('Napaka pri shranjevanju vzorca.');
-  } finally {
-    fieldEl.disabled = false;
-  }
-}
 
 function renderWorkLogGerkRows(rows) {
   if (!rows.length) {
@@ -874,9 +829,24 @@ function renderWorkLogGerkRows(rows) {
 // there's actually something to show.
 function renderSamplesSection(samples, gerkId) {
   if (!samples.length && currentRole !== 'admin') return '';
-  const addBtn = currentRole === 'admin' && gerkId
-    ? `<button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample" data-gerk-id="${escHtml(gerkId)}">+ Dodaj segment</button>`
-    : '';
+  // Vzorčenje/Globina are set once here, at creation — never edited
+  // afterward in the table (see renderSamplingCell/renderSampleDepthCell).
+  const addSection = currentRole === 'admin' && gerkId ? `
+          <div class="wlg-add-sample-wrap" data-gerk-id="${escHtml(gerkId)}">
+            <button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample-toggle">+ Dodaj segment</button>
+            <div class="wlg-add-sample-form" hidden>
+              <select class="wlg-new-sample-input" data-role="new-vzorcenje">
+                <option value="">Vzorčenje…</option>
+                ${SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('')}
+              </select>
+              <select class="wlg-new-sample-input" data-role="new-globina">
+                <option value="">Globina…</option>
+                ${SAMPLE_DEPTHS.map(d => `<option value="${d}">${d} cm</option>`).join('')}
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-add-sample-confirm">Dodaj</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-add-sample-cancel">Prekliči</button>
+            </div>
+          </div>` : '';
   return `
         <button type="button" class="wlg-samples-toggle" data-action="wlg-samples-toggle">
           <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
@@ -884,21 +854,19 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Ha</th><th>Vzorčenje</th><th>Pošiljanje</th><th>Globina</th><th>Lokacija</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Globina</th><th>Lokacija</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${escHtml(s.sample_no)}</td>
-                  <td>${renderSampleAreaCell(s)}</td>
                   <td>${renderSamplingCell(s)}</td>
-                  <td>${s.sending_note ? escHtml(s.sending_note) : fmtSampleDate(s.sending_date)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
                   <td>${renderSampleLocationCell(s)}</td>
                   ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
           </table>
-          ${addBtn}
+          ${addSection}
         </div>`;
 }
 
@@ -1429,10 +1397,13 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-samples-toggle"]').forEach(btn => {
     btn.addEventListener('click', () => toggleGerkSamples(btn));
   });
-  workLogGerkRowsEl.querySelectorAll('.sample-field-input').forEach(sel => {
-    sel.addEventListener('change', () => updateSampleField(sel));
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample-toggle"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleAddSampleForm(btn.closest('.wlg-add-sample-wrap'), true));
   });
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample"]').forEach(btn => {
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample-cancel"]').forEach(btn => {
+    btn.addEventListener('click', () => toggleAddSampleForm(btn.closest('.wlg-add-sample-wrap'), false));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-add-sample-confirm"]').forEach(btn => {
     btn.addEventListener('click', () => addSample(btn));
   });
   workLogGerkRowsEl.querySelectorAll('.wlg-lab-type-select').forEach(sel => {
@@ -1462,8 +1433,23 @@ function wireGerkRowButtons() {
 // loadDetailForDate() (that only re-fetches work_logs/work_log_gerks
 // for the day), so the freshly inserted row is fetched directly and
 // patched in before re-rendering.
+function toggleAddSampleForm(wrap, open) {
+  wrap.querySelector('.wlg-add-sample').hidden = open;
+  wrap.querySelector('.wlg-add-sample-form').hidden = !open;
+  if (!open) {
+    wrap.querySelectorAll('.wlg-new-sample-input').forEach(sel => { sel.value = ''; });
+  }
+}
+
+// Vzorčenje/Globina are captured right here, at creation — this is the
+// only place they're ever set (see renderSamplingCell/
+// renderSampleDepthCell, both read-only in the table itself).
 async function addSample(btn) {
-  const gerkId = btn.dataset.gerkId;
+  const wrap  = btn.closest('.wlg-add-sample-wrap');
+  const gerkId = wrap.dataset.gerkId;
+  const vzorcenje = wrap.querySelector('[data-role="new-vzorcenje"]').value || null;
+  const globina   = wrap.querySelector('[data-role="new-globina"]').value;
+
   const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
   const existing = gerk?.delovni_nalogi_vzorci || [];
   const maxNo = existing.reduce((max, s) => {
@@ -1475,12 +1461,18 @@ async function addSample(btn) {
   try {
     const { data, error } = await supabase
       .from('delovni_nalogi_vzorci')
-      .insert({ delovni_nalog_gerk_id: gerkId, sample_no: String(maxNo + 1) })
+      .insert({
+        delovni_nalog_gerk_id: gerkId,
+        sample_no: String(maxNo + 1),
+        sampling_note: vzorcenje,
+        sampling_depth_cm: globina ? parseInt(globina, 10) : null,
+      })
       .select('id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha')
       .single();
     if (error) throw error;
 
     gerk.delovni_nalogi_vzorci = [...existing, data];
+    toggleAddSampleForm(wrap, false);
     await loadDetailForDate();
   } catch (e) {
     // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) —
