@@ -136,6 +136,7 @@
   <div id="fabMenu" class="fab-menu" hidden>
     <button type="button" class="fab-menu-item" data-action="new-work-order">+ Nov delovni nalog</button>
     <button type="button" class="fab-menu-item" data-action="customer-list">Seznam strank</button>
+    <button type="button" class="fab-menu-item" data-action="operators-list">Izvajalci</button>
   </div>
   <button id="addBtn" class="fab" aria-label="Meni">
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
@@ -327,6 +328,21 @@
 
           <div id="woGerksList"></div>
           <button type="button" id="woAddGerkBtn" class="btn-add-gerk">+ Dodaj GERK ročno</button>
+
+          <!-- Applies Globina + Združi to every segment currently listed
+               above, in one shot — re-usable any time (paste more, adjust,
+               apply again), not a one-time paste-time setting. -->
+          <div class="wo-bulk-segment-row">
+            <select class="field-input field-select" id="woBulkDepth">
+              <option value="">Globina…</option>
+            </select>
+            <label class="wo-bulk-zdruzi-label">
+              <input type="checkbox" id="woBulkZdruzi">
+              Združi
+            </label>
+            <button type="button" class="btn btn-secondary btn-sm" id="woBulkApplyBtn">Uporabi za vse</button>
+            <span id="woBulkApplyResult" class="field-hint" hidden></span>
+          </div>
         </div>
 
         <div class="field">
@@ -403,6 +419,27 @@
           <h3 class="section-title">Prijavljeni podatki</h3>
         </div>
         <div id="declTableWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Izvajalci (admin: who's eligible to be assigned as izvajalec) ── -->
+  <div id="operatorsModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="operatorsModalTitle">
+    <div class="modal-sheet">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="operatorsModalTitle" class="modal-title">Izvajalci</h3>
+        <button id="operatorsModalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="work-form">
+        <p class="field-hint">Samo obkljukani so na voljo za izbiro pri "Izvajalec" na delovnem nalogu.</p>
+        <div id="operatorsError" class="alert alert-error" hidden role="alert"></div>
+        <div id="operatorsList" class="wo-gerk-checklist"></div>
       </div>
     </div>
   </div>

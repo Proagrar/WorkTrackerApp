@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.50';
+const APP_VERSION = 'v1.51';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -104,6 +104,12 @@ const declLinksList          = document.getElementById('declLinksList');
 const declTableWrap          = document.getElementById('declTableWrap');
 let declCustomerId = null;
 
+// ── Operators (Izvajalci) modal refs ────────────────────────────
+const operatorsModal      = document.getElementById('operatorsModal');
+const operatorsModalClose = document.getElementById('operatorsModalClose');
+const operatorsListEl     = document.getElementById('operatorsList');
+const operatorsErrorEl    = document.getElementById('operatorsError');
+
 // ── Map modal refs ────────────────────────────────────────────
 const mapModal            = document.getElementById('mapModal');
 const mapModalClose       = document.getElementById('mapModalClose');
@@ -128,6 +134,10 @@ const woGerkPasteInput    = document.getElementById('woGerkPaste');
 const woGerkPasteBtn      = document.getElementById('woGerkPasteBtn');
 const woGerksListEl       = document.getElementById('woGerksList');
 const woAddGerkBtn        = document.getElementById('woAddGerkBtn');
+const woBulkDepthSel      = document.getElementById('woBulkDepth');
+const woBulkZdruziCb      = document.getElementById('woBulkZdruzi');
+const woBulkApplyBtn      = document.getElementById('woBulkApplyBtn');
+const woBulkApplyResult   = document.getElementById('woBulkApplyResult');
 const woStatusSel         = document.getElementById('woStatus');
 const woPodrobnostiInput  = document.getElementById('woPodrobnosti');
 const woFormError         = document.getElementById('woFormError');
@@ -600,6 +610,23 @@ function addGerkSegments(row, segments) {
   row.querySelector('.gerk-segments-toggle').classList.add('wlg-samples-toggle--open');
 }
 
+// Stamps Globina + Združi onto every segment currently listed across
+// all GERKs — not a one-time paste-time setting, re-runnable any time
+// (paste more, adjust the two controls, apply again). Overwrites
+// whatever was there before rather than only filling blanks, so the
+// two controls always describe the true current state of every segment.
+function applyBulkSegmentSettings() {
+  const depth   = woBulkDepthSel.value;
+  const vzorcenje = woBulkZdruziCb.checked ? 'združi' : '';
+  const rows = woGerksListEl.querySelectorAll('.gerk-segment-row');
+  rows.forEach(sr => {
+    sr.dataset.depth = depth;
+    sr.dataset.vzorcenje = vzorcenje;
+  });
+  woBulkApplyResult.textContent = `Uporabljeno na ${rows.length} ${rows.length === 1 ? 'segment' : 'segmentov'}.`;
+  woBulkApplyResult.hidden = false;
+}
+
 function getFormGerks(container = woGerksListEl) {
   return Array.from(container.querySelectorAll('.gerk-row')).map(row => ({
     code:     row.querySelector('.gerk-code-input').value.trim(),
@@ -607,8 +634,10 @@ function getFormGerks(container = woGerksListEl) {
               ? parseFloat(row.querySelector('.gerk-ha-input').value) : null,
     lokacija: row.querySelector('.gerk-lokacija-input').value.trim() || null,
     segments: Array.from(row.querySelectorAll('.gerk-segment-row')).map(sr => ({
-      fms:      sr.querySelector('.gerk-segment-fms').value.trim() || null,
-      sampleNo: sr.querySelector('.gerk-segment-sample').value.trim(),
+      fms:       sr.querySelector('.gerk-segment-fms').value.trim() || null,
+      sampleNo:  sr.querySelector('.gerk-segment-sample').value.trim(),
+      depth:     sr.dataset.depth || null,
+      vzorcenje: sr.dataset.vzorcenje || null,
     })).filter(s => s.sampleNo),
   })).filter(g => g.code);
 }
@@ -703,6 +732,9 @@ function toTimeInputValue(iso) {
 // genuinely don't have a group number to default to.
 const SAMPLE_ACTIONS = ['ne pobereš', 'združi', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
 const SAMPLE_DEPTHS  = [12, 20, 25, 30, 60, 90];
+
+woBulkDepthSel.innerHTML = '<option value="">Globina…</option>' +
+  SAMPLE_DEPTHS.map(d => `<option value="${d}">${d} cm</option>`).join('');
 
 // Read-only everywhere, including for admins — set once when the
 // segment is added (see the "+ Dodaj segment" form), never edited
@@ -1797,8 +1829,9 @@ document.addEventListener('click', () => { fabMenu.hidden = true; });
 fabMenu.querySelectorAll('.fab-menu-item').forEach(btn => {
   btn.addEventListener('click', () => {
     fabMenu.hidden = true;
-    if (btn.dataset.action === 'new-work-order') openWorkOrderModal();
-    if (btn.dataset.action === 'customer-list')  openDeclModal();
+    if (btn.dataset.action === 'new-work-order')  openWorkOrderModal();
+    if (btn.dataset.action === 'customer-list')   openDeclModal();
+    if (btn.dataset.action === 'operators-list')  openOperatorsModal();
   });
 });
 
@@ -1817,8 +1850,52 @@ document.addEventListener('keydown', e => {
     if (!workOrderModal.hidden) closeWorkOrderModal();
     if (!declModal.hidden)      closeDeclModal();
     if (!mapModal.hidden)       closeMapModal();
+    if (!operatorsModal.hidden) closeOperatorsModal();
   }
 });
+
+// ── Operators (Izvajalci) modal ───────────────────────────────
+async function openOperatorsModal() {
+  operatorsErrorEl.hidden = true;
+  const { data } = await supabase.from('profiles').select('id, full_name, eligible_izvajalec').order('full_name');
+  operatorsListEl.innerHTML = (data || []).map(p => `
+    <label class="wo-gerk-check-item">
+      <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
+      <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
+    </label>`).join('');
+
+  operatorsListEl.querySelectorAll('.operator-eligible-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => setOperatorEligibility(cb));
+  });
+
+  operatorsModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+async function setOperatorEligibility(cb) {
+  const profileId = cb.dataset.profileId;
+  const eligible  = cb.checked;
+  cb.disabled = true;
+  try {
+    const { error } = await supabase.rpc('set_operator_eligibility', { p_profile_id: profileId, p_eligible: eligible });
+    if (error) throw error;
+    operatorsList = []; // stale — force loadOperatorsList() to refetch next time the create-order form opens
+  } catch (e) {
+    cb.checked = !eligible; // revert the checkbox — the write didn't actually land
+    operatorsErrorEl.textContent = e.message || 'Napaka pri shranjevanju.';
+    operatorsErrorEl.hidden = false;
+  } finally {
+    cb.disabled = false;
+  }
+}
+
+function closeOperatorsModal() {
+  operatorsModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+operatorsModalClose.addEventListener('click', closeOperatorsModal);
+operatorsModal.addEventListener('click', e => { if (e.target === operatorsModal) closeOperatorsModal(); });
 
 // ── Map modal (Leaflet) ───────────────────────────────────────
 // One map instance, reused across opens — Leaflet can't size itself
@@ -2140,7 +2217,11 @@ async function loadCustomers() {
 }
 
 async function loadOperatorsList() {
-  const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .eq('eligible_izvajalec', true)
+    .order('full_name');
   operatorsList = data ?? [];
   woIzvajalecSel.innerHTML = '<option value="">— brez —</option>' +
     operatorsList.map(p => `<option value="${p.id}">${escHtml(p.full_name || '—')}</option>`).join('');
@@ -2606,6 +2687,7 @@ async function openWorkOrderModal() {
   woCustomerGerksWrap.hidden = true;
   woCustomerGerksList.innerHTML = '';
   woGerkPasteInput.value = '';
+  woBulkApplyResult.hidden = true;
   woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
 
   if (!customers.length) await loadCustomers();
@@ -2650,6 +2732,8 @@ woAddGerkBtn.addEventListener('click', () => {
   const input = addGerkRow(woGerksListEl);
   input.focus();
 });
+
+woBulkApplyBtn.addEventListener('click', applyBulkSegmentSettings);
 
 workOrderForm.addEventListener('submit', async e => {
   e.preventDefault();
@@ -2729,8 +2813,10 @@ workOrderForm.addEventListener('submit', async e => {
   const segmentRows = gerkRows.flatMap(g =>
     g.segments.map(s => ({
       delovni_nalog_gerk_id: gerkIdByCode[g.code],
-      sample_no: s.sampleNo,
-      fms:       s.fms,
+      sample_no:         s.sampleNo,
+      fms:               s.fms,
+      sampling_depth_cm: s.depth ? parseInt(s.depth, 10) : null,
+      sampling_note:     s.vzorcenje || null,
     }))
   );
 
