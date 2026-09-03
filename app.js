@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.51';
+const APP_VERSION = 'v1.52';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1760,18 +1760,26 @@ woAddExistingGerkBtn.addEventListener('click', async () => {
   }
 
   woAddExistingGerkBtn.disabled = true;
+  // field_id left out of the insert, backfilled best-effort after —
+  // same reasoning as the create-order flow (see its comment): this
+  // column's schema-cache entry has been unreliable, and nothing
+  // currently reads it.
   const { data, error } = await supabase
     .from('delovni_nalogi_gerki')
     .insert({
       delovni_nalog_id: currentDetailWorkOrder.id,
       gerk_code:        code,
-      field_id:         known?.id || null,
       kolicina_ha:      known?.area_ha ?? null,
     })
     .select('id, gerk_code, kolicina_ha, lokacija, tip_lab_analize')
     .single();
   woAddExistingGerkBtn.disabled = false;
   if (error) return showFormError(error.message || 'Napaka pri dodajanju GERKA.');
+
+  if (known?.id) {
+    const { error: fieldIdError } = await supabase.from('delovni_nalogi_gerki').update({ field_id: known.id }).eq('id', data.id);
+    if (fieldIdError) console.warn('field_id backfill failed for', code, fieldIdError);
+  }
 
   currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), { ...data, delovni_nalogi_vzorci: [] }];
   woAddExistingGerkCode.value = '';
@@ -2787,12 +2795,19 @@ workOrderForm.addEventListener('submit', async e => {
     .in('cadastre_id', gerkRows.map(g => g.code));
   const fieldIdByCode = Object.fromEntries((matchedFields || []).map(f => [f.cadastre_id, f.id]));
 
+  // field_id deliberately left out of this insert — see the backfill
+  // below. PostgREST's schema cache has been repeatedly, unpredictably
+  // forgetting this specific column (confirmed via raw-Postgres EXPLAIN
+  // that the column itself is always fine; a NOTIFY reload fixes it for
+  // under two minutes before it reverts on its own), so keeping it out
+  // of the one INSERT that MUST succeed for the order to save at all,
+  // and treating its backfill as best-effort, stops that platform flake
+  // from blocking work order creation entirely.
   const { data: insertedGerks, error: gerkError } = await supabase
     .from('delovni_nalogi_gerki')
     .insert(gerkRows.map(g => ({
       delovni_nalog_id: workOrderId,
       gerk_code:        g.code,
-      field_id:         fieldIdByCode[g.code] || null,
       kolicina_ha:      g.hectares,
       lokacija:         g.lokacija,
     })))
@@ -2802,6 +2817,17 @@ workOrderForm.addEventListener('submit', async e => {
     setWoSaveLoading(false);
     showWoFormError('Napaka pri shranjevanju GERKOV.');
     return;
+  }
+
+  // Best-effort field_id backfill (see note above) — a failure here
+  // (same schema-cache flake) is swallowed rather than shown, since
+  // nothing currently reads delovni_nalogi_gerki.field_id: the maps/
+  // shapes RPCs key off gerk_code directly against gerk_polygon.
+  for (const g of insertedGerks || []) {
+    const fieldId = fieldIdByCode[g.gerk_code];
+    if (!fieldId) continue;
+    const { error } = await supabase.from('delovni_nalogi_gerki').update({ field_id: fieldId }).eq('id', g.id);
+    if (error) console.warn('field_id backfill failed for', g.gerk_code, error);
   }
 
   // Segments (FMS + Sample no) pasted in from the lab's sheet — inserted
