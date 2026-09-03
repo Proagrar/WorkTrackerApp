@@ -329,19 +329,14 @@
           <div id="woGerksList"></div>
           <button type="button" id="woAddGerkBtn" class="btn-add-gerk">+ Dodaj GERK ročno</button>
 
-          <!-- Applies Globina + Združi to every segment currently listed
-               above, in one shot — re-usable any time (paste more, adjust,
-               apply again), not a one-time paste-time setting. -->
+          <!-- Applied to every segment above once the order is saved —
+               not per-segment like Vzorčenje, since depth is normally
+               the same across a whole sampling run. -->
           <div class="wo-bulk-segment-row">
+            <label class="field-label" for="woBulkDepth">Globina (za vse segmente)</label>
             <select class="field-input field-select" id="woBulkDepth">
               <option value="">Globina…</option>
             </select>
-            <label class="wo-bulk-zdruzi-label">
-              <input type="checkbox" id="woBulkZdruzi">
-              Združi
-            </label>
-            <button type="button" class="btn btn-secondary btn-sm" id="woBulkApplyBtn">Uporabi za vse</button>
-            <span id="woBulkApplyResult" class="field-hint" hidden></span>
           </div>
         </div>
 

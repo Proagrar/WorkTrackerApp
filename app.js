@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.52';
+const APP_VERSION = 'v1.53';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -135,9 +135,6 @@ const woGerkPasteBtn      = document.getElementById('woGerkPasteBtn');
 const woGerksListEl       = document.getElementById('woGerksList');
 const woAddGerkBtn        = document.getElementById('woAddGerkBtn');
 const woBulkDepthSel      = document.getElementById('woBulkDepth');
-const woBulkZdruziCb      = document.getElementById('woBulkZdruzi');
-const woBulkApplyBtn      = document.getElementById('woBulkApplyBtn');
-const woBulkApplyResult   = document.getElementById('woBulkApplyResult');
 const woStatusSel         = document.getElementById('woStatus');
 const woPodrobnostiInput  = document.getElementById('woPodrobnosti');
 const woFormError         = document.getElementById('woFormError');
@@ -565,18 +562,26 @@ function addGerkRow(container = woGerksListEl, code = '', hectares = '', lokacij
   return codeInput;
 }
 
-// One FMS + Sample no line inside a GERK row's (initially collapsed)
-// segments panel — filled from the Excel paste, or added/edited by hand.
-function addGerkSegmentRow(row, fms = '', sampleNo = '') {
+// One FMS + Sample no + Vzorčenje line inside a GERK row's (initially
+// collapsed) segments panel — filled from the Excel paste, or added/
+// edited by hand. Vzorčenje is per-segment (unlike Globina, which is
+// bulk-applied to the whole order at save time) since a paste can
+// genuinely mix "ne pobereš"/"združi_1"/etc. across different segments.
+function addGerkSegmentRow(row, fms = '', sampleNo = '', vzorcenje = '') {
   const list = row.querySelector('.gerk-segments-list');
   const segRow = document.createElement('div');
   segRow.className = 'gerk-segment-row';
+  const vzorcenjeOpts = ['<option value="">Vzorčenje…</option>']
+    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`))
+    .join('');
   segRow.innerHTML = `
     <input type="text" class="sample-field-input gerk-segment-fms" placeholder="FMS">
     <input type="text" class="sample-field-input gerk-segment-sample" placeholder="Vzorec št.">
+    <select class="sample-field-input gerk-segment-vzorcenje">${vzorcenjeOpts}</select>
     <button type="button" class="gerk-segment-remove" aria-label="Odstrani segment">✕</button>`;
   segRow.querySelector('.gerk-segment-fms').value = fms;
   segRow.querySelector('.gerk-segment-sample').value = sampleNo;
+  segRow.querySelector('.gerk-segment-vzorcenje').value = vzorcenje;
   segRow.querySelector('.gerk-segment-remove').addEventListener('click', () => {
     segRow.remove();
     updateGerkSegmentsCount(row);
@@ -610,23 +615,6 @@ function addGerkSegments(row, segments) {
   row.querySelector('.gerk-segments-toggle').classList.add('wlg-samples-toggle--open');
 }
 
-// Stamps Globina + Združi onto every segment currently listed across
-// all GERKs — not a one-time paste-time setting, re-runnable any time
-// (paste more, adjust the two controls, apply again). Overwrites
-// whatever was there before rather than only filling blanks, so the
-// two controls always describe the true current state of every segment.
-function applyBulkSegmentSettings() {
-  const depth   = woBulkDepthSel.value;
-  const vzorcenje = woBulkZdruziCb.checked ? 'združi' : '';
-  const rows = woGerksListEl.querySelectorAll('.gerk-segment-row');
-  rows.forEach(sr => {
-    sr.dataset.depth = depth;
-    sr.dataset.vzorcenje = vzorcenje;
-  });
-  woBulkApplyResult.textContent = `Uporabljeno na ${rows.length} ${rows.length === 1 ? 'segment' : 'segmentov'}.`;
-  woBulkApplyResult.hidden = false;
-}
-
 function getFormGerks(container = woGerksListEl) {
   return Array.from(container.querySelectorAll('.gerk-row')).map(row => ({
     code:     row.querySelector('.gerk-code-input').value.trim(),
@@ -636,8 +624,7 @@ function getFormGerks(container = woGerksListEl) {
     segments: Array.from(row.querySelectorAll('.gerk-segment-row')).map(sr => ({
       fms:       sr.querySelector('.gerk-segment-fms').value.trim() || null,
       sampleNo:  sr.querySelector('.gerk-segment-sample').value.trim(),
-      depth:     sr.dataset.depth || null,
-      vzorcenje: sr.dataset.vzorcenje || null,
+      vzorcenje: sr.querySelector('.gerk-segment-vzorcenje').value || null,
     })).filter(s => s.sampleNo),
   })).filter(g => g.code);
 }
@@ -2695,7 +2682,6 @@ async function openWorkOrderModal() {
   woCustomerGerksWrap.hidden = true;
   woCustomerGerksList.innerHTML = '';
   woGerkPasteInput.value = '';
-  woBulkApplyResult.hidden = true;
   woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
 
   if (!customers.length) await loadCustomers();
@@ -2740,8 +2726,6 @@ woAddGerkBtn.addEventListener('click', () => {
   const input = addGerkRow(woGerksListEl);
   input.focus();
 });
-
-woBulkApplyBtn.addEventListener('click', applyBulkSegmentSettings);
 
 workOrderForm.addEventListener('submit', async e => {
   e.preventDefault();
@@ -2839,10 +2823,9 @@ workOrderForm.addEventListener('submit', async e => {
   const segmentRows = gerkRows.flatMap(g =>
     g.segments.map(s => ({
       delovni_nalog_gerk_id: gerkIdByCode[g.code],
-      sample_no:         s.sampleNo,
-      fms:               s.fms,
-      sampling_depth_cm: s.depth ? parseInt(s.depth, 10) : null,
-      sampling_note:     s.vzorcenje || null,
+      sample_no:     s.sampleNo,
+      fms:           s.fms,
+      sampling_note: s.vzorcenje || null,
     }))
   );
 
@@ -2854,6 +2837,18 @@ workOrderForm.addEventListener('submit', async e => {
       showWoFormError('Nalog in GERKI so shranjeni, a segmenti niso — preverite jih v nalogu.');
       await loadWorkOrders();
       return;
+    }
+
+    // Globina applies to every segment on this order, once it's saved —
+    // set now that the segments actually exist as real rows, rather
+    // than baked into the insert above.
+    if (woBulkDepthSel.value) {
+      const gerkIds = Object.values(gerkIdByCode);
+      const { error: depthError } = await supabase
+        .from('delovni_nalogi_vzorci')
+        .update({ sampling_depth_cm: parseInt(woBulkDepthSel.value, 10) })
+        .in('delovni_nalog_gerk_id', gerkIds);
+      if (depthError) console.warn('Bulk globina update failed', depthError);
     }
   }
 

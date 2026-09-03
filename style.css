@@ -1584,23 +1584,13 @@ input, select, textarea { font-family: inherit; }
 
 .wo-bulk-segment-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
 }
-.wo-bulk-segment-row #woBulkDepth { width: auto; flex: 0 0 auto; }
-
-.wo-bulk-zdruzi-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: .8125rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
+.wo-bulk-segment-row #woBulkDepth { width: auto; align-self: flex-start; }
 
 /* Segments (FMS + Sample no) on a GERK row in the create-order form —
    reuses the detail view's .wlg-samples-toggle/.wlg-samples-panel look
@@ -1612,12 +1602,14 @@ input, select, textarea { font-family: inherit; }
 
 .gerk-segment-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
-.gerk-segment-fms    { flex: 0 0 72px; }
-.gerk-segment-sample { flex: 1 1 auto; }
+.gerk-segment-fms        { flex: 0 0 72px; }
+.gerk-segment-sample     { flex: 1 1 80px; }
+.gerk-segment-vzorcenje  { flex: 1 1 110px; }
 
 .gerk-segment-remove {
   background: none;
