@@ -168,7 +168,7 @@
           </div>
           <div class="wo-summary-cell">
             <label class="wo-summary-label" for="workLogDate">Datum</label>
-            <input class="field-input wo-summary-date" type="date" id="workLogDate" />
+            <input class="field-input" type="date" id="workLogDate" />
           </div>
           <div class="wo-summary-cell">
             <span class="wo-summary-label">Status</span>
@@ -184,24 +184,6 @@
         </div>
 
         <button type="button" id="woReleaseBtn" class="btn btn-secondary btn-block" hidden>Sprosti nalog</button>
-
-        <div class="wo-icon-actions">
-          <!-- Placeholder — download link for the work order's attached files (zip), not yet wired up -->
-          <button type="button" id="woDownloadFilesBtn" class="btn btn-icon" disabled title="Prenesi datoteke" aria-label="Prenesi datoteke">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 2h7l3 3v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-              <path d="M5 2v3h5V2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-              <path d="M4.5 9.5h7v4h-7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-            </svg>
-          </button>
-
-          <a id="woMapsLink" class="btn btn-icon" href="#" target="_blank" rel="noopener" hidden title="Odpri v Google Maps" aria-label="Odpri v Google Maps">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5c0-2.5-2-4.5-4.5-4.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-              <circle cx="8" cy="6" r="1.5" stroke="currentColor" stroke-width="1.5"/>
-            </svg>
-          </a>
-        </div>
 
         <p id="woHeaderMeta" class="wo-header-meta"></p>
 

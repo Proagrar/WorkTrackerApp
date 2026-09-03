@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.48';
+const APP_VERSION = 'v1.49';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -61,7 +61,6 @@ const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
 const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
 const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
-const woMapsLink  = document.getElementById('woMapsLink');
 const woDetailMap = document.getElementById('woDetailMap');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
@@ -958,9 +957,6 @@ async function openWorkOrderDetail(workOrder) {
   workLogDateInput.max   = todayISO();
   workLogDateInput.value = currentDetailDate;
 
-  woMapsLink.hidden = true;
-  loadWorkOrderCenterPoint(workOrder.id); // fire-and-forget, don't block modal open on a geometry query
-
   woAddExistingGerkCode.value = '';
   if (currentRole === 'admin') loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
 
@@ -975,19 +971,6 @@ async function openWorkOrderDetail(workOrder) {
   // modal opened, because nothing re-measured the container afterward.
   showWoDetailMap(workOrder); // fire-and-forget, don't block modal open on a geometry query
   document.body.style.overflow = 'hidden';
-}
-
-// Combines every GERK's CENTER_POINT on this work order into one
-// point server-side (see get_work_order_center_point). Guards against
-// the modal having moved on to a different work order by the time
-// this resolves (rapid open/close/reopen).
-async function loadWorkOrderCenterPoint(workOrderId) {
-  const { data, error } = await supabase.rpc('get_work_order_center_point', { p_work_order_id: workOrderId });
-  if (error || currentDetailWorkOrder?.id !== workOrderId) return;
-  const result = Array.isArray(data) ? data[0] : data;
-  if (result?.lat == null || result?.lng == null) return;
-  woMapsLink.href = `https://www.google.com/maps?q=${result.lat},${result.lng}`;
-  woMapsLink.hidden = false;
 }
 
 // ── Work order detail: persistent split-view map ─────────────────
@@ -1100,7 +1083,7 @@ async function showWoDetailMap(workOrder) {
   // Actual GERK boundary polygons, when the CRM has shape data for
   // them — drawn on top of the plain markers once they arrive (guarded
   // against the modal having moved to a different order by the time
-  // this resolves, same pattern as loadWorkOrderCenterPoint).
+  // this resolves).
   const { data: shapes, error } = await supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id });
   if (error || currentDetailWorkOrder?.id !== workOrder.id) return;
 

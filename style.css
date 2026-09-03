@@ -570,11 +570,22 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
-.wo-summary-cell .wo-status-badge { align-self: flex-start; }
-
-.wo-summary-date { height: 40px; padding: 0 10px; font-size: .875rem; }
-
-.wo-icon-actions { display: flex; gap: 8px; margin: -4px 0 4px; }
+/* Datum's input and Status's select/badge all occupy the same 40px
+   band, regardless of which one renders — a plain status badge is
+   naturally much shorter than an input otherwise, and the status
+   <select> was silently inheriting the global 46px .field-input
+   height instead of matching Datum's 40px. */
+.wo-summary-row .field-input {
+  height: 40px;
+  padding: 0 10px;
+  font-size: .875rem;
+}
+.wo-summary-cell .wo-status-badge {
+  align-self: flex-start;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+}
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
 
