@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.55';
+const APP_VERSION = 'v1.60';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -15,8 +15,6 @@ let currentOrg   = null;
 let profileMap   = {};
 let logs         = [];
 let fields       = [];
-let pendingDeleteId   = null;
-let viewMode     = 'compact';
 let currentMonth = new Date().toISOString().slice(0, 7);
 
 let currentTab       = 'nalogi'; // 'evidenca' | 'nalogi'
@@ -34,13 +32,7 @@ const todayDateEl    = document.getElementById('todayDate');
 const logoutBtn      = document.getElementById('logoutBtn');
 const addBtn         = document.getElementById('addBtn');
 const logsList       = document.getElementById('logsList');
-const viewCardsBtn   = document.getElementById('viewCardsBtn');
-const viewListBtn    = document.getElementById('viewListBtn');
-
-const statTotal  = document.getElementById('statTotal');
-const statWork   = document.getElementById('statWork');
-const statRoad   = document.getElementById('statRoad');
-const statGerk   = document.getElementById('statGerk');
+const exportLogsBtn  = document.getElementById('exportLogsBtn');
 const adminBadge = document.getElementById('adminBadge');
 
 const monthLabel   = document.getElementById('monthLabel');
@@ -62,6 +54,8 @@ const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
 const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
 const woDetailMap = document.getElementById('woDetailMap');
+const woCaptureBtn  = document.getElementById('woCaptureBtn');
+const woCaptureList = document.getElementById('woCaptureList');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
 const roadHourSel = document.getElementById('roadHour');
@@ -75,10 +69,6 @@ const formError   = document.getElementById('formError');
 const formSuccess = document.getElementById('formSuccess');
 const cancelBtn   = document.getElementById('cancelBtn');
 
-const deleteModal      = document.getElementById('deleteModal');
-const deleteCancelBtn  = document.getElementById('deleteCancelBtn');
-const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
-
 // ── Tabs ───────────────────────────────────────────────────────
 const tabEvidenca   = document.getElementById('tabEvidenca');
 const tabNalogi     = document.getElementById('tabNalogi');
@@ -86,6 +76,7 @@ const panelEvidenca = document.getElementById('panelEvidenca');
 const panelNalogi   = document.getElementById('panelNalogi');
 const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
+const woStatusFilter = document.getElementById('woStatusFilter');
 const woSearchSuggestions = document.getElementById('woSearchSuggestions');
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
@@ -212,7 +203,6 @@ function changeMonth(delta) {
   currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   renderMonthLabel();
   renderLogs();
-  updateStats();
 }
 
 prevMonthBtn.addEventListener('click', () => changeMonth(-1));
@@ -228,18 +218,6 @@ function renderGreeting(fullName) {
   const word = h < 12 ? 'Dobro jutro' : h < 18 ? 'Dober dan' : 'Dober večer';
   greetingEl.textContent = `${word}, ${fullName.split(' ')[0]}!`;
   todayDateEl.textContent = fmtTodayLong();
-}
-
-// ── Stats ──────────────────────────────────────────────────────
-function updateStats() {
-  const fl = filteredLogs();
-  statTotal.textContent = fl.length;
-  const workMins = fl.reduce((s, l) => s + (l.work_duration || 0), 0);
-  statWork.textContent = fmtDuration(workMins);
-  const roadMins = fl.reduce((s, l) => s + (l.road_duration || 0), 0);
-  statRoad.textContent = roadMins > 0 ? fmtDuration(roadMins) : '—';
-  const allGerks = new Set(fl.flatMap(l => (l.work_log_gerks || []).map(g => g.gerk_code)));
-  statGerk.textContent = allGerks.size || '—';
 }
 
 // ── Load logs ──────────────────────────────────────────────────
@@ -259,19 +237,8 @@ async function loadLogs() {
   if (currentRole === 'admin' || currentRole === 'supervisor') {
     const { data: profs } = await supabase.from('profiles').select('id, full_name');
     profileMap = Object.fromEntries((profs ?? []).map(p => [p.id, p.full_name]));
-  } else if (currentRole === 'supervisor') {
-    const { data: profs } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .eq('organization', currentOrg);
-    profileMap = Object.fromEntries((profs ?? []).map(p => [p.id, p.full_name]));
-    const orgIds = (profs ?? []).map(p => p.id);
-    if (orgIds.length) {
-      query = query.in('operator_id', orgIds);
-    } else {
-      query = query.eq('operator_id', currentUser.id);
-    }
   } else {
+    profileMap = { [currentUser.id]: currentUserName };
     query = query.eq('operator_id', currentUser.id);
   }
 
@@ -284,112 +251,61 @@ async function loadLogs() {
 
   logs = data ?? [];
   renderLogs();
-  updateStats();
 }
 
-// ── Render ─────────────────────────────────────────────────────
+// ── Render: simple exportable table — Datum / Ure / Operater ────
 function renderLogs() {
   const fl = filteredLogs();
-  syncViewToggle();
   if (fl.length === 0) {
-    logsList.className = 'logs-list';
     logsList.innerHTML = `
       <div class="state-empty">
         <p>Ni vpisov za ta mesec.<br>Dodajte prvega s tipko <strong>+</strong></p>
       </div>`;
     return;
   }
-  viewMode === 'compact' ? renderLogsCompact(fl) : renderLogsCards(fl);
+
+  logsList.innerHTML = `
+    <table class="evidenca-table">
+      <thead>
+        <tr><th>Datum</th><th>Ure</th><th>Operater</th></tr>
+      </thead>
+      <tbody>
+        ${fl.map(log => `
+          <tr>
+            <td>${fmtSampleDate(log.work_date)}</td>
+            <td>${fmtDuration(log.work_duration)}</td>
+            <td>${escHtml(profileMap[log.operator_id] ?? '—')}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
-function renderLogsCards(fl) {
-  logsList.className = 'logs-list';
-  logsList.innerHTML = fl.map(log => {
-    const gerks = log.work_log_gerks || [];
-    const gerkBadges = gerks.map(g =>
-      `<span class="log-gerk-badge">${escHtml(g.gerk_code)}</span>`
-    ).join('') || '<span class="log-gerk-badge">—</span>';
-    const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
-    const haStr = totalHa > 0 ? ` · ${totalHa.toFixed(2)} ha` : '';
-    const road = log.road_duration > 0
-      ? `<div class="log-row"><span class="log-icon">🚗</span><span>Pot: ${fmtDuration(log.road_duration)}</span></div>` : '';
-    const tractor = log.tractor
-      ? `<div class="log-row"><span class="log-icon">🚜</span><span>${escHtml(log.tractor)}</span></div>` : '';
-    const desc = log.description
-      ? `<div class="log-row"><span class="log-desc">${escHtml(log.description)}</span></div>` : '';
-    const operatorRow = currentRole === 'admin' || currentRole === 'supervisor'
-      ? `<div class="log-row"><span class="log-operator-badge">${escHtml(profileMap[log.operator_id] ?? '—')}</span></div>` : '';
-    return `
-      <div class="log-card" role="listitem">
-        <div class="log-card-top">
-          <span class="log-date">${fmtDate(log.work_date)}</span>
-          <span class="log-duration">${fmtDuration(log.work_duration)}</span>
-        </div>
-        <div class="log-card-body">
-          ${operatorRow}
-          <div class="log-row">${gerkBadges}${haStr ? `<span class="log-ha-text">${haStr}</span>` : ''}</div>
-          ${road}${tractor}${desc}
-        </div>
-        <div class="log-card-actions">
-          <button class="btn-danger-outline" data-action="delete" data-id="${log.id}">Izbriši</button>
-        </div>
-      </div>`;
-  }).join('');
-  wireLogButtons();
+// ── Export: current month's filtered rows, decimal hours (payroll/
+// spreadsheet friendly rather than the on-screen "2h 30m" format). ──
+function exportLogsCSV() {
+  const fl = filteredLogs();
+  const csvEscape = v => `"${String(v).replace(/"/g, '""')}"`;
+  const rows = [
+    ['Datum', 'Ure', 'Operater'],
+    ...fl.map(log => [
+      fmtSampleDate(log.work_date),
+      (log.work_duration / 60).toFixed(2),
+      profileMap[log.operator_id] ?? '—',
+    ]),
+  ];
+  const csv = rows.map(row => row.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `evidenca-dela-${currentMonth}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
-const DEL_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M5 3.5V2h4v1.5M3.5 3.5l.5 8h6l.5-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
-function renderLogsCompact(fl) {
-  logsList.className = 'logs-list logs-list--compact';
-  const header = `
-    <div class="lc-header" aria-hidden="true">
-      <span>Datum</span>
-      <span>Trajanje</span>
-      <span>GERKI</span>
-      <span>Ha</span>
-      <span></span>
-    </div>`;
-
-  const rows = fl.map(log => {
-    const gerks = log.work_log_gerks || [];
-    const gerkCodes = gerks.map(g => escHtml(g.gerk_code)).join(', ') || '—';
-    const totalHa = gerks.reduce((s, g) => s + (g.hectares || 0), 0);
-    const haStr = totalHa > 0 ? totalHa.toFixed(2) : '—';
-
-    const extras = [
-      currentRole === 'admin' || currentRole === 'supervisor' ? escHtml(profileMap[log.operator_id] ?? '—') : null,
-      log.road_duration > 0 ? `Pot: ${fmtDuration(log.road_duration)}` : null,
-      log.tractor ? `Traktor: ${escHtml(log.tractor)}` : null,
-      log.description ? escHtml(log.description) : null,
-    ].filter(Boolean);
-    const extraRow = extras.length
-      ? `<p class="lc-desc-row">${extras.join(' · ')}</p>` : '';
-
-    return `
-      <div class="log-compact" role="listitem">
-        <span class="lc-date">${fmtDate(log.work_date)}</span>
-        <span class="lc-dur">${fmtDuration(log.work_duration)}</span>
-        <span class="lc-gerk">${gerkCodes}</span>
-        <span class="lc-ha">${haStr}</span>
-        <div class="lc-actions">
-          <button class="lc-btn lc-btn--danger" data-action="delete" data-id="${log.id}" title="Izbriši">${DEL_ICON}</button>
-        </div>
-        ${extraRow}
-      </div>`;
-  }).join('');
-
-  logsList.innerHTML = header + rows;
-  wireLogButtons();
-}
-
-function syncViewToggle() {
-  viewCardsBtn?.classList.toggle('active', viewMode === 'cards');
-  viewListBtn?.classList.toggle('active',  viewMode === 'compact');
-}
-
-viewCardsBtn?.addEventListener('click', () => { viewMode = 'cards';   renderLogs(); });
-viewListBtn?.addEventListener('click',  () => { viewMode = 'compact'; renderLogs(); });
+exportLogsBtn.addEventListener('click', exportLogsCSV);
 
 function escHtml(str) {
   if (!str) return '';
@@ -617,9 +533,9 @@ function addGerkSegments(row, segments) {
   const existing = new Set(
     Array.from(row.querySelectorAll('.gerk-segment-sample')).map(el => el.value.trim())
   );
-  for (const { fms, sampleNo } of segments) {
+  for (const { fms, sampleNo, vzorcenje } of segments) {
     if (!sampleNo || existing.has(sampleNo)) continue;
-    addGerkSegmentRow(row, fms, sampleNo);
+    addGerkSegmentRow(row, fms, sampleNo, vzorcenje);
     existing.add(sampleNo);
   }
   updateGerkSegmentsCount(row);
@@ -733,6 +649,16 @@ function toTimeInputValue(iso) {
 const SAMPLE_ACTIONS = ['ne pobereš', 'združi', 'združi_1', 'združi_2', 'združi_3', 'združi_4', 'združi_5'];
 const SAMPLE_DEPTHS  = [12, 20, 25, 30, 60, 90];
 
+// Lab sheets paste "združi 1" (space) — SAMPLE_ACTIONS uses "združi_1"
+// (underscore) to double as a valid CSS-free <option value>. Anything
+// that isn't "združi <n>" (e.g. "ne pobereš", or already underscored)
+// passes through untouched.
+function normalizeZdruzi(raw) {
+  if (!raw) return '';
+  const m = raw.match(/^združi\s+(\d+)$/i);
+  return m ? `združi_${m[1]}` : raw;
+}
+
 woBulkDepthSel.innerHTML = '<option value="">Globina…</option>' +
   SAMPLE_DEPTHS.map(d => `<option value="${d}">${d} cm</option>`).join('');
 
@@ -780,17 +706,6 @@ async function updateGerkLabType(selectEl) {
   } finally {
     selectEl.disabled = false;
   }
-}
-
-// Available to anyone (not admin-gated like the other cells) — capturing
-// the sample's GPS spot is a field action, not desk data entry. Shows a
-// capture button until a point exists, then a maps pin + a small redo
-// button to recapture if the operator wasn't standing in the right spot.
-function renderSampleLocationCell(s) {
-  const captureBtn = `<button type="button" class="wlg-capture-location" data-action="wlg-capture-location" data-sample-id="${escHtml(s.id)}" aria-label="${s.lat != null ? 'Znova zajemi lokacijo' : 'Zajemi lokacijo'}">${s.lat != null ? '↻' : '📍 Zajemi'}</button>`;
-  if (s.lat == null || s.lng == null) return captureBtn;
-  const mapBtn = `<button type="button" class="wlg-field-map" data-action="wlg-open-map" data-lat="${s.lat}" data-lng="${s.lng}" data-label="${escHtml('Vzorec ' + s.sample_no)}" aria-label="Prikaži na zemljevidu">📍</button>`;
-  return `${mapBtn}${captureBtn}`;
 }
 
 // Read-only, same reasoning as renderSamplingCell — set once at entry.
@@ -855,6 +770,18 @@ function renderWorkLogGerkRows(rows) {
           }).join('')}
         </div>` : ''}
         ${renderSamplesSection(samples, r.gerkId)}
+        ${currentRole === 'admin' && r.gerkId && /^\d+$/.test(r.code) ? `
+        <div class="wlg-import-zones" data-gerk-code="${escHtml(r.code)}">
+          <input type="file" accept=".kml" class="wlg-kml-input" hidden>
+          <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-pick">Uvozi cone (KML)</button>
+          <div class="wlg-import-zones-form" hidden>
+            <span class="wlg-import-zones-filename"></span>
+            <input type="text" class="sample-field-input wlg-import-zones-type" placeholder="Tip segmentacije">
+            <input type="date" class="sample-field-input wlg-import-zones-date" value="${todayISO()}">
+            <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-confirm">Uvozi</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-cancel">Prekliči</button>
+          </div>
+        </div>` : ''}
       </div>`;
   }).join('');
 
@@ -872,6 +799,7 @@ function renderSamplesSection(samples, gerkId) {
           <div class="wlg-add-sample-wrap" data-gerk-id="${escHtml(gerkId)}">
             <button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample-toggle">+ Dodaj segment</button>
             <div class="wlg-add-sample-form" hidden>
+              <input type="text" class="wlg-new-sample-input" data-role="new-sample-no" placeholder="Št. vzorca">
               <select class="wlg-new-sample-input" data-role="new-vzorcenje">
                 <option value="">Vzorčenje…</option>
                 ${SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('')}
@@ -891,14 +819,13 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Globina</th><th>Lokacija</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${renderSampleNoCell(s)}</td>
                   <td>${renderSamplingCell(s)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
-                  <td>${renderSampleLocationCell(s)}</td>
                   ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
@@ -948,6 +875,7 @@ let currentDetailLogId     = null;
 let currentDetailDate      = null;
 let currentRoadTimeEntries = [];
 let currentAllGerkEntries  = []; // every operator's work_log_gerks for this work order — powers the "who else worked on this" view
+let currentCapturedPoints  = []; // gerk_captured_point rows for this work order — the right-side map capture panel
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
@@ -985,6 +913,8 @@ async function openWorkOrderDetail(workOrder) {
 // one point.
 let woMap           = null;
 let woMapGerkLayer  = null;
+let woMapSegmentLayer = null; // imported KML zones (gerk_segment) + their sample points — separate layer, drawn on top
+let woMapCapturedLayer = null; // operator-captured points (gerk_captured_point) — own layer, own color
 let woMapMeMarker   = null;
 let woMapMeWatchId  = null;
 let woMapHasFitBounds = false;
@@ -993,6 +923,8 @@ let woMapHighlightedCode = null;
 let woMapHighlightRing   = null;   // circleMarker used as a highlight ring when a code has no shape
 
 const WO_MAP_SHAPE_STYLE = { color: '#2455AA', weight: 2, fillColor: '#2455AA', fillOpacity: .15 };
+const WO_MAP_SEGMENT_STYLE = { color: '#D97706', weight: 2, dashArray: '4,3', fillColor: '#D97706', fillOpacity: .08 };
+const WO_MAP_CAPTURED_COLOR = '#16A34A';
 const WO_MAP_SHAPE_HIGHLIGHT_STYLE = { color: '#F59E0B', weight: 4, fillColor: '#F59E0B', fillOpacity: .35 };
 
 // Map → list: hovering a GERK's marker/shape highlights its row.
@@ -1040,12 +972,18 @@ function ensureWoMap() {
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   }).addTo(woMap);
   woMapGerkLayer = L.layerGroup().addTo(woMap);
+  woMapSegmentLayer = L.layerGroup().addTo(woMap);
+  woMapCapturedLayer = L.layerGroup().addTo(woMap);
   return woMap;
 }
 
 async function showWoDetailMap(workOrder) {
   const map = ensureWoMap();
   woMapGerkLayer.clearLayers();
+  woMapSegmentLayer.clearLayers();
+  woMapCapturedLayer.clearLayers();
+  currentCapturedPoints = [];
+  woCaptureList.innerHTML = '';
   woMapHasFitBounds = false;
   woMapLayersByCode = new Map();
   woMapHighlightedCode = null;
@@ -1088,9 +1026,20 @@ async function showWoDetailMap(workOrder) {
   // Actual GERK boundary polygons, when the CRM has shape data for
   // them — drawn on top of the plain markers once they arrive (guarded
   // against the modal having moved to a different order by the time
-  // this resolves).
-  const { data: shapes, error } = await supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id });
+  // this resolves). Imported KML zones (gerk_segment) load alongside,
+  // same guard, own layer — they don't affect fitBounds since they're
+  // always sub-areas of a shape already accounted for above.
+  woCaptureBtn.hidden = !['Plan', 'V delu'].includes(workOrder.status);
+
+  const [{ data: shapes, error }, { data: segments }, { data: captured }] = await Promise.all([
+    supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id }),
+    supabase.rpc('get_work_order_gerk_segments', { p_work_order_id: workOrder.id }),
+    supabase.rpc('get_work_order_captured_points', { p_work_order_id: workOrder.id }),
+  ]);
   if (error || currentDetailWorkOrder?.id !== workOrder.id) return;
+
+  currentCapturedPoints = captured || [];
+  renderCapturedPointsList();
 
   const shapeLayers = [];
   for (const row of (shapes || [])) {
@@ -1110,7 +1059,85 @@ async function showWoDetailMap(workOrder) {
     map.fitBounds(combined, { padding: [30, 30] });
     woMapHasFitBounds = true;
   }
+
+  for (const row of (segments || [])) {
+    if (!row.segment_geojson) continue;
+    L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
+      .bindTooltip(`${row.gerk_code} · ${row.segment_label || ''}`.trim())
+      .addTo(woMapSegmentLayer);
+    for (const p of (row.points || [])) {
+      const [lng, lat] = p.geojson.coordinates;
+      L.circleMarker([lat, lng], { radius: 5, color: '#D97706', weight: 2, fillColor: '#fff', fillOpacity: 1 })
+        .bindTooltip(`${row.segment_label || ''} · ${p.point_no ?? ''}`.trim())
+        .addTo(woMapSegmentLayer);
+    }
+  }
+
+  drawCapturedPointsOnMap();
 }
+
+function drawCapturedPointsOnMap() {
+  woMapCapturedLayer.clearLayers();
+  for (const p of currentCapturedPoints) {
+    L.circleMarker([p.lat, p.lng], {
+      radius: 6, color: '#fff', weight: 2, fillColor: WO_MAP_CAPTURED_COLOR, fillOpacity: 1,
+    }).bindTooltip(`Točka ${p.point_no}`).addTo(woMapCapturedLayer);
+  }
+}
+
+function renderCapturedPointsList() {
+  woCaptureList.innerHTML = currentCapturedPoints.map(p => `
+    <div class="wo-capture-item" data-id="${escHtml(p.id)}" data-lat="${p.lat}" data-lng="${p.lng}">
+      <span>Točka ${p.point_no}${p.segment_label ? ` · ${escHtml(p.segment_label)}` : ''}</span>
+      <button type="button" class="wo-capture-item-remove" data-action="wo-capture-remove" aria-label="Izbriši točko">✕</button>
+    </div>`).join('');
+}
+
+async function captureGerkPoint() {
+  if (!currentDetailWorkOrder) return;
+  woCaptureBtn.disabled = true;
+  try {
+    const pos = await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    const { data, error } = await supabase.rpc('capture_gerk_point', {
+      p_work_order_id: currentDetailWorkOrder.id,
+      p_lat: pos.coords.latitude,
+      p_lng: pos.coords.longitude,
+    });
+    if (error) throw error;
+    const result = Array.isArray(data) ? data[0] : data;
+    currentCapturedPoints.push(result);
+    renderCapturedPointsList();
+    drawCapturedPointsOnMap();
+  } catch (e) {
+    showFormError(geolocationErrorMessage(e));
+  } finally {
+    woCaptureBtn.disabled = false;
+  }
+}
+
+async function removeCapturedPoint(btn) {
+  const item = btn.closest('.wo-capture-item');
+  const id = item.dataset.id;
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('remove_gerk_captured_point', { p_point_id: id });
+    if (error) throw error;
+    currentCapturedPoints = currentCapturedPoints.filter(p => p.id !== id);
+    renderCapturedPointsList();
+    drawCapturedPointsOnMap();
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri brisanju točke.');
+    btn.disabled = false;
+  }
+}
+
+woCaptureBtn.addEventListener('click', captureGerkPoint);
+woCaptureList.addEventListener('click', e => {
+  const removeBtn = e.target.closest('[data-action="wo-capture-remove"]');
+  if (removeBtn) { removeCapturedPoint(removeBtn); return; }
+  const item = e.target.closest('.wo-capture-item');
+  if (item) openMapModal(Number(item.dataset.lat), Number(item.dataset.lng), item.querySelector('span').textContent);
+});
 
 function startWatchingMyLocationOnWoMap() {
   if (!navigator.geolocation || !woMap) return;
@@ -1452,9 +1479,6 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('.wlg-sampleno-input').forEach(input => {
     input.addEventListener('change', () => updateSampleNo(input));
   });
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-capture-location"]').forEach(btn => {
-    btn.addEventListener('click', () => captureSampleLocation(btn));
-  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-open-map"]').forEach(btn => {
     btn.addEventListener('click', () => openMapModal(Number(btn.dataset.lat), Number(btn.dataset.lng), btn.dataset.label));
   });
@@ -1463,6 +1487,18 @@ function wireGerkRowButtons() {
       if (e.target.closest('a, button, select, input')) return; // let their own handlers run undisturbed
       highlightGerkOnWoMap(el.closest('.wlg-row')?.dataset.code);
     });
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-pick"]').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('.wlg-import-zones').querySelector('.wlg-kml-input').click());
+  });
+  workLogGerkRowsEl.querySelectorAll('.wlg-kml-input').forEach(input => {
+    input.addEventListener('change', () => onKmlFileSelected(input));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-cancel"]').forEach(btn => {
+    btn.addEventListener('click', () => cancelImportZones(btn.closest('.wlg-import-zones')));
+  });
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-confirm"]').forEach(btn => {
+    btn.addEventListener('click', () => confirmImportZones(btn));
   });
 }
 
@@ -1483,19 +1519,20 @@ function toggleAddSampleForm(wrap, open) {
 
 // Vzorčenje/Globina are captured right here, at creation — this is the
 // only place they're ever set (see renderSamplingCell/
-// renderSampleDepthCell, both read-only in the table itself).
+// renderSampleDepthCell, both read-only in the table itself). Št.
+// vzorca is typed here too, not auto-numbered — the lab's own segment
+// numbering doesn't follow a simple next-integer sequence, so guessing
+// one just meant it had to be corrected by hand anyway.
 async function addSample(btn) {
   const wrap  = btn.closest('.wlg-add-sample-wrap');
   const gerkId = wrap.dataset.gerkId;
+  const sampleNo  = wrap.querySelector('[data-role="new-sample-no"]').value.trim();
   const vzorcenje = wrap.querySelector('[data-role="new-vzorcenje"]').value || null;
   const globina   = wrap.querySelector('[data-role="new-globina"]').value;
+  if (!sampleNo) { showFormError('Vpišite št. vzorca.'); return; }
 
   const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
   const existing = gerk?.delovni_nalogi_vzorci || [];
-  const maxNo = existing.reduce((max, s) => {
-    const n = parseInt(s.sample_no, 10);
-    return Number.isFinite(n) && n > max ? n : max;
-  }, 0);
 
   btn.disabled = true;
   try {
@@ -1503,7 +1540,7 @@ async function addSample(btn) {
       .from('delovni_nalogi_vzorci')
       .insert({
         delovni_nalog_gerk_id: gerkId,
-        sample_no: String(maxNo + 1),
+        sample_no: sampleNo,
         sampling_note: vzorcenje,
         sampling_depth_cm: globina ? parseInt(globina, 10) : null,
       })
@@ -1516,11 +1553,9 @@ async function addSample(btn) {
     await loadDetailForDate();
   } catch (e) {
     // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) —
-    // someone else added a segment on this GERK between computing
-    // maxNo and this insert landing. Rare, but the constraint means it
-    // can happen instead of silently landing two segments on one number.
+    // this GERK already has a segment with that number.
     showFormError(e.code === '23505'
-      ? 'Št. vzorca je bila medtem že uporabljena — poskusite znova.'
+      ? 'Ta št. vzorca je znotraj GERK-a že v uporabi.'
       : (e.message || 'Napaka pri dodajanju segmenta.'));
   } finally {
     btn.disabled = false;
@@ -1626,26 +1661,111 @@ function geolocationErrorMessage(e) {
   }
 }
 
-async function captureSampleLocation(btn) {
-  const sampleId = btn.dataset.sampleId;
+// ── GERK zone import (KML → gerk_segmentation/gerk_segment) ──────
+// Parses this app's supported KML export shape: one <Placemark> with
+// a <Polygon> per zone (ExtendedData's segment_id is the zone label),
+// plus zero or more <Placemark>s with a <Point> per zone (same
+// segment_id ties a point back to its zone, sample_point_id is its
+// order). Not a general-purpose KML parser — built for this soil-
+// sampling vendor's export format specifically; verified against a
+// real sample file before wiring in.
+function parseKmlSegments(kmlText) {
+  const doc = new DOMParser().parseFromString(kmlText, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Neveljavna KML datoteka.');
+
+  const placemarks = Array.from(doc.getElementsByTagName('Placemark'));
+  const segmentsByLabel = new Map();
+
+  function simpleData(pm, name) {
+    const el = Array.from(pm.getElementsByTagName('SimpleData')).find(sd => sd.getAttribute('name') === name);
+    return el ? el.textContent.trim() : null;
+  }
+  function parseCoordText(text) {
+    return text.trim().split(/\s+/).map(pair => pair.split(',').map(Number).slice(0, 2));
+  }
+  function findCoordinatesText(polygonEl) {
+    const outer  = polygonEl.getElementsByTagName('outerBoundaryIs')[0];
+    const ring   = outer?.getElementsByTagName('LinearRing')[0];
+    const coords = ring?.getElementsByTagName('coordinates')[0];
+    return coords ? coords.textContent : null;
+  }
+
+  for (const pm of placemarks) {
+    const polygonEl  = pm.getElementsByTagName('Polygon')[0];
+    const pointEl    = pm.getElementsByTagName('Point')[0];
+    const segmentId  = simpleData(pm, 'segment_id');
+    if (!segmentId) continue;
+
+    if (polygonEl) {
+      const coordsText = findCoordinatesText(polygonEl);
+      if (!coordsText) continue;
+      const existing = segmentsByLabel.get(segmentId) || { label: segmentId, geojson: null, points: [] };
+      existing.geojson = { type: 'Polygon', coordinates: [parseCoordText(coordsText)] };
+      segmentsByLabel.set(segmentId, existing);
+    } else if (pointEl) {
+      const coordsEl = pointEl.getElementsByTagName('coordinates')[0];
+      if (!coordsEl) continue;
+      const [lng, lat] = coordsEl.textContent.trim().split(',').map(Number);
+      const pointNo = parseInt(simpleData(pm, 'sample_point_id'), 10) || null;
+      const existing = segmentsByLabel.get(segmentId) || { label: segmentId, geojson: null, points: [] };
+      existing.points.push({ point_no: pointNo, geojson: { type: 'Point', coordinates: [lng, lat] } });
+      segmentsByLabel.set(segmentId, existing);
+    }
+  }
+
+  const segments = Array.from(segmentsByLabel.values()).filter(s => s.geojson);
+  if (!segments.length) throw new Error('V datoteki ni najdenih con (poligonov).');
+  return segments;
+}
+
+async function onKmlFileSelected(input) {
+  const wrap = input.closest('.wlg-import-zones');
+  const file = input.files[0];
+  input.value = ''; // allow re-selecting the same file afterward
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const segments = parseKmlSegments(text);
+    wrap._kmlSegments = segments;
+    wrap.querySelector('.wlg-import-zones-filename').textContent =
+      `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
+    wrap.querySelector('.wlg-import-zones-form').hidden = false;
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri branju KML datoteke.');
+  }
+}
+
+function cancelImportZones(wrap) {
+  wrap._kmlSegments = null;
+  wrap.querySelector('.wlg-import-zones-form').hidden = true;
+}
+
+async function confirmImportZones(btn) {
+  const wrap = btn.closest('.wlg-import-zones');
+  const segments = wrap._kmlSegments;
+  if (!segments) return;
+
+  const type      = wrap.querySelector('.wlg-import-zones-type').value.trim();
+  const validFrom = wrap.querySelector('.wlg-import-zones-date').value;
+  if (!type)      { showFormError('Vpišite tip segmentacije.'); return; }
+  if (!validFrom) { showFormError('Izberite datum veljavnosti.'); return; }
+
   btn.disabled = true;
   try {
-    const pos = await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-    const { data, error } = await supabase.rpc('capture_sample_location', {
-      p_sample_id: sampleId,
-      p_lat: pos.coords.latitude,
-      p_lng: pos.coords.longitude,
+    const { error } = await supabase.rpc('import_gerk_segmentation', {
+      p_gerk_id:    parseInt(wrap.dataset.gerkCode, 10),
+      p_type:       type,
+      p_valid_from: validFrom,
+      p_segments:   segments,
     });
     if (error) throw error;
-    const result = Array.isArray(data) ? data[0] : data;
-
-    for (const g of currentDetailWorkOrder.delovni_nalogi_gerki || []) {
-      const s = (g.delovni_nalogi_vzorci || []).find(s => s.id === sampleId);
-      if (s) { s.lat = result.lat; s.lng = result.lng; break; }
-    }
-    await loadDetailForDate();
+    cancelImportZones(wrap);
+    showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih.`);
+    if (currentDetailWorkOrder) showWoDetailMap(currentDetailWorkOrder);
   } catch (e) {
-    showFormError(geolocationErrorMessage(e));
+    showFormError(e.message || 'Napaka pri uvozu con.');
+  } finally {
     btn.disabled = false;
   }
 }
@@ -1821,40 +1941,6 @@ woAddExistingGerkBtn.addEventListener('click', async () => {
   await loadWorkOrders();
 });
 
-// ── Wire buttons ───────────────────────────────────────────────
-function wireLogButtons() {
-  logsList.querySelectorAll('[data-action="delete"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      pendingDeleteId = btn.dataset.id;
-      deleteModal.hidden = false;
-      document.body.style.overflow = 'hidden';
-    });
-  });
-}
-
-deleteConfirmBtn.addEventListener('click', async () => {
-  if (!pendingDeleteId) return;
-  deleteConfirmBtn.disabled = true;
-
-  const { error } = await supabase
-    .from('work_logs')
-    .delete()
-    .eq('id', pendingDeleteId)
-    .eq('operator_id', currentUser.id);
-
-  deleteConfirmBtn.disabled = false;
-  closeDeleteModal();
-  if (!error) await loadLogs();
-});
-
-deleteCancelBtn.addEventListener('click', closeDeleteModal);
-
-function closeDeleteModal() {
-  pendingDeleteId = null;
-  deleteModal.hidden = true;
-  document.body.style.overflow = '';
-}
-
 logoutBtn.addEventListener('click', async () => {
   await supabase.auth.signOut();
   window.location.replace('index.html');
@@ -1881,14 +1967,12 @@ modalClose.addEventListener('click', closeModal);
 cancelBtn.addEventListener('click', closeModal);
 
 formModal.addEventListener('click', e => { if (e.target === formModal) closeModal(); });
-deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
 declModal.addEventListener('click', e => { if (e.target === declModal) closeDeclModal(); });
 declModalClose.addEventListener('click', closeDeclModal);
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     if (!formModal.hidden)      closeModal();
-    if (!deleteModal.hidden)    closeDeleteModal();
     if (!workOrderModal.hidden) closeWorkOrderModal();
     if (!declModal.hidden)      closeDeclModal();
     if (!mapModal.hidden)       closeMapModal();
@@ -2172,8 +2256,10 @@ async function loadWorkOrders() {
 
 function filteredWorkOrders() {
   const q = woSearchStranka.value.trim().toLowerCase();
-  if (!q) return workOrders;
+  const status = woStatusFilter.value;
   return workOrders.filter(wo => {
+    if (status && wo.status !== status) return false;
+    if (!q) return true;
     const stranka = wo.customers?.naziv || wo.customers?.company_name || '';
     return stranka.toLowerCase().includes(q);
   });
@@ -2183,16 +2269,15 @@ function renderWorkOrders() {
   const fwo = filteredWorkOrders();
 
   if (fwo.length === 0) {
-    const msg = woSearchStranka.value.trim() ? 'Ni zadetkov za to stranko.' : 'Ni delovnih nalogov.';
+    const msg = woSearchStranka.value.trim() || woStatusFilter.value ? 'Ni zadetkov.' : 'Ni delovnih nalogov.';
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     return;
   }
 
   workOrdersList.className = 'logs-list logs-list--compact';
 
-  const isAdmin = currentRole === 'admin';
-  const rowMod  = `wo-compact--enhanced${isAdmin ? ' wo-compact--admin' : ''}`;
-  const headMod = `wo-lc-header--enhanced${isAdmin ? ' wo-lc-header--admin' : ''}`;
+  const rowMod  = 'wo-compact--enhanced';
+  const headMod = 'wo-lc-header--enhanced';
 
   const rowData = fwo.map(wo => {
     const gerks = wo.delovni_nalogi_gerki || [];
@@ -2208,7 +2293,6 @@ function renderWorkOrders() {
       status:       wo.status,
       lat:          point?.lat ?? null,
       lng:          point?.lng ?? null,
-      confirmed:    !!wo.confirmed,
     };
   });
 
@@ -2220,7 +2304,6 @@ function renderWorkOrders() {
         return `<button type="button" class="wo-th${col.center ? ' wo-th-center' : ''}${active ? ' wo-th--active' : ''}" data-sort="${col.key}">${col.label}${arrow}</button>`;
       }).join('')}
       <span class="wo-th wo-th-center wo-c-maps" title="Zemljevid">📍</span>
-      ${isAdmin ? '<span class="wo-th wo-th-center wo-c-confirmed" title="Potrjeno">✓</span>' : ''}
     </div>`;
 
   const rows = sortWorkOrderRows(rowData).map(r => {
@@ -2228,9 +2311,6 @@ function renderWorkOrders() {
     const mapsCell = r.lat != null && r.lng != null
       ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
       : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
-    const confirmCell = isAdmin
-      ? `<span class="wo-c-confirmed"><input type="checkbox" class="wo-confirm-checkbox" data-id="${escHtml(r.id)}" ${r.confirmed ? 'checked' : ''}></span>`
-      : '';
     return `
       <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
@@ -2241,7 +2321,6 @@ function renderWorkOrders() {
         <span class="wo-c-izvajalec">${escHtml(r.izvajalec)}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
         ${mapsCell}
-        ${confirmCell}
       </div>`;
   }).join('');
 
@@ -2256,10 +2335,10 @@ function wireWorkOrderButtons() {
       if (wo) openWorkOrderDetail(wo);
     });
   });
-  // Scoped to <button> — the static Zemljevid/Potrjeno header labels
-  // share the .wo-th class purely for visual consistency and aren't
-  // sortable (no data-sort), so they're plain <span> elements, not
-  // buttons — matching this selector to them would sort by "undefined".
+  // Scoped to <button> — the static Zemljevid header label shares the
+  // .wo-th class purely for visual consistency and isn't sortable (no
+  // data-sort), so it's a plain <span>, not a button — matching this
+  // selector to it would sort by "undefined".
   workOrdersList.querySelectorAll('button.wo-th').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.sort;
@@ -2268,26 +2347,6 @@ function wireWorkOrderButtons() {
       renderWorkOrders();
     });
   });
-  workOrdersList.querySelectorAll('.wo-confirm-checkbox').forEach(cb => {
-    cb.addEventListener('click', e => e.stopPropagation()); // don't also open the detail modal
-    cb.addEventListener('change', () => updateWorkOrderConfirmed(cb));
-  });
-}
-
-async function updateWorkOrderConfirmed(cb) {
-  const id        = cb.dataset.id;
-  const confirmed = cb.checked;
-  cb.disabled = true;
-  try {
-    const { error } = await supabase.from('delovni_nalogi').update({ confirmed }).eq('id', id);
-    if (error) throw error;
-    const wo = workOrders.find(w => w.id === id);
-    if (wo) wo.confirmed = confirmed;
-  } catch (e) {
-    cb.checked = !confirmed; // revert — the list isn't reloaded on failure
-  } finally {
-    cb.disabled = false;
-  }
 }
 
 function getAvailableStranke() {
@@ -2310,6 +2369,7 @@ function showWoSearchSuggestions() {
   woSearchSuggestions.hidden = false;
 }
 
+woStatusFilter.addEventListener('change', renderWorkOrders);
 woSearchStranka.addEventListener('input', () => { renderWorkOrders(); showWoSearchSuggestions(); });
 woSearchStranka.addEventListener('focus', showWoSearchSuggestions);
 woSearchStranka.addEventListener('blur', () => {
@@ -2496,6 +2556,11 @@ woGerkPasteBtn.addEventListener('click', () => {
     // here (auto-filled from the known field instead, same as manual
     // entry) since the pasted value is only ever present on a group's
     // first row anyway and duplicating it per segment would be wrong.
+    // Cell 5 (optional) is the lab's pooling instruction — "združi 1",
+    // "združi 2"... or "ne pobereš" — normalized to match SAMPLE_ACTIONS
+    // exactly (underscore, not space) so it lands pre-selected in the
+    // segment's Vzorčenje dropdown instead of silently landing on
+    // nothing because the pasted text didn't match any <option>.
     const codesInOrder = [];
     const segmentsByCode = new Map();
     let lastCode = null, lastFms = null;
@@ -2504,12 +2569,13 @@ woGerkPasteBtn.addEventListener('click', () => {
       const code = (cells[0] || '').trim();
       const fms  = (cells[2] || '').trim();
       const sampleNo = (cells[3] || '').trim();
+      const vzorcenje = normalizeZdruzi((cells[4] || '').trim());
       if (!sampleNo) continue;
       if (code) lastCode = code;
       if (fms)  lastFms  = fms;
       if (!lastCode) continue;
       if (!segmentsByCode.has(lastCode)) { segmentsByCode.set(lastCode, []); codesInOrder.push(lastCode); }
-      segmentsByCode.get(lastCode).push({ fms: lastFms || null, sampleNo });
+      segmentsByCode.get(lastCode).push({ fms: lastFms || null, sampleNo, vzorcenje });
     }
 
     for (const code of codesInOrder) {

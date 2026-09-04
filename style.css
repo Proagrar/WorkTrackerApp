@@ -362,15 +362,6 @@ input, select, textarea { font-family: inherit; }
   letter-spacing: .05em;
 }
 
-.log-operator-badge {
-  font-size: .75rem;
-  font-weight: 600;
-  color: var(--blue-800);
-  background: var(--blue-100);
-  padding: 1px 8px;
-  border-radius: 20px;
-}
-
 .header-name {
   font-size: .8125rem;
   font-weight: 500;
@@ -526,17 +517,15 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
-/* Maps + confirmed columns — desktop-only (900px+ below), hidden here
-   so the base 5-column grid-template-columns stays accurate on mobile
-   even though these elements are always present in the markup. Shared
-   by both the header spans (wo-th wo-th-center wo-c-maps/confirmed)
-   and the row cells — the header spans previously only had .wo-th and
-   were never hidden on mobile, so the header ended up with more grid
-   items than the rows below it and the two fell out of alignment. */
-.wo-c-maps,
-.wo-c-confirmed { display: none; }
+/* Maps column — desktop-only (900px+ below), hidden here so the base
+   grid-template-columns stays accurate on mobile even though the
+   element is always present in the markup. Shared by both the header
+   span (wo-th wo-th-center wo-c-maps) and the row cells — the header
+   span previously only had .wo-th and was never hidden on mobile, so
+   the header ended up with more grid items than the rows below it and
+   the two fell out of alignment. */
+.wo-c-maps { display: none; }
 .wo-c-maps--empty { color: var(--text-muted); }
-.wo-confirm-checkbox { width: 16px; height: 16px; cursor: pointer; }
 
 
 /* ── Work log: work-order label + compact GERK entry table ──── */
@@ -810,6 +799,22 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
+.wlg-import-zones { margin-top: 8px; }
+
+.wlg-import-zones-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wlg-import-zones-filename {
+  font-size: .78125rem;
+  color: var(--text-secondary);
+  flex-basis: 100%;
+}
+
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
 .road-time-row {
@@ -903,9 +908,6 @@ input, select, textarea { font-family: inherit; }
 }
 
 
-/* ── Stats ──────────────────────────────────────────────────── */
-.stats-section { padding: 16px 16px 8px; }
-
 .month-nav {
   display: flex;
   align-items: center;
@@ -943,41 +945,6 @@ input, select, textarea { font-family: inherit; }
 .month-nav-btn:hover  { background: var(--blue-900, #163a7a); }
 .month-nav-btn:active { transform: scale(.93); }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.stat-card {
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  padding: 10px 4px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-light);
-}
-
-.stat-value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--blue-800);
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: .625rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: .03em;
-}
-
-
 /* ── Logs section ───────────────────────────────────────────── */
 .logs-section { padding: 8px 16px 0; }
 
@@ -986,34 +953,6 @@ input, select, textarea { font-family: inherit; }
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
-}
-
-.view-toggle {
-  display: flex;
-  gap: 2px;
-  background: var(--border-light);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-}
-
-.view-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: calc(var(--radius-sm) - 2px);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .15s, color .15s;
-}
-
-.view-btn.active {
-  background: var(--surface);
-  color: var(--blue-800);
-  box-shadow: var(--shadow-sm);
 }
 
 .section-title {
@@ -1027,9 +966,50 @@ input, select, textarea { font-family: inherit; }
 
 .wo-section { padding-top: 16px; }
 
+.evidenca-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  font-size: .8125rem;
+}
+.evidenca-table th {
+  text-align: left;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border-light);
+}
+.evidenca-table td {
+  padding: 10px 14px;
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-light);
+}
+.evidenca-table tr:first-child td { border-top: none; }
+
+.wo-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .wo-search-wrap {
   position: relative;
   flex-shrink: 0;
+}
+
+.wo-status-filter {
+  height: 34px;
+  padding: 0 8px;
+  font-size: .8125rem;
 }
 
 .wo-search-input {
@@ -1050,82 +1030,6 @@ input, select, textarea { font-family: inherit; }
   box-shadow: 0 0 0 3px rgba(28,69,146,.15);
 }
 .wo-search-input::placeholder { color: var(--text-muted); }
-
-
-/* ── Log card ───────────────────────────────────────────────── */
-.log-card {
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.log-card-top {
-  padding: 14px 16px 10px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.log-date { font-size: .9375rem; font-weight: 600; color: var(--text-primary); }
-
-.log-duration {
-  font-size: .75rem;
-  font-weight: 600;
-  background: var(--blue-100);
-  color: var(--blue-800);
-  border-radius: 20px;
-  padding: 3px 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.log-card-body { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 6px; }
-
-.log-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: .875rem;
-}
-
-.log-icon { font-size: 1rem; flex-shrink: 0; }
-
-.log-gerk-badge {
-  font-size: .75rem;
-  font-weight: 600;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 2px 8px;
-  color: var(--text-secondary);
-  font-family: monospace;
-}
-
-.log-desc { font-size: .8125rem; color: var(--text-secondary); font-style: italic; }
-
-
-.log-card-actions {
-  border-top: 1px solid var(--border-light);
-  padding: 10px 16px;
-  display: flex;
-  gap: 8px;
-}
-
-.btn-danger-outline {
-  height: 36px;
-  padding: 0 14px;
-  font-size: .8125rem;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid #FECACA;
-  background: transparent;
-  color: var(--danger);
-  transition: background .15s;
-}
-.btn-danger-outline:hover { background: var(--error-bg); }
 
 
 /* ── States ─────────────────────────────────────────────────── */
@@ -1290,10 +1194,16 @@ input, select, textarea { font-family: inherit; }
   min-height: 0;
 }
 
-.wo-detail-map {
+.wo-detail-map-wrap {
+  position: relative;
   height: 42vh;
   max-height: 380px;
   flex-shrink: 0;
+}
+
+.wo-detail-map {
+  position: absolute;
+  inset: 0;
 }
 
 .wo-detail-content {
@@ -1304,10 +1214,61 @@ input, select, textarea { font-family: inherit; }
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
+/* Sits on top of the Leaflet map itself (its own panes/controls use
+   z-index in the low hundreds–1000 range) — small strip on the right
+   so it doesn't cover much of the field imagery underneath. */
+.wo-capture-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: 128px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, .92);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow-y: auto;
+}
+
+.wo-capture-btn { width: 100%; white-space: normal; }
+
+.wo-capture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wo-capture-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--border-light);
+  font-size: .75rem;
+  cursor: pointer;
+}
+
+.wo-capture-item-remove {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .875rem;
+  line-height: 1;
+}
+
 @media (min-width: 900px) {
-  .wo-detail-layout { flex-direction: row; }
-  .wo-detail-map    { width: 50%; height: auto; max-height: none; order: 2; }
-  .wo-detail-content { width: 50%; order: 1; }
+  .wo-detail-layout   { flex-direction: row; }
+  .wo-detail-map-wrap { width: 50%; height: auto; max-height: none; order: 2; }
+  .wo-detail-content  { width: 50%; order: 1; }
 }
 
 .dialog-body {
@@ -1335,7 +1296,6 @@ input, select, textarea { font-family: inherit; }
 
 @media (min-width: 640px) {
   .greeting-section { padding: 28px 24px 24px; }
-  .stats-section    { padding: 20px 24px 10px; }
   .logs-section     { padding: 12px 24px 0; }
   .fab              { right: 32px; bottom: 36px; }
 }
@@ -1354,13 +1314,12 @@ input, select, textarea { font-family: inherit; }
 
   .header-name { max-width: 240px; }
 
-  /* Work order list: room for a map-link column, plus a confirmed
-     checkbox column for admins. Combined-class selectors (not just
-     .wo-lc-header--enhanced) to keep beating .lc-header/.log-compact's
-     own grid-template-columns on specificity — see the base rule's
-     comment further up for why that matters here. */
-  .wo-c-maps,
-  .wo-c-confirmed { display: flex; align-items: center; justify-content: center; }
+  /* Work order list: room for a map-link column. Combined-class
+     selector (not just .wo-lc-header--enhanced) to keep beating
+     .lc-header/.log-compact's own grid-template-columns on
+     specificity — see the base rule's comment further up for why
+     that matters here. */
+  .wo-c-maps { display: flex; align-items: center; justify-content: center; }
 
   /* fr-weighted (not fixed px) on every column except the icon-only
      ones — otherwise Stranka's 1fr soaks up 100% of the extra width on
@@ -1370,10 +1329,6 @@ input, select, textarea { font-family: inherit; }
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
     grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
-  }
-  .wo-lc-header.wo-lc-header--admin,
-  .wo-compact.wo-compact--admin {
-    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px 60px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */
@@ -1465,58 +1420,6 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.lc-gerk {
-  font-size: .8125rem;
-  font-family: monospace;
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lc-dur {
-  font-size: .75rem;
-  font-weight: 700;
-  color: var(--blue-800);
-  white-space: nowrap;
-}
-
-.lc-actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-}
-
-.lc-btn {
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.lc-btn:hover { background: var(--border-light); color: var(--text-primary); }
-.lc-btn--danger:hover  { background: var(--error-bg); color: var(--danger); }
-
-.lc-desc-row {
-  grid-column: 1 / -1;
-  font-size: .75rem;
-  color: var(--text-muted);
-  font-style: italic;
-  margin-top: -4px;
-  padding-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 
@@ -1632,11 +1535,6 @@ input, select, textarea { font-family: inherit; }
 .gerk-segment-remove:hover { color: var(--danger); }
 
 .gerk-segment-add { margin-top: 4px; }
-
-.log-ha-text {
-  font-size: .8125rem;
-  color: var(--text-secondary);
-}
 
 
 /* ============================================================
