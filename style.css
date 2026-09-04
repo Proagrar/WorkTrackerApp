@@ -814,6 +814,7 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   flex-basis: 100%;
 }
+.wlg-import-zones-filename--warn { color: var(--error); font-weight: 600; }
 
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 

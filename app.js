@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.62';
+const APP_VERSION = 'v1.63';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1766,7 +1766,20 @@ function parseKmlSegments(kmlText) {
 
   const segments = Array.from(segmentsByLabel.values()).filter(s => s.geojson);
   if (!segments.length) throw new Error('V datoteki ni najdenih con (poligonov).');
-  return segments;
+
+  // The GERK id isn't a proper labeled field anywhere in this export —
+  // it's only ever seen baked into the Schema/Folder name as a numeric
+  // prefix ("1677400Petrinic"). Not reliable enough to import against
+  // (a customer name starting with a digit, or a different naming
+  // convention, would silently point at the wrong GERK) — surfaced
+  // only as a mismatch warning against the GERK you're actually
+  // importing onto, never as the source of truth.
+  const schemaName = doc.getElementsByTagName('Schema')[0]?.getAttribute('name')
+    || doc.getElementsByTagName('Folder')[0]?.getElementsByTagName('name')[0]?.textContent
+    || '';
+  const detectedGerkId = (schemaName.match(/^\d+/) || [])[0] || null;
+
+  return { segments, detectedGerkId };
 }
 
 async function onKmlFileSelected(input) {
@@ -1777,10 +1790,15 @@ async function onKmlFileSelected(input) {
 
   try {
     const text = await file.text();
-    const segments = parseKmlSegments(text);
+    const { segments, detectedGerkId } = parseKmlSegments(text);
     wrap._kmlSegments = segments;
-    wrap.querySelector('.wlg-import-zones-filename').textContent =
-      `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
+    const filenameEl = wrap.querySelector('.wlg-import-zones-filename');
+    filenameEl.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
+    const mismatch = detectedGerkId && detectedGerkId !== wrap.dataset.gerkCode;
+    filenameEl.classList.toggle('wlg-import-zones-filename--warn', !!mismatch);
+    if (mismatch) {
+      filenameEl.textContent += ` — ⚠️ datoteka izgleda za GERK ${detectedGerkId}, ne za ${wrap.dataset.gerkCode}`;
+    }
     wrap.querySelector('.wlg-import-zones-form').hidden = false;
   } catch (e) {
     showFormError(e.message || 'Napaka pri branju KML datoteke.');
