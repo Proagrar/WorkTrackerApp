@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.64';
+const APP_VERSION = 'v1.65';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -550,7 +550,7 @@ function addGerkSegmentRow(row, fms = '', sampleNo = '', vzorcenje = '') {
     .join('');
   segRow.innerHTML = `
     <input type="text" class="sample-field-input gerk-segment-fms" placeholder="FMS">
-    <input type="text" class="sample-field-input gerk-segment-sample" placeholder="Vzorec št.">
+    <input type="text" class="sample-field-input gerk-segment-sample" placeholder="Segment št.">
     <select class="sample-field-input gerk-segment-vzorcenje">${vzorcenjeOpts}</select>
     <button type="button" class="gerk-segment-remove" aria-label="Odstrani segment">✕</button>`;
   segRow.querySelector('.gerk-segment-fms').value = fms;
@@ -832,7 +832,7 @@ function renderSamplesSection(samples, gerkId) {
           <div class="wlg-add-sample-wrap" data-gerk-id="${escHtml(gerkId)}">
             <button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample-toggle">+ Dodaj segment</button>
             <div class="wlg-add-sample-form" hidden>
-              <input type="text" class="wlg-new-sample-input" data-role="new-sample-no" placeholder="Št. vzorca">
+              <input type="text" class="wlg-new-sample-input" data-role="new-sample-no" placeholder="Št. segmenta">
               <select class="wlg-new-sample-input" data-role="new-vzorcenje">
                 <option value="">Vzorčenje…</option>
                 ${SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('')}
@@ -847,12 +847,12 @@ function renderSamplesSection(samples, gerkId) {
           </div>` : '';
   return `
         <button type="button" class="wlg-samples-toggle" data-action="wlg-samples-toggle">
-          <span>${samples.length} ${samples.length === 1 ? 'vzorec' : 'vzorcev'}</span>
+          <span>${samples.length} ${samples.length === 1 ? 'segment' : 'segmentov'}</span>
           <span class="wlg-samples-chevron" aria-hidden="true">▾</span>
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. vzorca</th><th>Vzorčenje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. segmenta</th><th>Vzorčenje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
@@ -1568,7 +1568,7 @@ function toggleAddSampleForm(wrap, open) {
 // Vzorčenje/Globina are captured right here, at creation — this is the
 // only place they're ever set (see renderSamplingCell/
 // renderSampleDepthCell, both read-only in the table itself). Št.
-// vzorca is typed here too, not auto-numbered — the lab's own segment
+// segmenta is typed here too, not auto-numbered — the lab's own
 // numbering doesn't follow a simple next-integer sequence, so guessing
 // one just meant it had to be corrected by hand anyway.
 async function addSample(btn) {
@@ -1577,7 +1577,7 @@ async function addSample(btn) {
   const sampleNo  = wrap.querySelector('[data-role="new-sample-no"]').value.trim();
   const vzorcenje = wrap.querySelector('[data-role="new-vzorcenje"]').value || null;
   const globina   = wrap.querySelector('[data-role="new-globina"]').value;
-  if (!sampleNo) { showFormError('Vpišite št. vzorca.'); return; }
+  if (!sampleNo) { showFormError('Vpišite št. segmenta.'); return; }
 
   const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
   const existing = gerk?.delovni_nalogi_vzorci || [];
@@ -1603,7 +1603,7 @@ async function addSample(btn) {
     // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) —
     // this GERK already has a segment with that number.
     showFormError(e.code === '23505'
-      ? 'Ta št. vzorca je znotraj GERK-a že v uporabi.'
+      ? 'Ta št. segmenta je znotraj GERK-a že v uporabi.'
       : (e.message || 'Napaka pri dodajanju segmenta.'));
   } finally {
     btn.disabled = false;
@@ -1649,7 +1649,7 @@ async function removeGerkFromOrder(btn) {
 async function updateSampleNo(inputEl) {
   const sampleId = inputEl.dataset.sampleId;
   const value = inputEl.value.trim();
-  if (!value) { showFormError('Št. vzorca ne sme biti prazna.'); return; }
+  if (!value) { showFormError('Št. segmenta ne sme biti prazna.'); return; }
   const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
     .find(g => (g.delovni_nalogi_vzorci || []).some(s => s.id === sampleId));
   const sample = gerk?.delovni_nalogi_vzorci.find(s => s.id === sampleId);
@@ -1664,7 +1664,7 @@ async function updateSampleNo(inputEl) {
     // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) — same
     // constraint as addSample, hit here if renamed to a number already in use.
     showFormError(e.code === '23505'
-      ? 'Ta št. vzorca je znotraj GERK-a že v uporabi.'
+      ? 'Ta št. segmenta je znotraj GERK-a že v uporabi.'
       : (e.message || 'Napaka pri shranjevanju.'));
     if (sample) inputEl.value = sample.sample_no;
   } finally {
@@ -1867,6 +1867,21 @@ async function confirmKmlImport(btn) {
       p_segments:   segments,
     });
     if (importError) throw importError;
+
+    // Each imported zone also becomes its own segment (delovni_nalogi_vzorci
+    // row) on this GERK — its label (e.g. "10734") as the segment number —
+    // so it shows up in the same segment list as manually/pasted-in ones,
+    // not only as a shape on the map. Skips any label already present
+    // (re-importing the same file, or one already added by hand).
+    const existingSegmentNos = new Set((gerk.delovni_nalogi_vzorci || []).map(s => s.sample_no));
+    const newSegmentRows = segments
+      .map(s => s.label)
+      .filter(label => !existingSegmentNos.has(label))
+      .map(label => ({ delovni_nalog_gerk_id: gerk.id, sample_no: label }));
+    if (newSegmentRows.length) {
+      const { error: segError } = await supabase.from('delovni_nalogi_vzorci').insert(newSegmentRows);
+      if (segError) console.warn('Napaka pri dodajanju segmentov iz uvoženih con:', segError);
+    }
 
     cancelKmlImport();
     showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih (GERK ${gerkCode}).`);
@@ -3078,7 +3093,7 @@ workOrderForm.addEventListener('submit', async e => {
       return showWoFormError(`Neveljaven GERK: "${g.code}" (mora biti 7-mestna številka).`);
     const seen = new Set();
     for (const s of g.segments) {
-      if (seen.has(s.sampleNo)) return showWoFormError(`GERK ${g.code}: podvojena št. vzorca "${s.sampleNo}".`);
+      if (seen.has(s.sampleNo)) return showWoFormError(`GERK ${g.code}: podvojena št. segmenta "${s.sampleNo}".`);
       seen.add(s.sampleNo);
     }
   }
