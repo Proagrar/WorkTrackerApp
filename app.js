@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.53';
+const APP_VERSION = 'v1.54';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1852,11 +1852,12 @@ document.addEventListener('keydown', e => {
 // ── Operators (Izvajalci) modal ───────────────────────────────
 async function openOperatorsModal() {
   operatorsErrorEl.hidden = true;
-  const { data } = await supabase.from('profiles').select('id, full_name, eligible_izvajalec').order('full_name');
+  const { data } = await supabase.rpc('get_operators_with_email');
   operatorsListEl.innerHTML = (data || []).map(p => `
     <label class="wo-gerk-check-item">
       <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
       <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
+      <span class="wo-gerk-check-name">${escHtml(p.email || '')}</span>
     </label>`).join('');
 
   operatorsListEl.querySelectorAll('.operator-eligible-checkbox').forEach(cb => {
