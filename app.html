@@ -79,13 +79,29 @@
         <div class="section-header">
           <h2 class="section-title">Delovni Nalogi</h2>
           <div class="wo-toolbar">
-            <select id="woStatusFilter" class="field-input field-select wo-status-filter">
-              <option value="">Vsi statusi</option>
-              <option value="Plan">Plan</option>
-              <option value="V delu">V delu</option>
-              <option value="Izvedeno">Izvedeno</option>
-              <option value="Izdan Račun">Izdan Račun</option>
-            </select>
+            <div class="wo-status-filter-wrap">
+              <button type="button" id="woStatusFilterBtn" class="btn btn-secondary btn-sm wo-status-filter-btn">Vsi statusi</button>
+              <div id="woStatusFilterMenu" class="wo-status-filter-menu" hidden>
+                <div class="wo-gerk-checklist">
+                  <label class="wo-gerk-check-item">
+                    <input type="checkbox" class="wo-status-filter-cb" value="Plan">
+                    <span class="wo-gerk-check-code">Plan</span>
+                  </label>
+                  <label class="wo-gerk-check-item">
+                    <input type="checkbox" class="wo-status-filter-cb" value="V delu">
+                    <span class="wo-gerk-check-code">V delu</span>
+                  </label>
+                  <label class="wo-gerk-check-item">
+                    <input type="checkbox" class="wo-status-filter-cb" value="Izvedeno">
+                    <span class="wo-gerk-check-code">Izvedeno</span>
+                  </label>
+                  <label class="wo-gerk-check-item">
+                    <input type="checkbox" class="wo-status-filter-cb" value="Izdan Račun">
+                    <span class="wo-gerk-check-code">Izdan Račun</span>
+                  </label>
+                </div>
+              </div>
+            </div>
             <div class="wo-search-wrap">
               <input type="text" id="woSearchStranka" class="wo-search-input" placeholder="Išči stranko..." autocomplete="off">
               <ul id="woSearchSuggestions" class="gerk-suggestions" hidden></ul>
@@ -185,6 +201,21 @@
         <!-- GERKs: one row per planned field, Start/Stop logs start/end time -->
         <div class="field">
           <label class="field-label">GERKI</label>
+          <!-- Admin only: import a KML file — enriches the matching GERK's
+               row if it's already on this order, adds it first if not. -->
+          <div class="wlg-import-zones" id="woImportZonesWrap" hidden>
+            <input type="file" accept=".kml" class="wlg-kml-input" id="woKmlInput" hidden>
+            <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesPickBtn">Uvozi cone (KML)</button>
+            <div class="wlg-import-zones-form" id="woImportZonesForm" hidden>
+              <span class="wlg-import-zones-filename" id="woImportZonesFilename"></span>
+              <input type="text" class="sample-field-input" id="woImportZonesGerk" placeholder="GERK">
+              <input type="text" class="sample-field-input" id="woImportZonesType" placeholder="Tip segmentacije">
+              <input type="date" class="sample-field-input" id="woImportZonesDate">
+              <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesConfirmBtn">Uvozi</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesCancelBtn">Prekliči</button>
+            </div>
+            <div class="alert alert-error" id="woImportZonesError" hidden role="alert"></div>
+          </div>
           <div id="workLogGerkRows" class="wlg-table"></div>
           <!-- Admin only: add a GERK to an already-created order — the create
                form's own +/− only works before the first save. -->

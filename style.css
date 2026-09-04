@@ -799,7 +799,7 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
-.wlg-import-zones { margin-top: 8px; }
+.wlg-import-zones { margin-top: 8px; margin-bottom: 8px; }
 
 .wlg-import-zones-form {
   display: flex;
@@ -1012,11 +1012,22 @@ input, select, textarea { font-family: inherit; }
   flex-shrink: 0;
 }
 
-.wo-status-filter {
-  height: 34px;
-  padding: 0 8px;
-  font-size: .8125rem;
+.wo-status-filter-wrap { position: relative; flex-shrink: 0; }
+
+.wo-status-filter-btn { height: 34px; white-space: nowrap; }
+
+.wo-status-filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: 160px;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
 }
+.wo-status-filter-menu .wo-gerk-checklist { max-height: none; border: none; margin-bottom: 0; }
 
 .wo-search-input {
   width: 140px;

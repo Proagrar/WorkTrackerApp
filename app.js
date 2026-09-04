@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.63';
+const APP_VERSION = 'v1.64';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -53,6 +53,17 @@ const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
 const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
 const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
+const woImportZonesWrap = document.getElementById('woImportZonesWrap');
+const woKmlInput = document.getElementById('woKmlInput');
+const woImportZonesPickBtn = document.getElementById('woImportZonesPickBtn');
+const woImportZonesForm = document.getElementById('woImportZonesForm');
+const woImportZonesFilename = document.getElementById('woImportZonesFilename');
+const woImportZonesGerk = document.getElementById('woImportZonesGerk');
+const woImportZonesType = document.getElementById('woImportZonesType');
+const woImportZonesDate = document.getElementById('woImportZonesDate');
+const woImportZonesConfirmBtn = document.getElementById('woImportZonesConfirmBtn');
+const woImportZonesCancelBtn = document.getElementById('woImportZonesCancelBtn');
+const woImportZonesError = document.getElementById('woImportZonesError');
 const woDetailMap = document.getElementById('woDetailMap');
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
@@ -78,7 +89,9 @@ const panelEvidenca = document.getElementById('panelEvidenca');
 const panelNalogi   = document.getElementById('panelNalogi');
 const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
-const woStatusFilter = document.getElementById('woStatusFilter');
+const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
+const woStatusFilterMenu = document.getElementById('woStatusFilterMenu');
+let woStatusFilterValues = new Set(); // empty = no filter, show all statuses
 const woSearchSuggestions = document.getElementById('woSearchSuggestions');
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
@@ -802,18 +815,6 @@ function renderWorkLogGerkRows(rows) {
           }).join('')}
         </div>` : ''}
         ${renderSamplesSection(samples, r.gerkId)}
-        ${currentRole === 'admin' && r.gerkId && /^\d+$/.test(r.code) ? `
-        <div class="wlg-import-zones" data-gerk-code="${escHtml(r.code)}">
-          <input type="file" accept=".kml" class="wlg-kml-input" hidden>
-          <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-pick">Uvozi cone (KML)</button>
-          <div class="wlg-import-zones-form" hidden>
-            <span class="wlg-import-zones-filename"></span>
-            <input type="text" class="sample-field-input wlg-import-zones-type" placeholder="Tip segmentacije">
-            <input type="date" class="sample-field-input wlg-import-zones-date" value="${todayISO()}">
-            <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-confirm">Uvozi</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-import-zones-cancel">Prekliči</button>
-          </div>
-        </div>` : ''}
       </div>`;
   }).join('');
 
@@ -889,6 +890,7 @@ function updateOrderHeader() {
 
   // Admin-only: delete the order outright — unreachable any other way.
   woDeleteBtn.hidden = !isAdmin;
+  woImportZonesWrap.hidden = !isAdmin;
 
   // Everyone who's actually logged a GERK on this order, not just whoever
   // originally claimed it — a second operator picking up mid-order doesn't
@@ -1017,6 +1019,9 @@ async function showWoDetailMap(workOrder) {
   currentCapturedPoints = [];
   woCaptureList.innerHTML = '';
   woCaptureError.hidden = true;
+  pendingKmlSegments = null;
+  woImportZonesForm.hidden = true;
+  woImportZonesError.hidden = true;
   woMapHasFitBounds = false;
   woMapLayersByCode = new Map();
   woMapHighlightedCode = null;
@@ -1064,8 +1069,12 @@ async function showWoDetailMap(workOrder) {
   // always sub-areas of a shape already accounted for above.
   // Capturing soil-sampling points only makes sense on a Vzorčenje
   // order — showing it on Gnojenje/Setev/Škropljenje/Žetev orders too
-  // was confusing since there's nothing to sample there.
-  const isSamplingOrder = workOrder.tip_storitve === 'Vzorčenje';
+  // was confusing since there's nothing to sample there. Excluding by
+  // known non-sampling type (rather than requiring an exact
+  // 'Vzorčenje' match) so it still shows on older orders where this
+  // field was never filled in — plenty of real orders predate it.
+  const NON_SAMPLING_TYPES = ['Gnojenje', 'Setev', 'Škropljenje', 'Žetev'];
+  const isSamplingOrder = !NON_SAMPLING_TYPES.includes(workOrder.tip_storitve);
   woCapturePanel.hidden = !isSamplingOrder;
   woCaptureBtn.hidden = !(isSamplingOrder && ['Plan', 'V delu'].includes(workOrder.status));
 
@@ -1539,18 +1548,6 @@ function wireGerkRowButtons() {
       highlightGerkOnWoMap(el.closest('.wlg-row')?.dataset.code);
     });
   });
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-pick"]').forEach(btn => {
-    btn.addEventListener('click', () => btn.closest('.wlg-import-zones').querySelector('.wlg-kml-input').click());
-  });
-  workLogGerkRowsEl.querySelectorAll('.wlg-kml-input').forEach(input => {
-    input.addEventListener('change', () => onKmlFileSelected(input));
-  });
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-cancel"]').forEach(btn => {
-    btn.addEventListener('click', () => cancelImportZones(btn.closest('.wlg-import-zones')));
-  });
-  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-import-zones-confirm"]').forEach(btn => {
-    btn.addEventListener('click', () => confirmImportZones(btn));
-  });
 }
 
 // Adds one new segment/sample row for a GERK — sample_no auto-suggested
@@ -1782,62 +1779,110 @@ function parseKmlSegments(kmlText) {
   return { segments, detectedGerkId };
 }
 
+// Top-level (one instance per work order, above the GERK list) rather
+// than per-row — importing enriches the matching GERK if it's already
+// on this order, or adds it first if not, so it can't be scoped to a
+// row that might not exist yet.
+let pendingKmlSegments = null;
+
+function showKmlImportError(msg) {
+  woImportZonesError.textContent = msg;
+  woImportZonesError.hidden = false;
+}
+
 async function onKmlFileSelected(input) {
-  const wrap = input.closest('.wlg-import-zones');
   const file = input.files[0];
   input.value = ''; // allow re-selecting the same file afterward
   if (!file) return;
+  woImportZonesError.hidden = true;
 
   try {
     const text = await file.text();
     const { segments, detectedGerkId } = parseKmlSegments(text);
-    wrap._kmlSegments = segments;
-    const filenameEl = wrap.querySelector('.wlg-import-zones-filename');
-    filenameEl.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
-    const mismatch = detectedGerkId && detectedGerkId !== wrap.dataset.gerkCode;
-    filenameEl.classList.toggle('wlg-import-zones-filename--warn', !!mismatch);
-    if (mismatch) {
-      filenameEl.textContent += ` — ⚠️ datoteka izgleda za GERK ${detectedGerkId}, ne za ${wrap.dataset.gerkCode}`;
-    }
-    wrap.querySelector('.wlg-import-zones-form').hidden = false;
+    pendingKmlSegments = segments;
+    woImportZonesFilename.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
+    // Pre-fill from the file's own Schema/Folder name when found — still
+    // just a starting guess, editable, not trusted outright (see
+    // parseKmlSegments' comment on why it isn't a real labeled field).
+    woImportZonesGerk.value = detectedGerkId || '';
+    woImportZonesType.value = '';
+    woImportZonesDate.value = todayISO();
+    woImportZonesForm.hidden = false;
   } catch (e) {
-    showFormError(e.message || 'Napaka pri branju KML datoteke.');
+    showKmlImportError(e.message || 'Napaka pri branju KML datoteke.');
   }
 }
 
-function cancelImportZones(wrap) {
-  wrap._kmlSegments = null;
-  wrap.querySelector('.wlg-import-zones-form').hidden = true;
+function cancelKmlImport() {
+  pendingKmlSegments = null;
+  woImportZonesForm.hidden = true;
 }
 
-async function confirmImportZones(btn) {
-  const wrap = btn.closest('.wlg-import-zones');
-  const segments = wrap._kmlSegments;
-  if (!segments) return;
+async function confirmKmlImport(btn) {
+  const segments = pendingKmlSegments;
+  if (!segments || !currentDetailWorkOrder) return;
 
-  const type      = wrap.querySelector('.wlg-import-zones-type').value.trim();
-  const validFrom = wrap.querySelector('.wlg-import-zones-date').value;
-  if (!type)      { showFormError('Vpišite tip segmentacije.'); return; }
-  if (!validFrom) { showFormError('Izberite datum veljavnosti.'); return; }
+  const gerkCode  = woImportZonesGerk.value.trim();
+  const type      = woImportZonesType.value.trim();
+  const validFrom = woImportZonesDate.value;
+  woImportZonesError.hidden = true;
+  if (!/^\d+$/.test(gerkCode)) { showKmlImportError('GERK mora biti številčna koda.'); return; }
+  if (!type)                   { showKmlImportError('Vpišite tip segmentacije.'); return; }
+  if (!validFrom)               { showKmlImportError('Izberite datum veljavnosti.'); return; }
 
   btn.disabled = true;
   try {
-    const { error } = await supabase.rpc('import_gerk_segmentation', {
-      p_gerk_id:    parseInt(wrap.dataset.gerkCode, 10),
+    let gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === gerkCode);
+    if (!gerk) {
+      // Same validate-and-insert pattern as "add existing GERK": a
+      // known field (real area/field_id) is trusted outright, an
+      // unknown one still needs to look like a real GERK code.
+      const known = (await supabase.from('fields').select('id, area_ha')
+        .eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', gerkCode).maybeSingle()).data;
+      if (!known && !/^\d{7}$/.test(gerkCode)) {
+        throw new Error(`Neveljaven GERK: "${gerkCode}" (mora biti 7-mestna številka).`);
+      }
+      const { data, error } = await supabase
+        .from('delovni_nalogi_gerki')
+        .insert({
+          delovni_nalog_id: currentDetailWorkOrder.id,
+          gerk_code:        gerkCode,
+          kolicina_ha:      known?.area_ha ?? null,
+        })
+        .select('id, gerk_code, kolicina_ha, lokacija, tip_lab_analize')
+        .single();
+      if (error) throw error;
+      if (known?.id) {
+        const { error: fieldIdError } = await supabase.from('delovni_nalogi_gerki').update({ field_id: known.id }).eq('id', data.id);
+        if (fieldIdError) console.warn('field_id backfill failed for', gerkCode, fieldIdError);
+      }
+      gerk = { ...data, delovni_nalogi_vzorci: [] };
+      currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), gerk];
+    }
+
+    const { error: importError } = await supabase.rpc('import_gerk_segmentation', {
+      p_gerk_id:    parseInt(gerkCode, 10),
       p_type:       type,
       p_valid_from: validFrom,
       p_segments:   segments,
     });
-    if (error) throw error;
-    cancelImportZones(wrap);
-    showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih.`);
-    if (currentDetailWorkOrder) showWoDetailMap(currentDetailWorkOrder);
+    if (importError) throw importError;
+
+    cancelKmlImport();
+    showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih (GERK ${gerkCode}).`);
+    await loadDetailForDate();
+    await loadWorkOrders();
   } catch (e) {
-    showFormError(e.message || 'Napaka pri uvozu con.');
+    showKmlImportError(e.message || 'Napaka pri uvozu con.');
   } finally {
     btn.disabled = false;
   }
 }
+
+woImportZonesPickBtn.addEventListener('click', () => woKmlInput.click());
+woKmlInput.addEventListener('change', () => onKmlFileSelected(woKmlInput));
+woImportZonesCancelBtn.addEventListener('click', cancelKmlImport);
+woImportZonesConfirmBtn.addEventListener('click', () => confirmKmlImport(woImportZonesConfirmBtn));
 
 // ── Čas na poti: multiple add-a-line entries, summed server-side ──
 function renderRoadTimeList() {
@@ -2325,9 +2370,8 @@ async function loadWorkOrders() {
 
 function filteredWorkOrders() {
   const q = woSearchStranka.value.trim().toLowerCase();
-  const status = woStatusFilter.value;
   return workOrders.filter(wo => {
-    if (status && wo.status !== status) return false;
+    if (woStatusFilterValues.size && !woStatusFilterValues.has(wo.status)) return false;
     if (!q) return true;
     const stranka = wo.customers?.naziv || wo.customers?.company_name || '';
     return stranka.toLowerCase().includes(q);
@@ -2338,7 +2382,7 @@ function renderWorkOrders() {
   const fwo = filteredWorkOrders();
 
   if (fwo.length === 0) {
-    const msg = woSearchStranka.value.trim() || woStatusFilter.value ? 'Ni zadetkov.' : 'Ni delovnih nalogov.';
+    const msg = woSearchStranka.value.trim() || woStatusFilterValues.size ? 'Ni zadetkov.' : 'Ni delovnih nalogov.';
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     return;
   }
@@ -2438,7 +2482,26 @@ function showWoSearchSuggestions() {
   woSearchSuggestions.hidden = false;
 }
 
-woStatusFilter.addEventListener('change', renderWorkOrders);
+function updateStatusFilterButtonLabel() {
+  const n = woStatusFilterValues.size;
+  woStatusFilterBtn.textContent = n === 0 ? 'Vsi statusi' : n === 1 ? [...woStatusFilterValues][0] : `${n} statusi`;
+}
+
+woStatusFilterBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  woStatusFilterMenu.hidden = !woStatusFilterMenu.hidden;
+});
+woStatusFilterMenu.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', () => { woStatusFilterMenu.hidden = true; });
+woStatusFilterMenu.querySelectorAll('.wo-status-filter-cb').forEach(cb => {
+  cb.addEventListener('change', () => {
+    if (cb.checked) woStatusFilterValues.add(cb.value);
+    else woStatusFilterValues.delete(cb.value);
+    updateStatusFilterButtonLabel();
+    renderWorkOrders();
+  });
+});
+
 woSearchStranka.addEventListener('input', () => { renderWorkOrders(); showWoSearchSuggestions(); });
 woSearchStranka.addEventListener('focus', showWoSearchSuggestions);
 woSearchStranka.addEventListener('blur', () => {
