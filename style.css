@@ -966,8 +966,11 @@ input, select, textarea { font-family: inherit; }
 
 .wo-section { padding-top: 16px; }
 
+#logsList { overflow-x: auto; }
+
 .evidenca-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   background: var(--surface);
   border-radius: var(--radius-md);
@@ -985,11 +988,13 @@ input, select, textarea { font-family: inherit; }
   text-transform: uppercase;
   letter-spacing: .04em;
   border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
 }
 .evidenca-table td {
   padding: 10px 14px;
   color: var(--text-primary);
   border-top: 1px solid var(--border-light);
+  white-space: nowrap;
 }
 .evidenca-table tr:first-child td { border-top: none; }
 
@@ -1236,6 +1241,12 @@ input, select, textarea { font-family: inherit; }
 
 .wo-capture-btn { width: 100%; white-space: normal; }
 
+.wo-capture-error {
+  padding: 6px 8px;
+  font-size: .6875rem;
+  line-height: 1.3;
+}
+
 .wo-capture-list {
   display: flex;
   flex-direction: column;
@@ -1267,7 +1278,16 @@ input, select, textarea { font-family: inherit; }
 
 @media (min-width: 900px) {
   .wo-detail-layout   { flex-direction: row; }
-  .wo-detail-map-wrap { width: 50%; height: auto; max-height: none; order: 2; }
+  /* An explicit height here (not auto) matters: both of this wrap's
+     children (#woDetailMap, .wo-capture-panel) are position:absolute,
+     so they contribute zero intrinsic content height. With height:auto
+     the wrap had nothing to size itself from except align-items:stretch
+     matching .wo-detail-content's height — which collapsed the map to
+     a sliver on any work order whose detail content was short (few
+     GERKs, no samples yet). Stretch still applies (so .wo-detail-content
+     matches this same height and scrolls its own overflow), but now
+     from a real, always-reasonable value instead of a collapsible one. */
+  .wo-detail-map-wrap { width: 50%; height: 60vh; max-height: 600px; order: 2; }
   .wo-detail-content  { width: 50%; order: 1; }
 }
 

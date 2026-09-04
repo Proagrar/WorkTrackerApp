@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.60';
+const APP_VERSION = 'v1.62';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -54,7 +54,9 @@ const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
 const woAddExistingGerkBtn = document.getElementById('woAddExistingGerkBtn');
 const woDetailMap = document.getElementById('woDetailMap');
+const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
+const woCaptureError = document.getElementById('woCaptureError');
 const woCaptureList = document.getElementById('woCaptureList');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
@@ -230,7 +232,7 @@ async function loadLogs() {
 
   let query = supabase
     .from('work_logs')
-    .select('*, work_log_gerks(*)')
+    .select('*, work_log_gerks(*), work_log_road_time(minutes, vehicle_type), delovni_nalogi(stevilka, status, customers(naziv, company_name))')
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
 
@@ -253,7 +255,17 @@ async function loadLogs() {
   renderLogs();
 }
 
-// ── Render: simple exportable table — Datum / Ure / Operater ────
+// Sums this log's road-time entries by vehicle type — work_log_road_time
+// rows are per-line-item (operator can log several trips), not a single
+// pre-split value like work_duration.
+function roadMinutesByType(log, vehicleType) {
+  return (log.work_log_road_time || [])
+    .filter(r => r.vehicle_type === vehicleType)
+    .reduce((s, r) => s + (r.minutes || 0), 0);
+}
+
+// ── Render: simple exportable table — Delovni nalog / Stranka / Ure
+// traktor / Ure avto / Ure na polju / Datum / Status / Operater ────
 function renderLogs() {
   const fl = filteredLogs();
   if (fl.length === 0) {
@@ -267,15 +279,27 @@ function renderLogs() {
   logsList.innerHTML = `
     <table class="evidenca-table">
       <thead>
-        <tr><th>Datum</th><th>Ure</th><th>Operater</th></tr>
+        <tr>
+          <th>Delovni nalog</th><th>Stranka</th><th>Ure traktor</th><th>Ure avto</th>
+          <th>Ure na polju</th><th>Datum</th><th>Status</th><th>Operater</th>
+        </tr>
       </thead>
       <tbody>
-        ${fl.map(log => `
+        ${fl.map(log => {
+          const wo = log.delovni_nalogi;
+          const stranka = wo?.customers?.naziv || wo?.customers?.company_name || '—';
+          return `
           <tr>
-            <td>${fmtSampleDate(log.work_date)}</td>
+            <td>${escHtml(wo?.stevilka ?? '—')}</td>
+            <td>${escHtml(stranka)}</td>
+            <td>${fmtDuration(roadMinutesByType(log, 'Traktor'))}</td>
+            <td>${fmtDuration(roadMinutesByType(log, 'Avto'))}</td>
             <td>${fmtDuration(log.work_duration)}</td>
+            <td>${fmtSampleDate(log.work_date)}</td>
+            <td>${wo?.status ? `<span class="wo-status-badge wo-status--${slugStatus(wo.status)}">${escHtml(wo.status)}</span>` : '—'}</td>
             <td>${escHtml(profileMap[log.operator_id] ?? '—')}</td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
 }
@@ -286,12 +310,20 @@ function exportLogsCSV() {
   const fl = filteredLogs();
   const csvEscape = v => `"${String(v).replace(/"/g, '""')}"`;
   const rows = [
-    ['Datum', 'Ure', 'Operater'],
-    ...fl.map(log => [
-      fmtSampleDate(log.work_date),
-      (log.work_duration / 60).toFixed(2),
-      profileMap[log.operator_id] ?? '—',
-    ]),
+    ['Delovni nalog', 'Stranka', 'Ure traktor', 'Ure avto', 'Ure na polju', 'Datum', 'Status', 'Operater'],
+    ...fl.map(log => {
+      const wo = log.delovni_nalogi;
+      return [
+        wo?.stevilka ?? '—',
+        wo?.customers?.naziv || wo?.customers?.company_name || '—',
+        (roadMinutesByType(log, 'Traktor') / 60).toFixed(2),
+        (roadMinutesByType(log, 'Avto') / 60).toFixed(2),
+        (log.work_duration / 60).toFixed(2),
+        fmtSampleDate(log.work_date),
+        wo?.status ?? '—',
+        profileMap[log.operator_id] ?? '—',
+      ];
+    }),
   ];
   const csv = rows.map(row => row.map(csvEscape).join(',')).join('\r\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -984,6 +1016,7 @@ async function showWoDetailMap(workOrder) {
   woMapCapturedLayer.clearLayers();
   currentCapturedPoints = [];
   woCaptureList.innerHTML = '';
+  woCaptureError.hidden = true;
   woMapHasFitBounds = false;
   woMapLayersByCode = new Map();
   woMapHighlightedCode = null;
@@ -1029,12 +1062,19 @@ async function showWoDetailMap(workOrder) {
   // this resolves). Imported KML zones (gerk_segment) load alongside,
   // same guard, own layer — they don't affect fitBounds since they're
   // always sub-areas of a shape already accounted for above.
-  woCaptureBtn.hidden = !['Plan', 'V delu'].includes(workOrder.status);
+  // Capturing soil-sampling points only makes sense on a Vzorčenje
+  // order — showing it on Gnojenje/Setev/Škropljenje/Žetev orders too
+  // was confusing since there's nothing to sample there.
+  const isSamplingOrder = workOrder.tip_storitve === 'Vzorčenje';
+  woCapturePanel.hidden = !isSamplingOrder;
+  woCaptureBtn.hidden = !(isSamplingOrder && ['Plan', 'V delu'].includes(workOrder.status));
 
   const [{ data: shapes, error }, { data: segments }, { data: captured }] = await Promise.all([
     supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id }),
     supabase.rpc('get_work_order_gerk_segments', { p_work_order_id: workOrder.id }),
-    supabase.rpc('get_work_order_captured_points', { p_work_order_id: workOrder.id }),
+    isSamplingOrder
+      ? supabase.rpc('get_work_order_captured_points', { p_work_order_id: workOrder.id })
+      : Promise.resolve({ data: [] }),
   ]);
   if (error || currentDetailWorkOrder?.id !== workOrder.id) return;
 
@@ -1093,8 +1133,18 @@ function renderCapturedPointsList() {
     </div>`).join('');
 }
 
+// Dedicated slot, not the shared showFormError — that alert lives far
+// down in the scrollable detail content, well out of view while
+// looking at the map, so a failure here was invisible rather than
+// silent (same bug class as operatorsError vs formError earlier).
+function showCaptureError(msg) {
+  woCaptureError.textContent = msg;
+  woCaptureError.hidden = false;
+}
+
 async function captureGerkPoint() {
   if (!currentDetailWorkOrder) return;
+  woCaptureError.hidden = true;
   woCaptureBtn.disabled = true;
   try {
     const pos = await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
@@ -1109,7 +1159,7 @@ async function captureGerkPoint() {
     renderCapturedPointsList();
     drawCapturedPointsOnMap();
   } catch (e) {
-    showFormError(geolocationErrorMessage(e));
+    showCaptureError(geolocationErrorMessage(e));
   } finally {
     woCaptureBtn.disabled = false;
   }
@@ -1118,6 +1168,7 @@ async function captureGerkPoint() {
 async function removeCapturedPoint(btn) {
   const item = btn.closest('.wo-capture-item');
   const id = item.dataset.id;
+  woCaptureError.hidden = true;
   btn.disabled = true;
   try {
     const { error } = await supabase.rpc('remove_gerk_captured_point', { p_point_id: id });
@@ -1126,7 +1177,7 @@ async function removeCapturedPoint(btn) {
     renderCapturedPointsList();
     drawCapturedPointsOnMap();
   } catch (e) {
-    showFormError(e.message || 'Napaka pri brisanju točke.');
+    showCaptureError(e.message || 'Napaka pri brisanju točke.');
     btn.disabled = false;
   }
 }
