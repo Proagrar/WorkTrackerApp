@@ -462,7 +462,7 @@ input, select, textarea { font-family: inherit; }
    of its own 1fr, while GERKI got the 1fr meant for Stranka. */
 .wo-lc-header.wo-lc-header,
 .wo-compact.wo-compact {
-  grid-template-columns: 34px 1fr 52px 40px 48px 80px;
+  grid-template-columns: 34px 1fr 52px 40px 48px 70px 80px;
 }
 
 .wo-compact { cursor: pointer; }
@@ -505,6 +505,14 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.wo-c-izvajalec {
+  font-size: .8125rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wo-c-duration {
@@ -1361,11 +1369,11 @@ input, select, textarea { font-family: inherit; }
      cramped together at the right edge. */
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
-    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(100px,.9fr) 44px;
+    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
   }
   .wo-lc-header.wo-lc-header--admin,
   .wo-compact.wo-compact--admin {
-    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(100px,.9fr) 44px 60px;
+    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px 60px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */
@@ -1677,6 +1685,22 @@ input, select, textarea { font-family: inherit; }
   font-size: .8125rem;
   color: var(--text-secondary);
 }
+
+.gerk-suggestion-item--add .gerk-suggestion-code {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--blue-800);
+  letter-spacing: normal;
+}
+
+.decl-list-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.decl-list-toolbar .field-input { flex: 1; min-width: 0; }
+.decl-list-toolbar .btn { flex: 0 0 auto; white-space: nowrap; }
 
 .wo-gerk-checklist {
   max-height: 260px;

@@ -390,8 +390,9 @@
 
       <!-- List view -->
       <div id="declListView">
-        <div class="field">
+        <div class="decl-list-toolbar">
           <input class="field-input" type="text" id="declListSearch" placeholder="Išči stranko..." autocomplete="off" />
+          <button type="button" id="declAddCustomerBtn" class="btn btn-secondary btn-sm">+ Nova stranka</button>
         </div>
         <div id="declCustomerList" class="logs-list logs-list--compact"></div>
       </div>
@@ -436,6 +437,40 @@
         <div id="operatorsError" class="alert alert-error" hidden role="alert"></div>
         <div id="operatorsList" class="wo-gerk-checklist"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Nova stranka (admin: quick-add when a customer doesn't exist yet) ── -->
+  <div id="addCustomerModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="addCustomerModalTitle">
+    <div class="modal-sheet modal-sheet-compact">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h3 id="addCustomerModalTitle" class="modal-title">Nova stranka</h3>
+        <button id="addCustomerModalClose" class="btn btn-icon" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <form id="addCustomerForm" class="work-form" novalidate>
+        <div class="field">
+          <label class="field-label" for="newCustomerNaziv">Naziv <span class="required">*</span></label>
+          <input class="field-input" type="text" id="newCustomerNaziv" autocomplete="off" required />
+        </div>
+        <div class="field">
+          <label class="field-label" for="newCustomerKraj">Kraj</label>
+          <input class="field-input" type="text" id="newCustomerKraj" autocomplete="off" />
+        </div>
+        <div id="addCustomerError" class="alert alert-error" hidden role="alert"></div>
+        <div class="form-actions">
+          <button type="button" id="addCustomerCancelBtn" class="btn btn-secondary btn-flex">Prekliči</button>
+          <button type="submit" id="addCustomerSaveBtn" class="btn btn-primary btn-flex">
+            <span class="btn-label">Dodaj</span>
+            <span class="btn-spinner" hidden aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

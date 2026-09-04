@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.54';
+const APP_VERSION = 'v1.55';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -102,6 +102,7 @@ const declGenerateBtn        = document.getElementById('declGenerateBtn');
 const declLinkResult         = document.getElementById('declLinkResult');
 const declLinksList          = document.getElementById('declLinksList');
 const declTableWrap          = document.getElementById('declTableWrap');
+const declAddCustomerBtn     = document.getElementById('declAddCustomerBtn');
 let declCustomerId = null;
 
 // ── Operators (Izvajalci) modal refs ────────────────────────────
@@ -109,6 +110,18 @@ const operatorsModal      = document.getElementById('operatorsModal');
 const operatorsModalClose = document.getElementById('operatorsModalClose');
 const operatorsListEl     = document.getElementById('operatorsList');
 const operatorsErrorEl    = document.getElementById('operatorsError');
+
+// ── Add customer modal refs (admin: "Seznam strank" + inline from
+// the work-order form's customer search when no match exists) ───
+const addCustomerModal      = document.getElementById('addCustomerModal');
+const addCustomerModalClose = document.getElementById('addCustomerModalClose');
+const addCustomerForm       = document.getElementById('addCustomerForm');
+const newCustomerNazivInput = document.getElementById('newCustomerNaziv');
+const newCustomerKrajInput  = document.getElementById('newCustomerKraj');
+const addCustomerErrorEl    = document.getElementById('addCustomerError');
+const addCustomerCancelBtn  = document.getElementById('addCustomerCancelBtn');
+const addCustomerSaveBtn    = document.getElementById('addCustomerSaveBtn');
+let addCustomerContext = null; // 'decl' | 'wo' — where to route the result after saving
 
 // ── Map modal refs ────────────────────────────────────────────
 const mapModal            = document.getElementById('mapModal');
@@ -726,6 +739,11 @@ woBulkDepthSel.innerHTML = '<option value="">Globina…</option>' +
 // Read-only everywhere, including for admins — set once when the
 // segment is added (see the "+ Dodaj segment" form), never edited
 // afterward in this table.
+function renderSampleNoCell(s) {
+  if (currentRole !== 'admin') return escHtml(s.sample_no);
+  return `<input type="text" class="sample-field-input wlg-sampleno-input" data-sample-id="${escHtml(s.id)}" value="${escHtml(s.sample_no)}">`;
+}
+
 function renderSamplingCell(s) {
   return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
 }
@@ -877,7 +895,7 @@ function renderSamplesSection(samples, gerkId) {
             <tbody>
               ${samples.map(s => `
                 <tr>
-                  <td>${escHtml(s.sample_no)}</td>
+                  <td>${renderSampleNoCell(s)}</td>
                   <td>${renderSamplingCell(s)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
                   <td>${renderSampleLocationCell(s)}</td>
@@ -1431,6 +1449,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-remove-sample"]').forEach(btn => {
     btn.addEventListener('click', () => removeSample(btn));
   });
+  workLogGerkRowsEl.querySelectorAll('.wlg-sampleno-input').forEach(input => {
+    input.addEventListener('change', () => updateSampleNo(input));
+  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-capture-location"]').forEach(btn => {
     btn.addEventListener('click', () => captureSampleLocation(btn));
   });
@@ -1540,6 +1561,32 @@ async function removeGerkFromOrder(btn) {
   currentDetailWorkOrder.delovni_nalogi_gerki = (currentDetailWorkOrder.delovni_nalogi_gerki || []).filter(g => g.id !== gerkRowId);
   await loadDetailForDate();
   await loadWorkOrders();
+}
+
+async function updateSampleNo(inputEl) {
+  const sampleId = inputEl.dataset.sampleId;
+  const value = inputEl.value.trim();
+  if (!value) { showFormError('Št. vzorca ne sme biti prazna.'); return; }
+  const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+    .find(g => (g.delovni_nalogi_vzorci || []).some(s => s.id === sampleId));
+  const sample = gerk?.delovni_nalogi_vzorci.find(s => s.id === sampleId);
+  if (sample && sample.sample_no === value) return;
+
+  inputEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ sample_no: value }).eq('id', sampleId);
+    if (error) throw error;
+    if (sample) sample.sample_no = value;
+  } catch (e) {
+    // 23505 = unique_violation on (delovni_nalog_gerk_id, sample_no) — same
+    // constraint as addSample, hit here if renamed to a number already in use.
+    showFormError(e.code === '23505'
+      ? 'Ta št. vzorca je znotraj GERK-a že v uporabi.'
+      : (e.message || 'Napaka pri shranjevanju.'));
+    if (sample) inputEl.value = sample.sample_no;
+  } finally {
+    inputEl.disabled = false;
+  }
 }
 
 async function removeSample(btn) {
@@ -1846,6 +1893,7 @@ document.addEventListener('keydown', e => {
     if (!declModal.hidden)      closeDeclModal();
     if (!mapModal.hidden)       closeMapModal();
     if (!operatorsModal.hidden) closeOperatorsModal();
+    if (!addCustomerModal.hidden) closeAddCustomerModal();
   }
 });
 
@@ -1892,6 +1940,79 @@ function closeOperatorsModal() {
 
 operatorsModalClose.addEventListener('click', closeOperatorsModal);
 operatorsModal.addEventListener('click', e => { if (e.target === operatorsModal) closeOperatorsModal(); });
+
+// ── Add customer modal ────────────────────────────────────────
+// context: 'decl' (from "Seznam strank") refreshes that list after
+// saving; 'wo' (from the work-order form's customer search) selects
+// the new customer straight into the order being created.
+function openAddCustomerModal(context, prefillNaziv = '') {
+  addCustomerContext = context;
+  addCustomerErrorEl.hidden = true;
+  addCustomerForm.reset();
+  newCustomerNazivInput.value = prefillNaziv;
+  addCustomerModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+  newCustomerNazivInput.focus();
+}
+
+function closeAddCustomerModal() {
+  addCustomerModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+addCustomerForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const naziv = newCustomerNazivInput.value.trim();
+  const kraj  = newCustomerKrajInput.value.trim();
+  if (!naziv) {
+    addCustomerErrorEl.textContent = 'Naziv je obvezen.';
+    addCustomerErrorEl.hidden = false;
+    return;
+  }
+
+  addCustomerErrorEl.hidden = true;
+  addCustomerSaveBtn.disabled = true;
+  addCustomerSaveBtn.querySelector('.btn-label').hidden = true;
+  addCustomerSaveBtn.querySelector('.btn-spinner').hidden = false;
+  try {
+    const { data, error } = await supabase
+      .from('customers')
+      .insert({ naziv, company_name: naziv, address_city: kraj || null })
+      .select('id, naziv, company_name, contact_name, email')
+      .single();
+    if (error) throw error;
+
+    const newCustomer = {
+      id: data.id,
+      name: data.naziv || data.company_name || '—',
+      contactName: data.contact_name || null,
+      email: data.email || null,
+    };
+    customers.push(newCustomer);
+    customers.sort((a, b) => a.name.localeCompare(b.name));
+
+    closeAddCustomerModal();
+    if (addCustomerContext === 'wo') {
+      woStrankaInput.value = newCustomer.name;
+      woStrankaIdInput.value = newCustomer.id;
+      loadCustomerGerkChecklist(newCustomer.id);
+    } else if (addCustomerContext === 'decl') {
+      renderDeclCustomerList();
+    }
+  } catch (err) {
+    addCustomerErrorEl.textContent = err.message || 'Napaka pri dodajanju stranke.';
+    addCustomerErrorEl.hidden = false;
+  } finally {
+    addCustomerSaveBtn.disabled = false;
+    addCustomerSaveBtn.querySelector('.btn-label').hidden = false;
+    addCustomerSaveBtn.querySelector('.btn-spinner').hidden = true;
+  }
+});
+
+addCustomerModalClose.addEventListener('click', closeAddCustomerModal);
+addCustomerCancelBtn.addEventListener('click', closeAddCustomerModal);
+addCustomerModal.addEventListener('click', e => { if (e.target === addCustomerModal) closeAddCustomerModal(); });
+declAddCustomerBtn.addEventListener('click', () => openAddCustomerModal('decl'));
 
 // ── Map modal (Leaflet) ───────────────────────────────────────
 // One map instance, reused across opens — Leaflet can't size itself
@@ -1988,10 +2109,11 @@ const WO_SORT_COLUMNS = [
   { key: 'trajanje', label: 'Čas', center: true },
   { key: 'gerki',    label: 'GERKI', center: true },
   { key: 'ha',       label: 'Ha' },
+  { key: 'izvajalec', label: 'Izvajalec' },
   { key: 'status',   label: 'Status' },
 ];
 
-let woSortKey = null;   // 'stevilka' | 'stranka' | 'gerki' | 'ha' | 'status'
+let woSortKey = null;   // 'stevilka' | 'stranka' | 'gerki' | 'ha' | 'izvajalec' | 'status'
 let woSortDir = 'asc';
 
 function sortWorkOrderRows(rows) {
@@ -2005,6 +2127,7 @@ function sortWorkOrderRows(rows) {
       case 'trajanje': cmp = a.totalMinutes - b.totalMinutes; break;
       case 'gerki':    cmp = a.gerkCount - b.gerkCount; break;
       case 'ha':       cmp = a.totalHa - b.totalHa; break;
+      case 'izvajalec': cmp = a.izvajalec.localeCompare(b.izvajalec); break;
       case 'status':   cmp = (WO_STATUS_ORDER[a.status] ?? 99) - (WO_STATUS_ORDER[b.status] ?? 99); break;
     }
     return cmp * dir;
@@ -2081,6 +2204,7 @@ function renderWorkOrders() {
       totalMinutes: workOrderDurations[wo.id] || 0,
       gerkCount:    gerks.length,
       totalHa:      gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
+      izvajalec:    wo.profiles?.full_name || '—',
       status:       wo.status,
       lat:          point?.lat ?? null,
       lng:          point?.lng ?? null,
@@ -2114,6 +2238,7 @@ function renderWorkOrders() {
         <span class="wo-c-duration">${r.totalMinutes > 0 ? fmtHM(r.totalMinutes) : '—'}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
         <span class="lc-ha">${haStr}</span>
+        <span class="wo-c-izvajalec">${escHtml(r.izvajalec)}</span>
         <span class="wo-status-badge wo-status--${slugStatus(r.status)}">${escHtml(r.status)}</span>
         ${mapsCell}
         ${confirmCell}
@@ -2229,22 +2354,35 @@ function filterCustomers(query) {
   return customers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
 }
 
-function showCustomerSuggestions(matches) {
-  if (!matches.length) { woStrankaSuggestions.hidden = true; return; }
+function showCustomerSuggestions(matches, query) {
+  // Only admins can reach this form (the FAB's "+ Nov delovni nalog" is
+  // admin-gated) and only admins can insert into customers (see the
+  // "Admins can insert customers" RLS policy) — so this is always safe
+  // to offer here, not just when matches come up empty.
+  const addNewItem = currentRole === 'admin' && query
+    ? `<li class="gerk-suggestion-item gerk-suggestion-item--add" data-action="add-new"><span class="gerk-suggestion-code">+ Dodaj novo stranko: "${escHtml(query)}"</span></li>`
+    : '';
+  if (!matches.length && !addNewItem) { woStrankaSuggestions.hidden = true; return; }
   woStrankaSuggestions.innerHTML = matches.map(c =>
     `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
-  ).join('');
+  ).join('') + addNewItem;
   woStrankaSuggestions.hidden = false;
 }
 
 woStrankaInput.addEventListener('input', () => {
   woStrankaIdInput.value = '';
-  showCustomerSuggestions(filterCustomers(woStrankaInput.value.trim()));
+  const q = woStrankaInput.value.trim();
+  showCustomerSuggestions(filterCustomers(q), q);
 });
 woStrankaInput.addEventListener('blur', () => {
   setTimeout(() => { woStrankaSuggestions.hidden = true; }, 150);
 });
 woStrankaSuggestions.addEventListener('mousedown', e => {
+  if (e.target.closest('[data-action="add-new"]')) {
+    woStrankaSuggestions.hidden = true;
+    openAddCustomerModal('wo', woStrankaInput.value.trim());
+    return;
+  }
   const item = e.target.closest('.gerk-suggestion-item');
   if (!item) return;
   const c = customers.find(c => c.id === item.dataset.id);
