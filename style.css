@@ -362,6 +362,8 @@ input, select, textarea { font-family: inherit; }
   margin-right: auto;
 }
 
+.app-main--wide { max-width: none; }
+
 
 /* ── Greeting ───────────────────────────────────────────────── */
 .greeting-section {
@@ -836,6 +838,174 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ============================================================
+   WORK ORDER PLANNING
+   ============================================================ */
+.app-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 16px 16px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 10px 12px 12px;
+  font-size: .8125rem;
+  font-weight: 700;
+}
+
+.app-tab.active {
+  color: var(--blue-800);
+  border-bottom-color: var(--blue-800);
+}
+
+.planning-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  min-height: calc(100dvh - var(--header-h) - 58px);
+}
+
+.planning-sidebar {
+  padding: 24px 18px;
+  background: #f7f8fc;
+  border-right: 1px solid var(--border);
+}
+
+.operator-filter { position: relative; display: grid; gap: 5px; margin-bottom: 10px; }
+.operator-filter label { color: var(--text-secondary); font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
+.operator-filter-button { width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-primary); font: inherit; font-size: .8125rem; text-align: left; }
+.operator-filter-button[aria-expanded="true"] { border-color: var(--blue-800); box-shadow: 0 0 0 3px rgba(28,69,146,.12); }
+.operator-filter-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20; max-height: 240px; overflow-y: auto; padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-md); }
+.operator-filter-option { display: flex; align-items: center; gap: 8px; padding: 8px; color: var(--text-primary) !important; font-size: .75rem !important; font-weight: 600 !important; text-transform: none !important; cursor: pointer; }
+.operator-filter-option:hover { background: var(--blue-50); }
+.operator-filter-option input { width: 16px; height: 16px; accent-color: var(--blue-800); }
+
+.planning-sidebar-head, .calendar-head, .gerk-selection-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  color: var(--text-muted);
+  font-size: .6875rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.planning-title, .calendar-title, .planning-modal-title {
+  color: var(--blue-900);
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.planning-count {
+  min-width: 30px;
+  height: 30px;
+  padding: 4px 8px;
+  border-radius: 99px;
+  background: var(--blue-100);
+  color: var(--blue-800);
+  font-weight: 800;
+  text-align: center;
+}
+
+.planning-hint { color: var(--text-secondary); font-size: .75rem; }
+.planning-sidebar > .planning-hint { margin: 8px 0 16px; }
+.work-order-cards { display: grid; gap: 10px; }
+
+.work-order-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--blue-700);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: default;
+}
+
+.work-order-card:active { cursor: default; }
+.work-order-card:focus-visible { outline: 3px solid rgba(28,69,146,.2); }
+.work-order-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.work-order-card h3 { font-size: .875rem; line-height: 1.25; }
+.order-gerk-count { color: var(--text-muted); font-size: .6875rem; white-space: nowrap; }
+.work-order-country { margin-top: 8px; color: var(--text-secondary); font-size: .75rem; }
+.area-chips { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 10px; }
+.area-chip { width: fit-content; }
+.area-chip { padding: 4px 6px; border-radius: 4px; background: var(--blue-50); color: var(--blue-800); font-size: .6875rem; }
+.work-order-card-foot { margin-top: 10px; color: var(--text-muted); font-size: .6875rem; }
+.planning-error { padding: 12px; border-radius: var(--radius-sm); background: var(--error-bg); color: var(--error); font-size: .75rem; overflow-wrap: anywhere; }
+
+.calendar-panel { padding: 24px; min-width: 0; background: var(--surface); }
+.calendar-range { display: flex; gap: 8px; align-items: center; }
+.calendar-range label { display: grid; gap: 2px; color: var(--text-muted); font-size: .625rem; font-weight: 800; text-transform: uppercase; }
+.calendar-range input { height: 32px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font: inherit; text-transform: none; }
+.calendar-actions { display: flex; align-items: center; gap: 6px; }
+.calendar-nav { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--blue-800); font-size: 1.5rem; line-height: 1; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 22px; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.calendar-weekday { padding: 8px 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
+.calendar-day { min-height: 112px; min-width: 0; padding: 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface); transition: background .15s, box-shadow .15s; }
+.calendar-day--blank { background: var(--background); }
+.calendar-day.is-outside { background: #fafbfe; }
+.calendar-day.is-out-of-range { background: #f1f2f5; opacity: .45; }
+.calendar-day.is-out-of-range .calendar-day-areas,
+.calendar-day.is-out-of-range .calendar-day-orders { visibility: hidden; }
+.calendar-day.is-today .calendar-day-number { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--blue-800); color: white; }
+.calendar-day.is-drop-target { background: var(--blue-50); box-shadow: inset 0 0 0 2px var(--blue-700); }
+.calendar-day-number { color: var(--text-secondary); font-size: .75rem; font-weight: 700; }
+.calendar-day-areas { display: block; width: 100%; margin-top: 5px; padding: 4px 5px; border-radius: 4px; background: var(--blue-50); color: var(--blue-800); font-size: .625rem; font-weight: 700; line-height: 1.35; }
+.calendar-day-area { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-day-orders { display: grid; gap: 4px; margin-top: 6px; }
+.calendar-order { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; min-width: 0; padding: 5px 6px; border: 0; border-radius: 4px; color: #17331f; font-size: .6875rem; font-weight: 700; text-align: left; cursor: grab; }
+.calendar-order-name { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-order.is-complete { background: #ccebd2; }
+.calendar-order.is-partial { background: #f8e5a8; color: #5b4500; }
+.calendar-order.is-selected { outline: 2px solid var(--blue-800); outline-offset: 1px; }
+.calendar-order-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: currentColor; }
+
+.planning-modal { position: fixed; inset: 0; z-index: 500; display: grid; place-items: center; padding: 20px; background: rgba(13,43,92,.58); }
+.planning-modal-sheet { width: min(1180px, 100%); max-height: min(860px, calc(100dvh - 40px)); overflow: auto; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-md); }
+.planning-modal-head { display: flex; justify-content: space-between; gap: 20px; padding: 22px 24px; border-bottom: 1px solid var(--border); }
+.planning-modal-title { margin-top: 3px; }
+.planning-modal-body { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); min-height: 560px; }
+.gerk-selection-panel { padding: 22px 24px; }
+.select-all-label { display: flex; align-items: center; gap: 7px; color: var(--blue-800); font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.gerk-selection-list { display: grid; gap: 7px; margin-top: 20px; }
+.gerk-selection-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); cursor: pointer; }
+.gerk-selection-row:hover { border-color: var(--blue-100); background: var(--blue-50); }
+.gerk-selection-row input { grid-row: span 2; align-self: center; width: 17px; height: 17px; accent-color: var(--blue-800); }
+.gerk-selection-row.is-planned .gerk-selection-code,
+.gerk-selection-row.is-planned .gerk-selection-meta { text-decoration: line-through; color: var(--text-muted); }
+.gerk-selection-code { font-family: monospace; font-size: .8125rem; font-weight: 700; }
+.gerk-selection-meta { color: var(--text-secondary); font-size: .6875rem; }
+.planning-modal-actions { margin-top: 20px; }
+.planning-map-panel { min-height: 560px; border-left: 1px solid var(--border); background: #eef2f5; }
+.gerk-map { width: 100%; height: 560px; }
+.planning-map-panel > .planning-hint { padding: 8px 14px; background: var(--surface); }
+
+@media (max-width: 800px) {
+  .planning-shell { grid-template-columns: 1fr; }
+  .planning-sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+  .planning-sidebar .work-order-cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .calendar-panel { padding: 16px 10px; }
+  .calendar-head { flex-wrap: wrap; }
+  .calendar-range { order: 3; width: 100%; }
+  .calendar-range label { flex: 1; }
+  .calendar-range input { width: 100%; }
+  .calendar-day { min-height: 92px; padding: 5px; }
+  .calendar-order { padding: 4px; }
+  .planning-modal-body { grid-template-columns: 1fr; }
+  .planning-map-panel { border-top: 1px solid var(--border); border-left: 0; }
+  .gerk-map { height: 360px; }
 }
 
 

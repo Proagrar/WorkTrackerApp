@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="app-page">
@@ -30,7 +31,14 @@
   </header>
 
   <!-- ── Main ───────────────────────────────────────────────── -->
-  <main class="app-main">
+  <main class="app-main app-main--wide">
+
+    <nav class="app-tabs" aria-label="Glavna navigacija">
+      <button class="app-tab active" type="button" data-tab="evidenca">Evidenca</button>
+      <button class="app-tab" type="button" data-tab="planiranje">Planiranje nalogov</button>
+    </nav>
+
+    <div id="evidencaView" class="tab-view">
 
     <section class="greeting-section">
       <p id="greeting" class="greeting"></p>
@@ -85,7 +93,80 @@
       </div>
     </section>
 
+    </div>
+
+    <div id="planiranjeView" class="tab-view" hidden>
+      <section class="planning-shell" aria-label="Planiranje nalogov">
+        <aside class="planning-sidebar">
+          <div class="operator-filter">
+            <label id="operatorFilterLabel">Izvajalec</label>
+            <button id="operatorFilterButton" class="operator-filter-button" type="button" aria-expanded="false" aria-controls="operatorFilterMenu">Vsi izvajalci</button>
+            <div id="operatorFilterMenu" class="operator-filter-menu" hidden></div>
+          </div>
+          <div class="planning-sidebar-head">
+            <div>
+              <p class="eyebrow">Odprti nalogi</p>
+              <h1 class="planning-title">Planiranje nalogov</h1>
+            </div>
+            <span id="planningCount" class="planning-count">0</span>
+          </div>
+          <p id="planningHint" class="planning-hint">Nalaganje delovnih nalogov ...</p>
+          <div id="workOrderCards" class="work-order-cards" role="list"></div>
+        </aside>
+
+        <section class="calendar-panel" aria-label="Koledar">
+          <div class="calendar-head">
+            <div>
+              <p class="eyebrow">Razpored dela</p>
+              <h2 id="calendarTitle" class="calendar-title"></h2>
+            </div>
+            <div class="calendar-range" aria-label="Obdobje prikaza">
+              <label>Od <input id="calendarFrom" type="date" /></label>
+              <label>Do <input id="calendarTo" type="date" /></label>
+            </div>
+            <div class="calendar-actions">
+              <button id="calendarToday" class="btn btn-secondary btn-sm" type="button">Danes</button>
+              <button id="calendarPrev" class="calendar-nav" type="button" aria-label="Prejšnji mesec">‹</button>
+              <button id="calendarNext" class="calendar-nav" type="button" aria-label="Naslednji mesec">›</button>
+            </div>
+          </div>
+          <div id="calendarGrid" class="calendar-grid" role="grid"></div>
+        </section>
+      </section>
+    </div>
+
   </main>
+
+  <div id="workOrderModal" class="planning-modal" hidden role="dialog" aria-modal="true" aria-labelledby="workOrderModalTitle">
+    <div class="planning-modal-sheet">
+      <div class="planning-modal-head">
+        <div>
+          <p class="eyebrow">Delovni nalog</p>
+          <h2 id="workOrderModalTitle" class="planning-modal-title"></h2>
+        </div>
+        <button id="workOrderModalClose" class="btn btn-icon" type="button" aria-label="Zapri">×</button>
+      </div>
+      <div class="planning-modal-body">
+        <section class="gerk-selection-panel">
+          <div class="gerk-selection-head">
+            <div>
+              <p class="eyebrow">GERKI v nalogu</p>
+              <p id="gerkSelectionSummary" class="planning-hint"></p>
+            </div>
+            <label class="select-all-label"><input id="selectAllGerks" type="checkbox" /> Izberi vse</label>
+          </div>
+          <div id="gerkSelectionList" class="gerk-selection-list"></div>
+          <div class="planning-modal-actions">
+            <button id="saveGerkSelection" class="btn btn-primary" type="button">Shrani izbor</button>
+          </div>
+        </section>
+        <section class="planning-map-panel">
+          <div id="gerkMap" class="gerk-map" aria-label="Zemljevid GERK-ov"></div>
+          <p id="mapHint" class="planning-hint"></p>
+        </section>
+      </div>
+    </div>
+  </div>
 
   <!-- ── FAB ────────────────────────────────────────────────── -->
   <button id="addBtn" class="fab" aria-label="Dodaj nov vpis">
@@ -200,6 +281,8 @@
   </div>
 
   <script type="module" src="app.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script type="module" src="planning.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js');
