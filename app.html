@@ -209,7 +209,11 @@
             <div class="wlg-import-zones-form" id="woImportZonesForm" hidden>
               <span class="wlg-import-zones-filename" id="woImportZonesFilename"></span>
               <input type="text" class="sample-field-input" id="woImportZonesGerk" placeholder="GERK">
-              <input type="text" class="sample-field-input" id="woImportZonesType" placeholder="Tip segmentacije">
+              <select class="sample-field-input" id="woImportZonesType">
+                <option value="vzorčenje">Vzorčenje</option>
+                <option value="gnojenje">Gnojenje</option>
+                <option value="setev">Setev</option>
+              </select>
               <input type="date" class="sample-field-input" id="woImportZonesDate">
               <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesConfirmBtn">Uvozi</button>
               <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesCancelBtn">Prekliči</button>
