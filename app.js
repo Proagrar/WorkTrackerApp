@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.79';
+const APP_VERSION = 'v1.80';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1894,10 +1894,38 @@ async function removeSample(btn) {
   }
 }
 
+// Deliberately watchPosition, not getCurrentPosition: Android Chrome has
+// a long-standing bug where getCurrentPosition({enableHighAccuracy:true})
+// stalls and hits its own timeout even though a fix becomes available
+// shortly after — watchPosition reuses the OS's continuous location
+// session instead of requesting a fresh one-shot fix, and resolves much
+// more reliably in practice. We still enforce `timeout` ourselves since
+// the option is unreliable in the same buggy scenario this works around.
 function getCurrentPositionAsync(options) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('Geolokacija ni podprta v tem brskalniku.')); return; }
-    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    let settled = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (settled) return;
+        settled = true;
+        navigator.geolocation.clearWatch(watchId);
+        resolve(pos);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        navigator.geolocation.clearWatch(watchId);
+        reject(err);
+      },
+      options
+    );
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      navigator.geolocation.clearWatch(watchId);
+      reject({ code: 3, message: 'Timeout expired' });
+    }, options?.timeout ?? 20000);
   });
 }
 

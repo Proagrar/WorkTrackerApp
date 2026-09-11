@@ -1277,7 +1277,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   align-items: center;
   gap: 4px;
   font-size: .5625rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 .wo-capture-toggle input { width: 11px; height: 11px; cursor: pointer; }
