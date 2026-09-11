@@ -453,7 +453,7 @@ input, select, textarea { font-family: inherit; }
    of its own 1fr, while GERKI got the 1fr meant for Stranka. */
 .wo-lc-header.wo-lc-header,
 .wo-compact.wo-compact {
-  grid-template-columns: 34px 1fr 52px 40px 48px 70px 80px;
+  grid-template-columns: 34px 56px 1fr 52px 40px 48px 70px 80px;
 }
 
 .wo-compact { cursor: pointer; }
@@ -481,6 +481,15 @@ input, select, textarea { font-family: inherit; }
 .wo-th:focus-visible { color: var(--blue-800); }
 .wo-th--active { color: var(--blue-800); }
 .wo-th-center { text-align: center; }
+
+.wo-c-vnos {
+  font-size: .75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .wo-c-stranka {
   font-size: .8125rem;
@@ -1408,7 +1417,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
      cramped together at the right edge. */
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
-    grid-template-columns: 48px minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
+    grid-template-columns: 48px minmax(64px,.6fr) minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */

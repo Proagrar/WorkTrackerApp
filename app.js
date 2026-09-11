@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.82';
+const APP_VERSION = 'v1.83';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2594,6 +2594,7 @@ function slugStatus(status) {
 const WO_STATUS_ORDER = { 'Plan': 0, 'V delu': 1, 'Izvedeno': 2, 'Izdan Račun': 3 };
 const WO_SORT_COLUMNS = [
   { key: 'stevilka', label: 'Št.' },
+  { key: 'vnos',     label: 'Vnos' },
   { key: 'stranka',  label: 'Stranka' },
   { key: 'trajanje', label: 'Čas', center: true },
   { key: 'gerki',    label: 'GERKI', center: true },
@@ -2602,8 +2603,8 @@ const WO_SORT_COLUMNS = [
   { key: 'status',   label: 'Status' },
 ];
 
-let woSortKey = null;   // 'stevilka' | 'stranka' | 'gerki' | 'ha' | 'izvajalec' | 'status'
-let woSortDir = 'asc';
+let woSortKey = 'vnos';   // 'stevilka' | 'vnos' | 'stranka' | 'gerki' | 'ha' | 'izvajalec' | 'status'
+let woSortDir = 'desc';
 
 function sortWorkOrderRows(rows) {
   if (!woSortKey) return rows;
@@ -2612,6 +2613,7 @@ function sortWorkOrderRows(rows) {
     let cmp = 0;
     switch (woSortKey) {
       case 'stevilka': cmp = String(a.stevilka).localeCompare(String(b.stevilka), undefined, { numeric: true }); break;
+      case 'vnos':     cmp = new Date(a.vnos) - new Date(b.vnos); break;
       case 'stranka':  cmp = a.stranka.localeCompare(b.stranka); break;
       case 'trajanje': cmp = a.totalMinutes - b.totalMinutes; break;
       case 'gerki':    cmp = a.gerkCount - b.gerkCount; break;
@@ -2689,6 +2691,7 @@ function renderWorkOrders() {
     return {
       id:           wo.id,
       stevilka:     wo.stevilka,
+      vnos:         wo.ustvarjen,
       stranka:      wo.customers?.naziv || wo.customers?.company_name || '—',
       totalMinutes: workOrderDurations[wo.id] || 0,
       gerkCount:    gerks.length,
@@ -2718,6 +2721,7 @@ function renderWorkOrders() {
     return `
       <div class="log-compact wo-compact ${rowMod}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
+        <span class="wo-c-vnos">${fmtSampleDate(r.vnos)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
         <span class="wo-c-duration">${r.totalMinutes > 0 ? fmtHM(r.totalMinutes) : '—'}</span>
         <span class="wo-c-gerki">${r.gerkCount || '—'}</span>
