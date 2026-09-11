@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.74';
+const APP_VERSION = 'v1.75';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -59,6 +59,7 @@ const woImportZonesPickBtn = document.getElementById('woImportZonesPickBtn');
 const woImportZonesForm = document.getElementById('woImportZonesForm');
 const woImportZonesFilename = document.getElementById('woImportZonesFilename');
 const woImportZonesGerk = document.getElementById('woImportZonesGerk');
+const woImportZonesGerkList = document.getElementById('woImportZonesGerkList');
 const woImportZonesType = document.getElementById('woImportZonesType');
 const woImportZonesGlobina = document.getElementById('woImportZonesGlobina');
 const woImportZonesDate = document.getElementById('woImportZonesDate');
@@ -157,6 +158,7 @@ const woNewImportZonesPickBtn   = document.getElementById('woNewImportZonesPickB
 const woNewImportZonesForm      = document.getElementById('woNewImportZonesForm');
 const woNewImportZonesFilename  = document.getElementById('woNewImportZonesFilename');
 const woNewImportZonesGerk      = document.getElementById('woNewImportZonesGerk');
+const woNewImportZonesGerkList  = document.getElementById('woNewImportZonesGerkList');
 const woNewImportZonesType      = document.getElementById('woNewImportZonesType');
 const woNewImportZonesGlobina   = document.getElementById('woNewImportZonesGlobina');
 const woNewImportZonesDate      = document.getElementById('woNewImportZonesDate');
@@ -1966,6 +1968,12 @@ async function onKmlFileSelected(input) {
     // just a starting guess, editable, not trusted outright (see
     // parseKmlSegments' comment on why it isn't a real labeled field).
     woImportZonesGerk.value = detectedGerkId || '';
+    // GERK codes are free text now, so typing one that doesn't exactly
+    // match this order's existing GERK silently creates zone data that
+    // never links to anything and never renders — offering the real
+    // codes here (not just a placeholder guess) is the actual fix.
+    woImportZonesGerkList.innerHTML = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+      .map(g => `<option value="${escHtml(g.gerk_code)}">`).join('');
     woImportZonesType.value = 'vzorčenje';
     woImportZonesGlobina.value = '';
     updateImportZonesGlobinaVisibility();
@@ -2884,6 +2892,11 @@ async function onNewKmlFileSelected(input) {
     pendingNewKmlSegments = segments;
     woNewImportZonesFilename.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
     woNewImportZonesGerk.value = detectedGerkId || '';
+    // Same reasoning as the detail-view import — offer the GERK codes
+    // already staged on this form so far, so typing one that doesn't
+    // exactly match doesn't silently create orphaned zone data.
+    woNewImportZonesGerkList.innerHTML = getFormGerks(woGerksListEl)
+      .map(g => `<option value="${escHtml(g.code)}">`).join('');
     woNewImportZonesType.value = 'vzorčenje';
     woNewImportZonesGlobina.value = '';
     updateNewImportZonesGlobinaVisibility();

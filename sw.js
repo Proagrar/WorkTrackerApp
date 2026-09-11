@@ -1,4 +1,4 @@
-const CACHE = 'worktracker-v1.74';
+const CACHE = 'worktracker-v1.75';
 const SHELL = [
   './index.html',
   './app.html',
