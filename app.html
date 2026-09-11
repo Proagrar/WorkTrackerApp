@@ -329,6 +329,38 @@
         <div class="field">
           <label class="field-label">GERKI <span class="required">*</span></label>
 
+          <!-- Import a KML before the order even exists — the zones
+               (gerk_segmentation/gerk_segment) attach to the GERK's own
+               code, not to this work order, so they can be imported right
+               away; the GERK itself is just added to the list below like
+               any pasted/typed one, and saved with the rest on submit. -->
+          <div class="wlg-import-zones" id="woNewImportZonesWrap">
+            <input type="file" accept=".kml" class="wlg-kml-input" id="woNewKmlInput" hidden>
+            <button type="button" class="btn btn-secondary btn-sm" id="woNewImportZonesPickBtn">Uvozi cone (KML)</button>
+            <div class="wlg-import-zones-form" id="woNewImportZonesForm" hidden>
+              <span class="wlg-import-zones-filename" id="woNewImportZonesFilename"></span>
+              <input type="text" class="sample-field-input" id="woNewImportZonesGerk" placeholder="GERK">
+              <select class="sample-field-input" id="woNewImportZonesType">
+                <option value="vzorčenje">Vzorčenje</option>
+                <option value="gnojenje">Gnojenje</option>
+                <option value="setev">Setev</option>
+              </select>
+              <select class="sample-field-input" id="woNewImportZonesGlobina">
+                <option value="">Globina…</option>
+                <option value="12">12 cm</option>
+                <option value="20">20 cm</option>
+                <option value="25">25 cm</option>
+                <option value="30">30 cm</option>
+                <option value="60">60 cm</option>
+                <option value="90">90 cm</option>
+              </select>
+              <input type="date" class="sample-field-input" id="woNewImportZonesDate">
+              <button type="button" class="btn btn-secondary btn-sm" id="woNewImportZonesConfirmBtn">Uvozi</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="woNewImportZonesCancelBtn">Prekliči</button>
+            </div>
+            <div class="alert alert-error" id="woNewImportZonesError" hidden role="alert"></div>
+          </div>
+
           <!-- Populated once a customer is selected — check the ones this
                order covers instead of typing/searching each one. -->
           <div id="woCustomerGerksWrap" hidden>

@@ -816,6 +816,32 @@ input, select, textarea { font-family: inherit; }
 }
 .wlg-import-zones-filename--warn { color: var(--error); font-weight: 600; }
 
+.wlg-segmentation-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+.wlg-segmentation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .75rem;
+  color: var(--blue-800);
+  background: var(--blue-50);
+  border: 1px solid var(--blue-100);
+  border-radius: 20px;
+  padding: 3px 6px 3px 10px;
+}
+
+.wlg-segmentation-remove {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .8125rem;
+  line-height: 1;
+}
+.wlg-segmentation-remove:hover { color: var(--danger); }
+
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
 .road-time-row {

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.69';
+const APP_VERSION = 'v1.73';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -151,6 +151,18 @@ const woIzvajalecSel      = document.getElementById('woIzvajalec');
 const woTipSel            = document.getElementById('woTip');
 const woCustomerGerksWrap = document.getElementById('woCustomerGerksWrap');
 const woCustomerGerksList = document.getElementById('woCustomerGerksList');
+const woNewImportZonesWrap      = document.getElementById('woNewImportZonesWrap');
+const woNewKmlInput             = document.getElementById('woNewKmlInput');
+const woNewImportZonesPickBtn   = document.getElementById('woNewImportZonesPickBtn');
+const woNewImportZonesForm      = document.getElementById('woNewImportZonesForm');
+const woNewImportZonesFilename  = document.getElementById('woNewImportZonesFilename');
+const woNewImportZonesGerk      = document.getElementById('woNewImportZonesGerk');
+const woNewImportZonesType      = document.getElementById('woNewImportZonesType');
+const woNewImportZonesGlobina   = document.getElementById('woNewImportZonesGlobina');
+const woNewImportZonesDate      = document.getElementById('woNewImportZonesDate');
+const woNewImportZonesConfirmBtn = document.getElementById('woNewImportZonesConfirmBtn');
+const woNewImportZonesCancelBtn  = document.getElementById('woNewImportZonesCancelBtn');
+const woNewImportZonesError     = document.getElementById('woNewImportZonesError');
 const woGerkPasteInput    = document.getElementById('woGerkPaste');
 const woGerkPasteBtn      = document.getElementById('woGerkPasteBtn');
 const woGerksListEl       = document.getElementById('woGerksList');
@@ -825,6 +837,7 @@ function renderWorkLogGerkRows(rows) {
           }).join('')}
         </div>` : ''}
         ${renderSamplesSection(samples, r.gerkId)}
+        <div class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></div>
       </div>`;
   }).join('');
 
@@ -921,6 +934,7 @@ let currentDetailDate      = null;
 let currentRoadTimeEntries = [];
 let currentAllGerkEntries  = []; // every operator's work_log_gerks for this work order — powers the "who else worked on this" view
 let currentCapturedPoints  = []; // gerk_captured_point rows for this work order — the right-side map capture panel
+let currentGerkSegments    = []; // get_work_order_gerk_segments rows — one per imported zone, powers the per-GERK badge + map layer
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
@@ -1028,6 +1042,7 @@ async function showWoDetailMap(workOrder) {
   woMapSegmentLayer.clearLayers();
   woMapCapturedLayer.clearLayers();
   currentCapturedPoints = [];
+  currentGerkSegments = [];
   woCaptureList.innerHTML = '';
   woCaptureError.hidden = true;
   woCaptureShowPoints.checked = true;
@@ -1102,6 +1117,9 @@ async function showWoDetailMap(workOrder) {
   currentCapturedPoints = captured || [];
   renderCapturedPointsList();
 
+  currentGerkSegments = segments || [];
+  renderGerkSegmentationInfo();
+
   const shapeLayers = [];
   for (const row of (shapes || [])) {
     if (!row.geojson) continue;
@@ -1159,6 +1177,51 @@ function drawCapturedPointsOnMap() {
         iconAnchor: [10, 10],
       }),
     }).addTo(woMapCapturedLayer);
+  }
+}
+
+// Shows, on each GERK row, which imported KML segmentation(s) it
+// carries (type, validity, zone count) — visible to everyone, since
+// it's informational; the remove action stays admin-only, matching
+// the import itself. Wires its own remove buttons inline since this
+// runs after wireGerkRowButtons() already did its pass (segments load
+// async, alongside the map).
+function renderGerkSegmentationInfo() {
+  const byGerk = new Map(); // gerk_code -> segmentation_id -> { id, type, validFrom, validTo, count }
+  for (const row of currentGerkSegments) {
+    if (!byGerk.has(row.gerk_code)) byGerk.set(row.gerk_code, new Map());
+    const segs = byGerk.get(row.gerk_code);
+    if (!segs.has(row.segmentation_id)) {
+      segs.set(row.segmentation_id, { id: row.segmentation_id, type: row.seg_type, validFrom: row.valid_from, validTo: row.valid_to, count: 0 });
+    }
+    segs.get(row.segmentation_id).count++;
+  }
+
+  workLogGerkRowsEl.querySelectorAll('.wlg-segmentation-info').forEach(el => {
+    const list = byGerk.get(el.dataset.code);
+    if (!list) { el.innerHTML = ''; return; }
+    el.innerHTML = Array.from(list.values()).map(s => `
+      <span class="wlg-segmentation-badge">
+        🗺️ ${escHtml(s.type)} · ${s.count} ${s.count === 1 ? 'cona' : 'con'} · velja od ${fmtSampleDate(s.validFrom)}${s.validTo ? ' do ' + fmtSampleDate(s.validTo) : ''}
+        ${currentRole === 'admin' ? `<button type="button" class="wlg-segmentation-remove" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" aria-label="Odstrani uvoz">✕</button>` : ''}
+      </span>`).join('');
+    el.querySelectorAll('[data-action="wlg-remove-segmentation"]').forEach(btn => {
+      btn.addEventListener('click', () => removeGerkSegmentation(btn));
+    });
+  });
+}
+
+async function removeGerkSegmentation(btn) {
+  const segmentationId = btn.dataset.segmentationId;
+  if (!confirm('Odstranim uvožene cone za ta GERK?')) return;
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('remove_gerk_segmentation', { p_segmentation_id: segmentationId });
+    if (error) throw error;
+    await showWoDetailMap(currentDetailWorkOrder); // refetches segments/captured points and redraws everything
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri odstranjevanju con.');
+    btn.disabled = false;
   }
 }
 
@@ -2144,9 +2207,10 @@ woAddExistingGerkBtn.addEventListener('click', async () => {
   const code = woAddExistingGerkCode.value.trim();
   if (!code) return;
   const known = (await supabase.from('fields').select('id, area_ha').eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', code).maybeSingle()).data;
-  if (!known && !/^\d{7}$/.test(code)) {
-    return showFormError(`Neveljaven GERK: "${code}" (mora biti 7-mestna številka).`);
-  }
+  // No format requirement beyond non-empty — a real GERK code is a
+  // 7-digit number, but plenty of fields are only known by a common
+  // name (not in the official registry at all), so a plain string is
+  // valid too. Just won't have a known field to pull area/field_id from.
 
   woAddExistingGerkBtn.disabled = true;
   // field_id left out of the insert, backfilled best-effort after —
@@ -2783,6 +2847,99 @@ function ensureGerkRowForPaste(code, hectares) {
   return row;
 }
 
+// ── KML import on the create-order form ─────────────────────────
+// gerk_segmentation/gerk_segment attach to the GERK's own numeric code,
+// not to any work order, so this can import immediately — before the
+// order itself is even saved — same import_gerk_segmentation RPC as
+// the detail view. The GERK row it produces is added to the form the
+// same way a pasted/typed one would be, so it's saved normally on
+// submit. Globina (Vzorčenje imports only) doesn't have a per-segment
+// slot at this stage — it feeds the existing "Globina (za vse
+// segmente)" bulk select instead, same mechanism the create form
+// already uses to apply depth to every segment at save time.
+let pendingNewKmlSegments = null;
+
+function showNewKmlImportError(msg) {
+  woNewImportZonesError.textContent = msg;
+  woNewImportZonesError.hidden = false;
+}
+
+function updateNewImportZonesGlobinaVisibility() {
+  const isSampling = woNewImportZonesType.value === 'vzorčenje';
+  woNewImportZonesGlobina.hidden = !isSampling;
+  if (!isSampling) woNewImportZonesGlobina.value = '';
+}
+
+async function onNewKmlFileSelected(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  woNewImportZonesError.hidden = true;
+
+  try {
+    const text = await file.text();
+    const { segments, detectedGerkId } = parseKmlSegments(text);
+    pendingNewKmlSegments = segments;
+    woNewImportZonesFilename.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
+    woNewImportZonesGerk.value = detectedGerkId || '';
+    woNewImportZonesType.value = 'vzorčenje';
+    woNewImportZonesGlobina.value = '';
+    updateNewImportZonesGlobinaVisibility();
+    woNewImportZonesDate.value = todayISO();
+    woNewImportZonesForm.hidden = false;
+  } catch (e) {
+    showNewKmlImportError(e.message || 'Napaka pri branju KML datoteke.');
+  }
+}
+
+function cancelNewKmlImport() {
+  pendingNewKmlSegments = null;
+  woNewImportZonesForm.hidden = true;
+}
+
+async function confirmNewKmlImport(btn) {
+  const segments = pendingNewKmlSegments;
+  if (!segments) return;
+
+  const gerkCode  = woNewImportZonesGerk.value.trim();
+  const type      = woNewImportZonesType.value.trim();
+  const validFrom = woNewImportZonesDate.value;
+  const globina   = woNewImportZonesGlobina.value;
+  woNewImportZonesError.hidden = true;
+  if (!/^\d+$/.test(gerkCode)) { showNewKmlImportError('GERK mora biti številčna koda.'); return; }
+  if (!type)                   { showNewKmlImportError('Vpišite tip segmentacije.'); return; }
+  if (!validFrom)              { showNewKmlImportError('Izberite datum veljavnosti.'); return; }
+
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('import_gerk_segmentation', {
+      p_gerk_id:    parseInt(gerkCode, 10),
+      p_type:       type,
+      p_valid_from: validFrom,
+      p_segments:   segments,
+    });
+    if (error) throw error;
+
+    if (type === 'vzorčenje' && globina) woBulkDepthSel.value = globina;
+
+    const known = fields.find(f => f.code === gerkCode);
+    const row = ensureGerkRowForPaste(gerkCode, known?.area ?? null);
+    if (row) addGerkSegments(row, segments.map(s => ({ fms: null, sampleNo: s.label, vzorcenje: null })));
+
+    cancelNewKmlImport();
+  } catch (e) {
+    showNewKmlImportError(e.message || 'Napaka pri uvozu con.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+woNewImportZonesPickBtn.addEventListener('click', () => woNewKmlInput.click());
+woNewKmlInput.addEventListener('change', () => onNewKmlFileSelected(woNewKmlInput));
+woNewImportZonesType.addEventListener('change', updateNewImportZonesGlobinaVisibility);
+woNewImportZonesCancelBtn.addEventListener('click', cancelNewKmlImport);
+woNewImportZonesConfirmBtn.addEventListener('click', () => confirmNewKmlImport(woNewImportZonesConfirmBtn));
+
 woGerkPasteBtn.addEventListener('click', () => {
   // Don't trim whole lines here — a continuation row copied out of a
   // lab's 4-column sheet ("GERK/Ha/FMS/Sample no") is literally
@@ -2804,12 +2961,12 @@ woGerkPasteBtn.addEventListener('click', () => {
   const isSegmentPaste = lines.some(l => l.split('\t').length >= 4);
 
   if (isSegmentPaste) {
-    // GERK/FMS are blank on every row but a group's first (merged-cell
+    // GERK/Ha/FMS are blank on every row but a group's first (merged-cell
     // style paste) — carry the last-seen value forward. Sample no is
-    // the only cell that's always present; Ha is deliberately ignored
-    // here (auto-filled from the known field instead, same as manual
-    // entry) since the pasted value is only ever present on a group's
-    // first row anyway and duplicating it per segment would be wrong.
+    // the only cell that's always present. Ha is only used as a fallback
+    // — the known field's own area (if any) still wins, since that's
+    // the authoritative value once a field exists; the pasted Ha only
+    // matters for a field that's unknown, or known but missing an area.
     // Cell 5 (optional) is the lab's pooling instruction — "združi 1",
     // "združi 2"... or "ne pobereš" — normalized to match SAMPLE_ACTIONS
     // exactly (underscore, not space) so it lands pre-selected in the
@@ -2817,15 +2974,17 @@ woGerkPasteBtn.addEventListener('click', () => {
     // nothing because the pasted text didn't match any <option>.
     const codesInOrder = [];
     const segmentsByCode = new Map();
+    const haByCode = new Map();
     let lastCode = null, lastFms = null;
     for (const line of lines) {
       const cells = line.split('\t');
       const code = (cells[0] || '').trim();
+      const ha   = (cells[1] || '').trim();
       const fms  = (cells[2] || '').trim();
       const sampleNo = (cells[3] || '').trim();
       const vzorcenje = normalizeZdruzi((cells[4] || '').trim());
       if (!sampleNo) continue;
-      if (code) lastCode = code;
+      if (code) { lastCode = code; if (ha) haByCode.set(code, ha); }
       if (fms)  lastFms  = fms;
       if (!lastCode) continue;
       if (!segmentsByCode.has(lastCode)) { segmentsByCode.set(lastCode, []); codesInOrder.push(lastCode); }
@@ -2834,7 +2993,11 @@ woGerkPasteBtn.addEventListener('click', () => {
 
     for (const code of codesInOrder) {
       const known = fields.find(f => f.code === code);
-      const row = ensureGerkRowForPaste(code, known?.area ?? null);
+      const pastedHa = haByCode.get(code);
+      // Slovenian Excel exports use a comma decimal separator — same fix
+      // as the plain code-list paste below.
+      const hectares = known?.area ?? (pastedHa ? pastedHa.replace(',', '.') : null);
+      const row = ensureGerkRowForPaste(code, hectares);
       if (row) addGerkSegments(row, segmentsByCode.get(code));
     }
     woGerkPasteInput.value = '';
@@ -3142,6 +3305,10 @@ async function openWorkOrderModal() {
   woCustomerGerksList.innerHTML = '';
   woGerkPasteInput.value = '';
   woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
+  pendingNewKmlSegments = null;
+  woNewImportZonesForm.hidden = true;
+  woNewImportZonesError.hidden = true;
+  woNewImportZonesFilename.textContent = '';
 
   if (!customers.length) await loadCustomers();
   if (!operatorsList.length) await loadOperatorsList();
@@ -3194,10 +3361,12 @@ workOrderForm.addEventListener('submit', async e => {
 
   if (!gerkRows.length) return showWoFormError('Dodajte vsaj en GERK.');
 
+  // No numeric/7-digit format requirement — a GERK code is usually a
+  // real registry number, but a field known only by a common name (not
+  // in the official registry at all) is a plain string, and that's
+  // valid too. It just won't have a known field to pull area/field_id/
+  // map shapes from.
   for (const g of gerkRows) {
-    const known = fields.find(f => f.code === g.code);
-    if (!known && !/^\d{7}$/.test(g.code))
-      return showWoFormError(`Neveljaven GERK: "${g.code}" (mora biti 7-mestna številka).`);
     const seen = new Set();
     for (const s of g.segments) {
       if (seen.has(s.sampleNo)) return showWoFormError(`GERK ${g.code}: podvojena št. segmenta "${s.sampleNo}".`);
