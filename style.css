@@ -1257,14 +1257,14 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   position: absolute;
   top: 8px;
   right: 8px;
-  bottom: 8px;
+  max-height: 50%;
   width: 128px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  background: rgba(255, 255, 255, .92);
+  background: rgba(255, 255, 255, .55);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow-y: auto;
@@ -1334,16 +1334,20 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 
 @media (min-width: 900px) {
   .wo-detail-layout   { flex-direction: row; }
-  /* An explicit height here (not auto) matters: both of this wrap's
-     children (#woDetailMap, .wo-capture-panel) are position:absolute,
-     so they contribute zero intrinsic content height. With height:auto
-     the wrap had nothing to size itself from except align-items:stretch
-     matching .wo-detail-content's height — which collapsed the map to
-     a sliver on any work order whose detail content was short (few
-     GERKs, no samples yet). Stretch still applies (so .wo-detail-content
-     matches this same height and scrolls its own overflow), but now
-     from a real, always-reasonable value instead of a collapsible one. */
-  .wo-detail-map-wrap { width: 50%; height: 60vh; max-height: 600px; order: 2; }
+  /* height:auto + min-height (not a fixed height, and no max-height
+     cap): both of this wrap's children (#woDetailMap, .wo-capture-panel)
+     are position:absolute, so they contribute zero intrinsic content
+     height on their own — without help the wrap had nothing to size
+     itself from except align-items:stretch matching .wo-detail-content's
+     height, which collapsed the map to a sliver whenever the detail
+     content was short (few GERKs, no samples yet). min-height is the
+     floor that fixes that case. A *fixed* height (a max-height cap)
+     fixed that but broke the opposite case: a tall content column (lots
+     of GERKs) would stretch past the capped map height, leaving blank
+     space below the map instead of the map growing to match. Plain
+     stretch (this rule) tracks .wo-detail-content's real height either
+     way, capped only by the modal's own max-height further up. */
+  .wo-detail-map-wrap { width: 50%; height: auto; min-height: 400px; max-height: none; order: 2; }
   .wo-detail-content  { width: 50%; order: 1; }
 }
 

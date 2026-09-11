@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.77';
+const APP_VERSION = 'v1.79';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -987,6 +987,7 @@ const WO_MAP_SHAPE_STYLE = { color: '#2455AA', weight: 2, fillColor: '#2455AA', 
 const WO_MAP_SEGMENT_STYLE = { color: '#D97706', weight: 2, dashArray: '4,3', fillColor: '#D97706', fillOpacity: .08 };
 const WO_MAP_CAPTURED_COLOR = '#16A34A';
 const WO_MAP_SHAPE_HIGHLIGHT_STYLE = { color: '#F59E0B', weight: 4, fillColor: '#F59E0B', fillOpacity: .35 };
+const WO_MAP_SEGMENT_HIGHLIGHT_STYLE = { color: '#F59E0B', weight: 3, dashArray: null, fillColor: '#F59E0B', fillOpacity: .3 };
 
 // Map → list: hovering a GERK's marker/shape highlights its row.
 function highlightGerkRow(code, on) {
@@ -1002,17 +1003,29 @@ function highlightGerkOnWoMap(code) {
   if (woMapHighlightedCode && woMapHighlightedCode !== code) {
     const prev = woMapLayersByCode.get(woMapHighlightedCode);
     if (prev?.shape) prev.shape.setStyle(WO_MAP_SHAPE_STYLE);
+    if (prev?.zoneLayers) prev.zoneLayers.forEach(l => l.setStyle(WO_MAP_SEGMENT_STYLE));
   }
   if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
 
   const entry = woMapLayersByCode.get(code);
   woMapHighlightedCode = code;
-  if (!entry) return; // no marker/shape for this GERK (no known field coords) — nothing to show
+  if (!entry) return; // no marker/shape/zone for this GERK — nothing to show
 
   if (entry.shape) {
     entry.shape.setStyle(WO_MAP_SHAPE_HIGHLIGHT_STYLE);
     entry.shape.bringToFront();
     woMap.fitBounds(entry.shape.getBounds(), { padding: [40, 40], maxZoom: 17 });
+  } else if (entry.zoneLayers?.length) {
+    // A text-named GERK (no official registry entry) has no .shape —
+    // its imported zones are the only real geometry, so focus on their
+    // combined extent instead.
+    let combined = entry.zoneLayers[0].getBounds();
+    for (const l of entry.zoneLayers) {
+      l.setStyle(WO_MAP_SEGMENT_HIGHLIGHT_STYLE);
+      l.bringToFront();
+      combined = combined.extend(l.getBounds());
+    }
+    woMap.fitBounds(combined, { padding: [40, 40], maxZoom: 17 });
   } else if (entry.latlng) {
     woMapHighlightRing = L.circleMarker(entry.latlng, {
       radius: 16, color: '#F59E0B', weight: 3, fillOpacity: 0,
@@ -1035,6 +1048,13 @@ function ensureWoMap() {
   woMapGerkLayer = L.layerGroup().addTo(woMap);
   woMapSegmentLayer = L.layerGroup().addTo(woMap);
   woMapCapturedLayer = L.layerGroup().addTo(woMap);
+  // .wo-detail-map-wrap's height now tracks .wo-detail-content's real
+  // height (see its CSS comment) instead of a fixed value — it can
+  // change size after this point too (a GERK row expanding, the window
+  // resizing), and Leaflet only re-measures its container when told to.
+  // A one-time invalidateSize() at open caught the initial size; this
+  // catches every size change after that, not just the first.
+  new ResizeObserver(() => woMap?.invalidateSize()).observe(woDetailMap.parentElement);
   return woMap;
 }
 
@@ -1139,7 +1159,17 @@ async function showWoDetailMap(workOrder) {
     const layer = L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
       .bindTooltip(`${row.gerk_code} · ${row.segment_label || ''}`.trim())
       .addTo(woMapSegmentLayer);
+    layer.on('mouseover', () => highlightGerkRow(row.gerk_code, true));
+    layer.on('mouseout',  () => highlightGerkRow(row.gerk_code, false));
     segmentLayers.push(layer);
+    // A GERK known only by a text name has no official shape/centroid
+    // at all (see highlightGerkOnWoMap) — its imported zones are the
+    // only real geometry there is to click-to-focus on, so they need
+    // to be registered here too, not just drawn.
+    const entry = woMapLayersByCode.get(row.gerk_code) || { marker: null, shape: null, latlng: null };
+    entry.zoneLayers = entry.zoneLayers || [];
+    entry.zoneLayers.push(layer);
+    woMapLayersByCode.set(row.gerk_code, entry);
     for (const p of (row.points || [])) {
       const [lng, lat] = p.geojson.coordinates;
       L.circleMarker([lat, lng], { radius: 5, color: '#D97706', weight: 2, fillColor: '#fff', fillOpacity: 1 })
