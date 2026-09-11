@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.80';
+const APP_VERSION = 'v1.81';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1293,12 +1293,19 @@ function showCaptureError(msg) {
 // first since it's the better reading when it works, but fall back to
 // a low-accuracy (network/cell-based) fix on a timeout instead of just
 // failing outright — much faster, and still far better than nothing.
-async function getCapturePosition() {
+// maximumAge is no longer 0: forcing a fully fresh fix on every call
+// throws away a location the OS's fused provider may already have from
+// moments ago, which is often the difference between an instant return
+// and a full 20s wait. A soil-sample point doesn't need to be fresher
+// than a few/tens of seconds for zone-matching purposes, since the
+// worker is standing still at the point when they tap the button.
+async function getCapturePosition(onFallback) {
   try {
-    return await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    return await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 25000, maximumAge: 10000 });
   } catch (e) {
     if (e?.code !== 3) throw e; // 3 = TIMEOUT — anything else (denied, unavailable) isn't worth retrying
-    return await getCurrentPositionAsync({ enableHighAccuracy: false, timeout: 20000, maximumAge: 0 });
+    onFallback?.();
+    return await getCurrentPositionAsync({ enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 });
   }
 }
 
@@ -1306,8 +1313,10 @@ async function captureGerkPoint() {
   if (!currentDetailWorkOrder) return;
   woCaptureError.hidden = true;
   woCaptureBtn.disabled = true;
+  const originalLabel = woCaptureBtn.textContent;
+  woCaptureBtn.textContent = '🔎 Iščem lokacijo…';
   try {
-    const pos = await getCapturePosition();
+    const pos = await getCapturePosition(() => { woCaptureBtn.textContent = '🔎 Iščem (nižja natančnost)…'; });
     const { data, error } = await supabase.rpc('capture_gerk_point', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_lat: pos.coords.latitude,
@@ -1322,6 +1331,7 @@ async function captureGerkPoint() {
     showCaptureError(geolocationErrorMessage(e));
   } finally {
     woCaptureBtn.disabled = false;
+    woCaptureBtn.textContent = originalLabel;
   }
 }
 
