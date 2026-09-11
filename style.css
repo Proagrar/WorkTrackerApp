@@ -818,29 +818,22 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-segmentation-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 
-.wlg-segmentation-badge {
+.wlg-segmentation-icon {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: .75rem;
-  color: var(--blue-800);
-  background: var(--blue-50);
-  border: 1px solid var(--blue-100);
-  border-radius: 20px;
-  padding: 3px 6px 3px 10px;
-}
-
-.wlg-segmentation-remove {
-  appearance: none;
-  border: none;
-  background: none;
-  padding: 0 2px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: .8125rem;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: .875rem;
   line-height: 1;
+  border-radius: 50%;
+  background: var(--blue-50);
+  border: none;
+  padding: 0;
+  cursor: default;
 }
-.wlg-segmentation-remove:hover { color: var(--danger); }
+button.wlg-segmentation-icon { cursor: pointer; }
+button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 
 .road-time-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 
@@ -1282,12 +1275,12 @@ input, select, textarea { font-family: inherit; }
 .wo-capture-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: .6875rem;
-  color: var(--text-secondary);
+  gap: 4px;
+  font-size: .5625rem;
+  color: var(--text-muted);
   cursor: pointer;
 }
-.wo-capture-toggle input { width: 14px; height: 14px; cursor: pointer; }
+.wo-capture-toggle input { width: 11px; height: 11px; cursor: pointer; }
 
 .wo-capture-marker {
   display: flex;

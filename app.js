@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.73';
+const APP_VERSION = 'v1.74';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1197,14 +1197,19 @@ function renderGerkSegmentationInfo() {
     segs.get(row.segmentation_id).count++;
   }
 
+  // Icon-only — full detail (type/count/validity) lives in the title
+  // tooltip instead of always-visible text. For admins the icon itself
+  // is the remove action (confirm() below is the safety net against a
+  // stray click); everyone else just gets a static indicator.
   workLogGerkRowsEl.querySelectorAll('.wlg-segmentation-info').forEach(el => {
     const list = byGerk.get(el.dataset.code);
     if (!list) { el.innerHTML = ''; return; }
-    el.innerHTML = Array.from(list.values()).map(s => `
-      <span class="wlg-segmentation-badge">
-        🗺️ ${escHtml(s.type)} · ${s.count} ${s.count === 1 ? 'cona' : 'con'} · velja od ${fmtSampleDate(s.validFrom)}${s.validTo ? ' do ' + fmtSampleDate(s.validTo) : ''}
-        ${currentRole === 'admin' ? `<button type="button" class="wlg-segmentation-remove" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" aria-label="Odstrani uvoz">✕</button>` : ''}
-      </span>`).join('');
+    el.innerHTML = Array.from(list.values()).map(s => {
+      const detail = `${s.type} · ${s.count} ${s.count === 1 ? 'cona' : 'con'} · velja od ${fmtSampleDate(s.validFrom)}${s.validTo ? ' do ' + fmtSampleDate(s.validTo) : ''}`;
+      return currentRole === 'admin'
+        ? `<button type="button" class="wlg-segmentation-icon" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" title="${escHtml(detail)} — klikni za odstranitev">🗺️</button>`
+        : `<span class="wlg-segmentation-icon" title="${escHtml(detail)}">🗺️</span>`;
+    }).join('');
     el.querySelectorAll('[data-action="wlg-remove-segmentation"]').forEach(btn => {
       btn.addEventListener('click', () => removeGerkSegmentation(btn));
     });
@@ -1984,22 +1989,19 @@ async function confirmKmlImport(btn) {
   const type      = woImportZonesType.value.trim();
   const validFrom = woImportZonesDate.value;
   woImportZonesError.hidden = true;
-  if (!/^\d+$/.test(gerkCode)) { showKmlImportError('GERK mora biti številčna koda.'); return; }
-  if (!type)                   { showKmlImportError('Vpišite tip segmentacije.'); return; }
-  if (!validFrom)               { showKmlImportError('Izberite datum veljavnosti.'); return; }
+  if (!gerkCode)  { showKmlImportError('Vpišite GERK (številko ali ime polja).'); return; }
+  if (!type)      { showKmlImportError('Vpišite tip segmentacije.'); return; }
+  if (!validFrom) { showKmlImportError('Izberite datum veljavnosti.'); return; }
 
   btn.disabled = true;
   try {
     let gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === gerkCode);
     if (!gerk) {
-      // Same validate-and-insert pattern as "add existing GERK": a
-      // known field (real area/field_id) is trusted outright, an
-      // unknown one still needs to look like a real GERK code.
+      // No format requirement — a known field's own area is used when
+      // there is one, a plain string name (not in the registry at all)
+      // works too, same as adding a GERK anywhere else in the app.
       const known = (await supabase.from('fields').select('id, area_ha')
         .eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', gerkCode).maybeSingle()).data;
-      if (!known && !/^\d{7}$/.test(gerkCode)) {
-        throw new Error(`Neveljaven GERK: "${gerkCode}" (mora biti 7-mestna številka).`);
-      }
       const { data, error } = await supabase
         .from('delovni_nalogi_gerki')
         .insert({
@@ -2019,7 +2021,7 @@ async function confirmKmlImport(btn) {
     }
 
     const { error: importError } = await supabase.rpc('import_gerk_segmentation', {
-      p_gerk_id:    parseInt(gerkCode, 10),
+      p_gerk_id:    gerkCode,
       p_type:       type,
       p_valid_from: validFrom,
       p_segments:   segments,
@@ -2906,14 +2908,14 @@ async function confirmNewKmlImport(btn) {
   const validFrom = woNewImportZonesDate.value;
   const globina   = woNewImportZonesGlobina.value;
   woNewImportZonesError.hidden = true;
-  if (!/^\d+$/.test(gerkCode)) { showNewKmlImportError('GERK mora biti številčna koda.'); return; }
-  if (!type)                   { showNewKmlImportError('Vpišite tip segmentacije.'); return; }
-  if (!validFrom)              { showNewKmlImportError('Izberite datum veljavnosti.'); return; }
+  if (!gerkCode)  { showNewKmlImportError('Vpišite GERK (številko ali ime polja).'); return; }
+  if (!type)      { showNewKmlImportError('Vpišite tip segmentacije.'); return; }
+  if (!validFrom) { showNewKmlImportError('Izberite datum veljavnosti.'); return; }
 
   btn.disabled = true;
   try {
     const { error } = await supabase.rpc('import_gerk_segmentation', {
-      p_gerk_id:    parseInt(gerkCode, 10),
+      p_gerk_id:    gerkCode,
       p_type:       type,
       p_valid_from: validFrom,
       p_segments:   segments,
