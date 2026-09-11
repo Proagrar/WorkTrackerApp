@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.75';
+const APP_VERSION = 'v1.77';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -803,6 +803,7 @@ function renderWorkLogGerkRows(rows) {
         <div class="wlg-info" data-action="wlg-highlight-map">
           <span class="wlg-code-line">
             <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
+            <span class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></span>
             ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
           </span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
@@ -839,7 +840,6 @@ function renderWorkLogGerkRows(rows) {
           }).join('')}
         </div>` : ''}
         ${renderSamplesSection(samples, r.gerkId)}
-        <div class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></div>
       </div>`;
   }).join('');
 
@@ -1094,8 +1094,7 @@ async function showWoDetailMap(workOrder) {
   // them — drawn on top of the plain markers once they arrive (guarded
   // against the modal having moved to a different order by the time
   // this resolves). Imported KML zones (gerk_segment) load alongside,
-  // same guard, own layer — they don't affect fitBounds since they're
-  // always sub-areas of a shape already accounted for above.
+  // same guard, own layer.
   // Capturing soil-sampling points only makes sense on a Vzorčenje
   // order — showing it on Gnojenje/Setev/Škropljenje/Žetev orders too
   // was confusing since there's nothing to sample there. Excluding by
@@ -1134,24 +1133,34 @@ async function showWoDetailMap(workOrder) {
     woMapLayersByCode.set(row.gerk_code, entry);
     shapeLayers.push(layer);
   }
-  if (shapeLayers.length) {
-    let combined = shapeLayers[0].getBounds();
-    for (const layer of shapeLayers.slice(1)) combined = combined.extend(layer.getBounds());
-    map.fitBounds(combined, { padding: [30, 30] });
-    woMapHasFitBounds = true;
-  }
-
+  const segmentLayers = [];
   for (const row of (segments || [])) {
     if (!row.segment_geojson) continue;
-    L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
+    const layer = L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
       .bindTooltip(`${row.gerk_code} · ${row.segment_label || ''}`.trim())
       .addTo(woMapSegmentLayer);
+    segmentLayers.push(layer);
     for (const p of (row.points || [])) {
       const [lng, lat] = p.geojson.coordinates;
       L.circleMarker([lat, lng], { radius: 5, color: '#D97706', weight: 2, fillColor: '#fff', fillOpacity: 1 })
         .bindTooltip(`${row.segment_label || ''} · ${p.point_no ?? ''}`.trim())
         .addTo(woMapSegmentLayer);
     }
+  }
+
+  // Fit to whatever real shape data exists — official GERK boundaries
+  // when there are any, imported zones too. A GERK known only by a
+  // text name has no official polygon at all, so for a work order
+  // made entirely of those, shapeLayers is empty and zones are the
+  // *only* real geometry — without including them here, the map fell
+  // back to a whole-Slovenia view and the zones were imperceptible at
+  // that zoom (looked like they hadn't imported at all).
+  const boundsLayers = [...shapeLayers, ...segmentLayers];
+  if (boundsLayers.length) {
+    let combined = boundsLayers[0].getBounds();
+    for (const layer of boundsLayers.slice(1)) combined = combined.extend(layer.getBounds());
+    map.fitBounds(combined, { padding: [30, 30] });
+    woMapHasFitBounds = true;
   }
 
   drawCapturedPointsOnMap();
@@ -1942,6 +1951,22 @@ function parseKmlSegments(kmlText) {
   return { segments, detectedGerkId };
 }
 
+// Shared by both KML import forms (detail view + create order) —
+// import_gerk_segmentation always replaces any existing segmentation
+// for the same (gerk_id, type) rather than adding another one
+// alongside it, guaranteed server-side, but that replacement
+// shouldn't happen silently. Returns false (caller should abort) if
+// the admin declines.
+async function confirmReplaceExistingSegmentation(gerkCode, type) {
+  const { data } = await supabase.rpc('check_gerk_segmentation_exists', { p_gerk_id: gerkCode, p_type: type });
+  const existing = data?.[0];
+  if (!existing) return true;
+  return confirm(
+    `GERK "${gerkCode}" že ima uvožene cone tipa "${type}" (${existing.zone_count} ${existing.zone_count === 1 ? 'cona' : 'con'}, veljavno od ${fmtSampleDate(existing.valid_from)}).\n\n` +
+    `Z uvozom bodo te cone zamenjane z novimi. Nadaljujem?`
+  );
+}
+
 // Top-level (one instance per work order, above the GERK list) rather
 // than per-row — importing enriches the matching GERK if it's already
 // on this order, or adds it first if not, so it can't be scoped to a
@@ -2003,6 +2028,8 @@ async function confirmKmlImport(btn) {
 
   btn.disabled = true;
   try {
+    if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) return;
+
     let gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === gerkCode);
     if (!gerk) {
       // No format requirement — a known field's own area is used when
@@ -2927,6 +2954,8 @@ async function confirmNewKmlImport(btn) {
 
   btn.disabled = true;
   try {
+    if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) return;
+
     const { error } = await supabase.rpc('import_gerk_segmentation', {
       p_gerk_id:    gerkCode,
       p_type:       type,

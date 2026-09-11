@@ -816,15 +816,15 @@ input, select, textarea { font-family: inherit; }
 }
 .wlg-import-zones-filename--warn { color: var(--error); font-weight: 600; }
 
-.wlg-segmentation-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.wlg-segmentation-info { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
 
 .wlg-segmentation-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  font-size: .875rem;
+  width: 17px;
+  height: 17px;
+  font-size: .6875rem;
   line-height: 1;
   border-radius: 50%;
   background: var(--blue-50);
