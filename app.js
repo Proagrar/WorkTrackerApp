@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.81';
+const APP_VERSION = 'v1.82';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1248,8 +1248,8 @@ function renderGerkSegmentationInfo() {
     el.innerHTML = Array.from(list.values()).map(s => {
       const detail = `${s.type} · ${s.count} ${s.count === 1 ? 'cona' : 'con'} · velja od ${fmtSampleDate(s.validFrom)}${s.validTo ? ' do ' + fmtSampleDate(s.validTo) : ''}`;
       return currentRole === 'admin'
-        ? `<button type="button" class="wlg-segmentation-icon" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" title="${escHtml(detail)} — klikni za odstranitev">🗺️</button>`
-        : `<span class="wlg-segmentation-icon" title="${escHtml(detail)}">🗺️</span>`;
+        ? `<button type="button" class="wlg-segmentation-icon" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" title="${escHtml(detail)} — klikni za odstranitev">🌐</button>`
+        : `<span class="wlg-segmentation-icon" title="${escHtml(detail)}">🌐</span>`;
     }).join('');
     el.querySelectorAll('[data-action="wlg-remove-segmentation"]').forEach(btn => {
       btn.addEventListener('click', () => removeGerkSegmentation(btn));
