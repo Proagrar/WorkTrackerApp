@@ -1253,6 +1253,31 @@ input, select, textarea { font-family: inherit; }
 
 .wo-capture-btn { width: 100%; white-space: normal; }
 
+.wo-capture-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .6875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wo-capture-toggle input { width: 14px; height: 14px; cursor: pointer; }
+
+.wo-capture-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--capture-marker-color, #16A34A);
+  color: #fff;
+  font-size: .625rem;
+  font-weight: 700;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+
 .wo-capture-error {
   padding: 6px 8px;
   font-size: .6875rem;

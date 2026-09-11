@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.66';
+const APP_VERSION = 'v1.69';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -60,6 +60,7 @@ const woImportZonesForm = document.getElementById('woImportZonesForm');
 const woImportZonesFilename = document.getElementById('woImportZonesFilename');
 const woImportZonesGerk = document.getElementById('woImportZonesGerk');
 const woImportZonesType = document.getElementById('woImportZonesType');
+const woImportZonesGlobina = document.getElementById('woImportZonesGlobina');
 const woImportZonesDate = document.getElementById('woImportZonesDate');
 const woImportZonesConfirmBtn = document.getElementById('woImportZonesConfirmBtn');
 const woImportZonesCancelBtn = document.getElementById('woImportZonesCancelBtn');
@@ -68,6 +69,7 @@ const woDetailMap = document.getElementById('woDetailMap');
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
 const woCaptureError = document.getElementById('woCaptureError');
+const woCaptureShowPoints = document.getElementById('woCaptureShowPoints');
 const woCaptureList = document.getElementById('woCaptureList');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
 const roadTypeSel = document.getElementById('roadType');
@@ -716,7 +718,11 @@ function renderSampleNoCell(s) {
 }
 
 function renderSamplingCell(s) {
-  return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
+  if (currentRole !== 'admin') return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
+  const opts = ['<option value="">—</option>']
+    .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.sampling_note === a ? ' selected' : ''}>${escHtml(a)}</option>`))
+    .join('');
+  return `<select class="sample-field-input wlg-vzorcenje-select" data-sample-id="${escHtml(s.id)}">${opts}</select>`;
 }
 
 // Tip LAB analize — one per GERK-on-this-work-order (not per segment;
@@ -755,7 +761,11 @@ async function updateGerkLabType(selectEl) {
 
 // Read-only, same reasoning as renderSamplingCell — set once at entry.
 function renderSampleDepthCell(s) {
-  return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
+  if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
+  const opts = ['<option value="">—</option>']
+    .concat(SAMPLE_DEPTHS.map(d => `<option value="${d}"${s.sampling_depth_cm === d ? ' selected' : ''}>${d} cm</option>`))
+    .join('');
+  return `<select class="sample-field-input wlg-globina-select" data-sample-id="${escHtml(s.id)}">${opts}</select>`;
 }
 
 
@@ -826,8 +836,9 @@ function renderWorkLogGerkRows(rows) {
 // there's actually something to show.
 function renderSamplesSection(samples, gerkId) {
   if (!samples.length && currentRole !== 'admin') return '';
-  // Vzorčenje/Globina are set once here, at creation — never edited
-  // afterward in the table (see renderSamplingCell/renderSampleDepthCell).
+  // Vzorčenje/Globina can also be set here, at creation — but stay
+  // editable afterward too, admin-only (see renderSamplingCell/
+  // renderSampleDepthCell).
   const addSection = currentRole === 'admin' && gerkId ? `
           <div class="wlg-add-sample-wrap" data-gerk-id="${escHtml(gerkId)}">
             <button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample-toggle">+ Dodaj segment</button>
@@ -1019,6 +1030,7 @@ async function showWoDetailMap(workOrder) {
   currentCapturedPoints = [];
   woCaptureList.innerHTML = '';
   woCaptureError.hidden = true;
+  woCaptureShowPoints.checked = true;
   pendingKmlSegments = null;
   woImportZonesForm.hidden = true;
   woImportZonesError.hidden = true;
@@ -1125,12 +1137,28 @@ async function showWoDetailMap(workOrder) {
   drawCapturedPointsOnMap();
 }
 
+// "Prikaži točke" gates both the numbered markers and the path
+// connecting them in point_no order (1→2→3…, which is also capture
+// order — point_no is assigned sequentially per work order).
 function drawCapturedPointsOnMap() {
   woMapCapturedLayer.clearLayers();
-  for (const p of currentCapturedPoints) {
-    L.circleMarker([p.lat, p.lng], {
-      radius: 6, color: '#fff', weight: 2, fillColor: WO_MAP_CAPTURED_COLOR, fillOpacity: 1,
-    }).bindTooltip(`Točka ${p.point_no}`).addTo(woMapCapturedLayer);
+  if (!woCaptureShowPoints.checked || !currentCapturedPoints.length) return;
+
+  const sorted = [...currentCapturedPoints].sort((a, b) => a.point_no - b.point_no);
+  if (sorted.length > 1) {
+    L.polyline(sorted.map(p => [p.lat, p.lng]), {
+      color: WO_MAP_CAPTURED_COLOR, weight: 2, dashArray: '6,4',
+    }).addTo(woMapCapturedLayer);
+  }
+  for (const p of sorted) {
+    L.marker([p.lat, p.lng], {
+      icon: L.divIcon({
+        className: 'wo-capture-marker-icon',
+        html: `<span class="wo-capture-marker">${p.point_no}</span>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      }),
+    }).addTo(woMapCapturedLayer);
   }
 }
 
@@ -1151,12 +1179,26 @@ function showCaptureError(msg) {
   woCaptureError.hidden = false;
 }
 
+// High-accuracy GPS can take a long time to get a fix (or never manage
+// it, e.g. weak signal indoors) and was timing out often at 15s. Try it
+// first since it's the better reading when it works, but fall back to
+// a low-accuracy (network/cell-based) fix on a timeout instead of just
+// failing outright — much faster, and still far better than nothing.
+async function getCapturePosition() {
+  try {
+    return await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  } catch (e) {
+    if (e?.code !== 3) throw e; // 3 = TIMEOUT — anything else (denied, unavailable) isn't worth retrying
+    return await getCurrentPositionAsync({ enableHighAccuracy: false, timeout: 20000, maximumAge: 0 });
+  }
+}
+
 async function captureGerkPoint() {
   if (!currentDetailWorkOrder) return;
   woCaptureError.hidden = true;
   woCaptureBtn.disabled = true;
   try {
-    const pos = await getCurrentPositionAsync({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    const pos = await getCapturePosition();
     const { data, error } = await supabase.rpc('capture_gerk_point', {
       p_work_order_id: currentDetailWorkOrder.id,
       p_lat: pos.coords.latitude,
@@ -1192,6 +1234,7 @@ async function removeCapturedPoint(btn) {
 }
 
 woCaptureBtn.addEventListener('click', captureGerkPoint);
+woCaptureShowPoints.addEventListener('change', drawCapturedPointsOnMap);
 woCaptureList.addEventListener('click', e => {
   const removeBtn = e.target.closest('[data-action="wo-capture-remove"]');
   if (removeBtn) { removeCapturedPoint(removeBtn); return; }
@@ -1539,6 +1582,12 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('.wlg-sampleno-input').forEach(input => {
     input.addEventListener('change', () => updateSampleNo(input));
   });
+  workLogGerkRowsEl.querySelectorAll('.wlg-vzorcenje-select').forEach(sel => {
+    sel.addEventListener('change', () => updateSampleVzorcenje(sel));
+  });
+  workLogGerkRowsEl.querySelectorAll('.wlg-globina-select').forEach(sel => {
+    sel.addEventListener('change', () => updateSampleGlobina(sel));
+  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-open-map"]').forEach(btn => {
     btn.addEventListener('click', () => openMapModal(Number(btn.dataset.lat), Number(btn.dataset.lng), btn.dataset.label));
   });
@@ -1565,12 +1614,12 @@ function toggleAddSampleForm(wrap, open) {
   }
 }
 
-// Vzorčenje/Globina are captured right here, at creation — this is the
-// only place they're ever set (see renderSamplingCell/
-// renderSampleDepthCell, both read-only in the table itself). Št.
-// segmenta is typed here too, not auto-numbered — the lab's own
-// numbering doesn't follow a simple next-integer sequence, so guessing
-// one just meant it had to be corrected by hand anyway.
+// Vzorčenje/Globina can be set here, at creation, or edited later via
+// the table itself (see renderSamplingCell/renderSampleDepthCell,
+// updateSampleVzorcenje/updateSampleGlobina). Št. segmenta is typed
+// here too, not auto-numbered — the lab's own numbering doesn't follow
+// a simple next-integer sequence, so guessing one just meant it had to
+// be corrected by hand anyway.
 async function addSample(btn) {
   const wrap  = btn.closest('.wlg-add-sample-wrap');
   const gerkId = wrap.dataset.gerkId;
@@ -1644,6 +1693,10 @@ async function removeGerkFromOrder(btn) {
   currentDetailWorkOrder.delovni_nalogi_gerki = (currentDetailWorkOrder.delovni_nalogi_gerki || []).filter(g => g.id !== gerkRowId);
   await loadDetailForDate();
   await loadWorkOrders();
+  // Redraw — otherwise the removed GERK's shape/zones (drawn once when
+  // the modal opened) stay stuck on screen since nothing else here
+  // touches the map layers.
+  await showWoDetailMap(currentDetailWorkOrder);
 }
 
 async function updateSampleNo(inputEl) {
@@ -1669,6 +1722,46 @@ async function updateSampleNo(inputEl) {
     if (sample) inputEl.value = sample.sample_no;
   } finally {
     inputEl.disabled = false;
+  }
+}
+
+async function updateSampleVzorcenje(selectEl) {
+  const sampleId = selectEl.dataset.sampleId;
+  const value = selectEl.value || null;
+  const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+    .find(g => (g.delovni_nalogi_vzorci || []).some(s => s.id === sampleId));
+  const sample = gerk?.delovni_nalogi_vzorci.find(s => s.id === sampleId);
+
+  selectEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ sampling_note: value }).eq('id', sampleId);
+    if (error) throw error;
+    if (sample) sample.sampling_note = value;
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri shranjevanju.');
+    if (sample) selectEl.value = sample.sampling_note || '';
+  } finally {
+    selectEl.disabled = false;
+  }
+}
+
+async function updateSampleGlobina(selectEl) {
+  const sampleId = selectEl.dataset.sampleId;
+  const value = selectEl.value ? parseInt(selectEl.value, 10) : null;
+  const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+    .find(g => (g.delovni_nalogi_vzorci || []).some(s => s.id === sampleId));
+  const sample = gerk?.delovni_nalogi_vzorci.find(s => s.id === sampleId);
+
+  selectEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ sampling_depth_cm: value }).eq('id', sampleId);
+    if (error) throw error;
+    if (sample) sample.sampling_depth_cm = value;
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri shranjevanju.');
+    if (sample) selectEl.value = sample.sampling_depth_cm ?? '';
+  } finally {
+    selectEl.disabled = false;
   }
 }
 
@@ -1806,6 +1899,8 @@ async function onKmlFileSelected(input) {
     // parseKmlSegments' comment on why it isn't a real labeled field).
     woImportZonesGerk.value = detectedGerkId || '';
     woImportZonesType.value = 'vzorčenje';
+    woImportZonesGlobina.value = '';
+    updateImportZonesGlobinaVisibility();
     woImportZonesDate.value = todayISO();
     woImportZonesForm.hidden = false;
   } catch (e) {
@@ -1872,12 +1967,15 @@ async function confirmKmlImport(btn) {
     // row) on this GERK — its label (e.g. "10734") as the segment number —
     // so it shows up in the same segment list as manually/pasted-in ones,
     // not only as a shape on the map. Skips any label already present
-    // (re-importing the same file, or one already added by hand).
+    // (re-importing the same file, or one already added by hand). Globina
+    // only applies for Vzorčenje imports, and the one value picked here
+    // is applied to every segment this import creates at once.
+    const globina = type === 'vzorčenje' && woImportZonesGlobina.value ? parseInt(woImportZonesGlobina.value, 10) : null;
     const existingSegmentNos = new Set((gerk.delovni_nalogi_vzorci || []).map(s => s.sample_no));
     const newSegmentRows = segments
       .map(s => s.label)
       .filter(label => !existingSegmentNos.has(label))
-      .map(label => ({ delovni_nalog_gerk_id: gerk.id, sample_no: label }));
+      .map(label => ({ delovni_nalog_gerk_id: gerk.id, sample_no: label, sampling_depth_cm: globina }));
     if (newSegmentRows.length) {
       const { error: segError } = await supabase.from('delovni_nalogi_vzorci').insert(newSegmentRows);
       if (segError) console.warn('Napaka pri dodajanju segmentov iz uvoženih con:', segError);
@@ -1887,6 +1985,7 @@ async function confirmKmlImport(btn) {
     showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih (GERK ${gerkCode}).`);
     await loadDetailForDate();
     await loadWorkOrders();
+    await showWoDetailMap(currentDetailWorkOrder); // draw the newly imported zones (and the GERK's own shape, if it was just added)
   } catch (e) {
     showKmlImportError(e.message || 'Napaka pri uvozu con.');
   } finally {
@@ -1894,8 +1993,15 @@ async function confirmKmlImport(btn) {
   }
 }
 
+function updateImportZonesGlobinaVisibility() {
+  const isSampling = woImportZonesType.value === 'vzorčenje';
+  woImportZonesGlobina.hidden = !isSampling;
+  if (!isSampling) woImportZonesGlobina.value = '';
+}
+
 woImportZonesPickBtn.addEventListener('click', () => woKmlInput.click());
 woKmlInput.addEventListener('change', () => onKmlFileSelected(woKmlInput));
+woImportZonesType.addEventListener('change', updateImportZonesGlobinaVisibility);
 woImportZonesCancelBtn.addEventListener('click', cancelKmlImport);
 woImportZonesConfirmBtn.addEventListener('click', () => confirmKmlImport(woImportZonesConfirmBtn));
 
@@ -2068,6 +2174,7 @@ woAddExistingGerkBtn.addEventListener('click', async () => {
   woAddExistingGerkCode.value = '';
   await loadDetailForDate();
   await loadWorkOrders();
+  await showWoDetailMap(currentDetailWorkOrder);
 });
 
 logoutBtn.addEventListener('click', async () => {
