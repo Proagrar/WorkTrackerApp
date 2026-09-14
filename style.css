@@ -457,6 +457,7 @@ input, select, textarea { font-family: inherit; }
 }
 
 .wo-compact { cursor: pointer; }
+.wo-compact--izvedeno { background: var(--success-bg); }
 
 .wo-th {
   appearance: none;
