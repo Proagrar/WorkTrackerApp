@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.83';
+const APP_VERSION = 'v1.84';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1394,7 +1394,7 @@ async function loadDetailForDate() {
   tractorInput.value = '';
   descInput.value = '';
 
-  const [{ data: existingLog }, { data: allEntries }] = await Promise.all([
+  const [{ data: existingLog, error: existingLogError }, { data: allEntries, error: allEntriesError }] = await Promise.all([
     supabase
       .from('work_logs')
       .select('id, road_duration, tractor, description, work_log_gerks(gerk_code, hectares, start_time, end_time, duration, completed), work_log_road_time(id, minutes)')
@@ -1409,6 +1409,15 @@ async function loadDetailForDate() {
       .select('gerk_code, start_time, end_time, duration, completed, work_logs!inner(operator_id, work_date, profiles(full_name))')
       .eq('work_logs.work_order_id', currentDetailWorkOrder.id),
   ]);
+
+  // Both queries used to fail silently on error — data just came back
+  // undefined and the UI quietly rendered as if nothing had ever been
+  // logged (this is exactly how a PostgREST schema-cache relationship
+  // error, e.g. work_logs<->profiles, hid itself here before).
+  if (existingLogError || allEntriesError) {
+    console.error('loadDetailForDate', existingLogError || allEntriesError);
+    showFormError('Napaka pri nalaganju vpisanih ur. Poskusite znova.');
+  }
 
   if (existingLog) {
     currentDetailLogId = existingLog.id;
