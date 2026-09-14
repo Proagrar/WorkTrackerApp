@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.84';
+const APP_VERSION = 'v1.85';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1126,14 +1126,20 @@ async function showWoDetailMap(workOrder) {
   woCapturePanel.hidden = !isSamplingOrder;
   woCaptureBtn.hidden = !(isSamplingOrder && ['Plan', 'V delu'].includes(workOrder.status));
 
-  const [{ data: shapes, error }, { data: segments }, { data: captured }] = await Promise.all([
+  const [{ data: shapes, error: shapesError }, { data: segments, error: segmentsError }, { data: captured, error: capturedError }] = await Promise.all([
     supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: workOrder.id }),
     supabase.rpc('get_work_order_gerk_segments', { p_work_order_id: workOrder.id }),
     isSamplingOrder
       ? supabase.rpc('get_work_order_captured_points', { p_work_order_id: workOrder.id })
       : Promise.resolve({ data: [] }),
   ]);
-  if (error || currentDetailWorkOrder?.id !== workOrder.id) return;
+  // Only shapesError used to be checked — a failure in either of the
+  // other two calls left the map's official boundaries drawn (or not)
+  // while silently showing zero zones/captured points, with nothing
+  // telling you it had actually failed rather than legitimately having
+  // nothing to show.
+  if (segmentsError || capturedError) console.error('showWoDetailMap', segmentsError || capturedError);
+  if (shapesError || currentDetailWorkOrder?.id !== workOrder.id) return;
 
   currentCapturedPoints = captured || [];
   renderCapturedPointsList();
@@ -1404,20 +1410,34 @@ async function loadDetailForDate() {
       .maybeSingle(),
     // Every operator's GERK entries for this work order (any date) — lets
     // someone taking over mid-order see what's already been done, and by whom.
+    // No profiles(full_name) embed here on purpose — work_logs.operator_id
+    // references auth.users, not profiles, directly, so PostgREST has no
+    // real foreign key to embed profiles through (unlike e.g.
+    // gerk_captured_point.operator_id, which does FK straight to
+    // profiles). Relying on it "bridging" via the shared auth.users
+    // reference intermittently worked and intermittently threw PGRST200
+    // — fetched separately below instead, which doesn't depend on that.
     supabase
       .from('work_log_gerks')
-      .select('gerk_code, start_time, end_time, duration, completed, work_logs!inner(operator_id, work_date, profiles(full_name))')
+      .select('gerk_code, start_time, end_time, duration, completed, work_logs!inner(operator_id, work_date)')
       .eq('work_logs.work_order_id', currentDetailWorkOrder.id),
   ]);
 
   // Both queries used to fail silently on error — data just came back
   // undefined and the UI quietly rendered as if nothing had ever been
-  // logged (this is exactly how a PostgREST schema-cache relationship
-  // error, e.g. work_logs<->profiles, hid itself here before).
+  // logged (this is exactly how the profiles embed above hid its own
+  // PGRST200 failures before it was split out).
   if (existingLogError || allEntriesError) {
     console.error('loadDetailForDate', existingLogError || allEntriesError);
     showFormError('Napaka pri nalaganju vpisanih ur. Poskusite znova.');
   }
+
+  const operatorIds = [...new Set((allEntries || []).map(e => e.work_logs.operator_id))];
+  const { data: operatorProfiles } = operatorIds.length
+    ? await supabase.from('profiles').select('id, full_name').in('id', operatorIds)
+    : { data: [] };
+  const nameById = Object.fromEntries((operatorProfiles || []).map(p => [p.id, p.full_name]));
+  for (const e of (allEntries || [])) e.work_logs.profiles = { full_name: nameById[e.work_logs.operator_id] };
 
   if (existingLog) {
     currentDetailLogId = existingLog.id;
