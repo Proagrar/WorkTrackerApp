@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.85';
+const APP_VERSION = 'v1.86';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -635,32 +635,55 @@ function otherGerkEntriesByCode() {
   return map;
 }
 
+// A field counts as "locked" the moment ANY start/end time exists for
+// it — logged by anyone, on any date — not just the current viewer's
+// own entry for the date currently being looked at. Without this,
+// Start/Konec stayed clickable forever (start_gerk/end_gerk always
+// overwrite start_time/end_time/duration unconditionally) and a
+// re-click silently wiped whatever had already been recorded, and an
+// admin who hadn't logged anything themselves never saw a row as
+// "done" even once someone else genuinely finished it.
+function lockedEntryFor(mine, others) {
+  if (mine?.start_time) return mine;
+  return others.find(o => o.completed) || others.find(o => o.start_time) || null;
+}
+
 function buildGerkPlanRows(workOrder, todaysGerks) {
   const planFields = workOrder?.delovni_nalogi_gerki || [];
   const logByCode   = Object.fromEntries((todaysGerks || []).map(g => [g.gerk_code, g]));
   const othersByCode = otherGerkEntriesByCode();
 
-  const rows = planFields.map(pf => ({
-    code:      pf.gerk_code,
-    gerkId:    pf.id,
-    tipLabAnalize: pf.tip_lab_analize ?? null,
-    hectares:  pf.kolicina_ha ?? logByCode[pf.gerk_code]?.hectares ?? null,
-    lokacija:  pf.lokacija ?? null,
-    startTime: logByCode[pf.gerk_code]?.start_time ?? null,
-    endTime:   logByCode[pf.gerk_code]?.end_time ?? null,
-    duration:  logByCode[pf.gerk_code]?.duration ?? null,
-    completed: logByCode[pf.gerk_code]?.completed ?? false,
-    samples:   pf.delovni_nalogi_vzorci || [],
-    otherEntries: othersByCode[pf.gerk_code] || [],
-  }));
+  const rows = planFields.map(pf => {
+    const mine   = logByCode[pf.gerk_code];
+    const others = othersByCode[pf.gerk_code] || [];
+    const locked = lockedEntryFor(mine, others);
+    return {
+      code:      pf.gerk_code,
+      gerkId:    pf.id,
+      tipLabAnalize: pf.tip_lab_analize ?? null,
+      hectares:  pf.kolicina_ha ?? mine?.hectares ?? null,
+      lokacija:  pf.lokacija ?? null,
+      startTime: locked?.start_time ?? null,
+      endTime:   locked?.end_time ?? null,
+      duration:  locked?.duration ?? null,
+      completed: locked?.completed ?? false,
+      canEnd:    !!mine?.start_time && !mine?.completed,
+      samples:   pf.delovni_nalogi_vzorci || [],
+      otherEntries: others,
+    };
+  });
 
   const planCodes = new Set(planFields.map(pf => pf.gerk_code));
   (todaysGerks || []).filter(g => !planCodes.has(g.gerk_code)).forEach(g => {
+    const others = othersByCode[g.gerk_code] || [];
+    const locked = lockedEntryFor(g, others);
     rows.push({
       code: g.gerk_code, hectares: g.hectares, lokacija: null,
-      startTime: g.start_time, endTime: g.end_time, duration: g.duration ?? null, completed: g.completed ?? false,
+      startTime: locked?.start_time ?? null, endTime: locked?.end_time ?? null,
+      duration: locked?.duration ?? null, completed: locked?.completed ?? false,
+      canEnd: !!g.start_time && !g.completed,
       samples: [],
-      otherEntries: othersByCode[g.gerk_code] || [],
+      otherEntries: others,
     });
   });
 
@@ -794,7 +817,8 @@ function renderWorkLogGerkRows(rows) {
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
     const completed = !!r.completed;
-    const hasStart  = !!r.startTime;
+    const locked    = !!r.startTime; // any start recorded anywhere — mine or someone else's
+    const canEnd    = !!r.canEnd;    // only the entry's own operator may press Konec
     const samples   = r.samples || [];
     const others    = r.otherEntries || [];
     return `
@@ -810,9 +834,9 @@ function renderWorkLogGerkRows(rows) {
           ${renderGerkLabTypeCell(r)}
         </div>
         <div class="wlg-times">
-          <button type="button" class="wlg-toggle-btn" data-action="wlg-start">Start</button>
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-start" ${locked ? 'disabled' : ''}>Start</button>
           <span class="wlg-time-value" data-role="start-value">${fmtClock(r.startTime)}</span>
-          <button type="button" class="wlg-toggle-btn" data-action="wlg-end" ${hasStart ? '' : 'disabled'}>Konec</button>
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-end" ${canEnd ? '' : 'disabled'}>Konec</button>
           <span class="wlg-time-value" data-role="end-value">${fmtClock(r.endTime)}</span>
           <button type="button" class="btn btn-icon wlg-edit-btn" data-action="wlg-edit-toggle" aria-label="Uredi čas">✎</button>
         </div>
@@ -1582,7 +1606,8 @@ function applyGerkRowUpdate(row, updated) {
   row.classList.toggle('wlg-row--completed', !!updated.completed);
   row.querySelector('[data-role="start-value"]').textContent = fmtClock(updated.start_time);
   row.querySelector('[data-role="end-value"]').textContent   = fmtClock(updated.end_time);
-  row.querySelector('[data-action="wlg-end"]').disabled = !updated.start_time;
+  row.querySelector('[data-action="wlg-start"]').disabled = !!updated.start_time;
+  row.querySelector('[data-action="wlg-end"]').disabled = !updated.start_time || !!updated.completed;
 
   row.querySelector('.wlg-edit-panel').hidden = true;
   row.querySelector('.wlg-edit-start').value = toTimeInputValue(updated.start_time);
@@ -1680,6 +1705,13 @@ async function saveGerkEdit(btn) {
       // Reloading is simplest and matches what a fresh open would show.
       await loadDetailForDate();
       showFormSuccess(`Vnos prestavljen na ${fmtSampleDate(dateVal)}.`);
+    } else if (!startVal && !endVal) {
+      // Clearing a field (blank start+end) — an admin clear may have
+      // deleted an entry that belonged to a different operator/date
+      // entirely, so the row's own RPC result isn't enough here; a
+      // full reload also refreshes the "who else worked this" list and
+      // header total, which a single-row patch wouldn't.
+      await loadDetailForDate();
     } else {
       applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
     }
