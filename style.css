@@ -596,18 +596,107 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
 
+/* Floating, not inline — fixed to the viewport (not the scrollable
+   modal sheet) so it stays put, centered, above everything else while
+   the GERK list scrolls underneath it. Hidden state uses opacity, not
+   `hidden`/display:none, since display can't be transitioned; the
+   visibility delay keeps it out of the way for clicks/focus once
+   faded out instead of leaving an invisible-but-interactive strip
+   sitting over the bottom of the screen. */
 .wlg-selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 250;
+  max-width: calc(100vw - 32px);
+  height: 52px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  background: var(--blue-50);
-  border: 1.5px solid var(--blue-100);
-  border-radius: var(--radius-md);
+  gap: 4px;
+  padding: 0 8px;
+  background: #1C1C1E;
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+  overflow-x: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s ease, visibility 0s linear .2s;
 }
-.wlg-selection-count { font-size: .8125rem; font-weight: 600; color: var(--blue-800); margin-right: auto; }
-.wlg-selection-bar .btn-icon { width: 28px; height: 28px; flex-shrink: 0; }
+.wlg-selection-bar--visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity .2s ease, visibility 0s linear 0s;
+}
+
+.wlg-sel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #9CA3AF;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wlg-sel-close:hover { background: rgba(255,255,255,.1); color: #fff; }
+.wlg-sel-close:active { background: rgba(255,255,255,.16); }
+.wlg-sel-close:focus-visible { outline: 2px solid #60A5FA; outline-offset: 2px; }
+
+.wlg-sel-summary {
+  font-size: .8125rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  padding: 0 10px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wlg-sel-sep {
+  width: 1px;
+  height: 24px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,.14);
+}
+
+.wlg-sel-actions { display: flex; align-items: center; gap: 2px; padding-left: 4px; }
+
+.wlg-sel-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #E5E7EB;
+  font-size: .8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wlg-sel-action svg { flex-shrink: 0; }
+.wlg-sel-action:hover:not(:disabled) { background: rgba(255,255,255,.1); }
+.wlg-sel-action:active:not(:disabled) { background: rgba(255,255,255,.16); }
+.wlg-sel-action:focus-visible { outline: 2px solid #60A5FA; outline-offset: -2px; }
+.wlg-sel-action:disabled { color: #6B7280; cursor: not-allowed; }
+
+.wlg-sel-action--danger { color: #F87171; }
+.wlg-sel-action--danger:hover:not(:disabled) { background: rgba(248,113,113,.14); }
+.wlg-sel-action--danger:active:not(:disabled) { background: rgba(248,113,113,.22); }
+
+.wlg-sel-action--positive { color: #4ADE80; }
+.wlg-sel-action--positive:hover:not(:disabled) { background: rgba(74,222,128,.14); }
+.wlg-sel-action--positive:active:not(:disabled) { background: rgba(74,222,128,.22); }
+
+.wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
 
 .wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
 

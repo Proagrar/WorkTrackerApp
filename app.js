@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.89';
+const APP_VERSION = 'v1.90';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -80,10 +80,6 @@ const roadAddBtn  = document.getElementById('roadAddBtn');
 const roadTimeListEl = document.getElementById('roadTimeList');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
 const wlgSelectionBar   = document.getElementById('wlgSelectionBar');
-const wlgSelectionCount = document.getElementById('wlgSelectionCount');
-const wlgExportKmlBtn   = document.getElementById('wlgExportKmlBtn');
-const wlgBulkDeleteBtn  = document.getElementById('wlgBulkDeleteBtn');
-const wlgClearSelectionBtn = document.getElementById('wlgClearSelectionBtn');
 const tractorInput = document.getElementById('tractor');
 const descInput   = document.getElementById('description');
 const formError   = document.getElementById('formError');
@@ -1902,10 +1898,52 @@ async function removeGerkFromOrder(btn) {
 }
 
 // ── GERK selection bar (admin-only multi-select on the detail view) ──
+// Built once as a small, generic, config-driven toolbar — a close
+// button, a live summary, and a list of actions (icon + label +
+// tooltip + variant + its own onClick) — so a second use of this
+// pattern elsewhere would just need a new config, not new markup.
+const WLG_SEL_ICON_CLOSE = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>`;
+const WLG_SEL_ICON_TRASH = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 6h12M8 6V4.5A1.5 1.5 0 0 1 9.5 3h1A1.5 1.5 0 0 1 12 4.5V6m-6 0v9a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 14 15V6M7.5 9v4M12.5 9v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const WLG_SEL_ICON_DOWNLOAD = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 14v1.5A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5V14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const GERK_SELECTION_ACTIONS = [
+  { id: 'export', label: 'Izvozi',  tooltip: 'Izvozi izbrane GERKE v KML',       icon: WLG_SEL_ICON_DOWNLOAD, variant: 'default', onClick: exportSelectedGerksToKml },
+  { id: 'delete', label: 'Briši',   tooltip: 'Izbriši izbrane GERKE iz naloga',  icon: WLG_SEL_ICON_TRASH,    variant: 'danger',  onClick: bulkDeleteSelectedGerks },
+];
+
+function buildSelectionBar() {
+  wlgSelectionBar.setAttribute('role', 'toolbar');
+  wlgSelectionBar.setAttribute('aria-label', 'Skupinska dejanja za izbrane GERKE');
+  wlgSelectionBar.innerHTML = `
+    <button type="button" class="wlg-sel-close" data-action="wlg-sel-close" aria-label="Prekliči izbiro" title="Prekliči izbiro">${WLG_SEL_ICON_CLOSE}</button>
+    <span class="wlg-sel-summary"></span>
+    <span class="wlg-sel-sep" aria-hidden="true"></span>
+    <div class="wlg-sel-actions">
+      ${GERK_SELECTION_ACTIONS.map(a => `
+        <button type="button" class="wlg-sel-action wlg-sel-action--${a.variant}" data-action-id="${a.id}" aria-label="${escHtml(a.tooltip)}" title="${escHtml(a.tooltip)}">
+          ${a.icon}<span class="wlg-sel-action-label">${escHtml(a.label)}</span>
+        </button>`).join('')}
+    </div>`;
+  wlgSelectionBar.querySelector('[data-action="wlg-sel-close"]').addEventListener('click', clearGerkSelection);
+  GERK_SELECTION_ACTIONS.forEach(a => {
+    const btn = wlgSelectionBar.querySelector(`[data-action-id="${a.id}"]`);
+    btn.addEventListener('click', () => a.onClick(btn));
+  });
+}
+buildSelectionBar();
+
 function updateGerkSelectionBar() {
   const n = selectedGerkCodes.size;
-  wlgSelectionBar.hidden = n === 0;
-  if (n > 0) wlgSelectionCount.textContent = `${n} ${n === 1 ? 'izbran' : 'izbranih'}`;
+  wlgSelectionBar.classList.toggle('wlg-selection-bar--visible', n > 0);
+  if (n === 0) return;
+  // "3 izbranih" alone, or "3 izbranih · 1.24 ha" once the selected
+  // GERKs' own areas are known — a plain count doesn't tell you how
+  // much land a bulk delete/export is actually about to touch.
+  const gerks = (currentDetailWorkOrder?.delovni_nalogi_gerki || []).filter(g => selectedGerkCodes.has(g.gerk_code));
+  const totalHa = gerks.reduce((s, g) => s + (Number(g.kolicina_ha) || 0), 0);
+  const countLabel = `${n} ${n === 1 ? 'izbran' : 'izbranih'}`;
+  const summaryEl = wlgSelectionBar.querySelector('.wlg-sel-summary');
+  if (summaryEl) summaryEl.textContent = totalHa > 0 ? `${countLabel} · ${totalHa.toFixed(2)} ha` : countLabel;
 }
 
 function clearGerkSelection() {
@@ -1918,7 +1956,7 @@ function clearGerkSelection() {
 // time) — checked in bulk up front instead of one row at a time, so a
 // batch with a mix of removable/blocked GERKs still removes whichever
 // it safely can rather than refusing the whole thing.
-async function bulkDeleteSelectedGerks() {
+async function bulkDeleteSelectedGerks(btn) {
   const codes = [...selectedGerkCodes];
   if (!codes.length) return;
 
@@ -1929,7 +1967,7 @@ async function bulkDeleteSelectedGerks() {
 
   if (!confirm(`Odstranim ${rows.length} izbranih GERKOV iz naloga?`)) return;
 
-  wlgBulkDeleteBtn.disabled = true;
+  btn.disabled = true;
   try {
     const ids = rows.map(g => g.id);
     const { data: sampleRows } = await supabase
@@ -1964,7 +2002,7 @@ async function bulkDeleteSelectedGerks() {
   } catch (e) {
     showFormError(e.message || 'Napaka pri odstranjevanju.');
   } finally {
-    wlgBulkDeleteBtn.disabled = false;
+    btn.disabled = false;
   }
 }
 
@@ -2020,7 +2058,7 @@ function layerGeometry(layer) {
 // otherwise its imported KML zones (a text-named GERK with no
 // registry polygon has only those). A GERK with neither is skipped
 // and called out in the result message rather than silently dropped.
-function exportSelectedGerksToKml() {
+function exportSelectedGerksToKml(btn) {
   const codes = [...selectedGerkCodes];
   if (!codes.length) return;
 
@@ -2054,10 +2092,6 @@ function exportSelectedGerksToKml() {
   downloadTextFile(filename, kml, 'application/vnd.google-earth.kml+xml');
   showFormSuccess(`✓ Izvoženih ${features.length} ${features.length === 1 ? 'oblika' : 'oblik'} v KML.` + (skipped.length ? ` Brez geometrije: ${skipped.join(', ')}.` : ''));
 }
-
-wlgExportKmlBtn.addEventListener('click', exportSelectedGerksToKml);
-wlgBulkDeleteBtn.addEventListener('click', bulkDeleteSelectedGerks);
-wlgClearSelectionBtn.addEventListener('click', clearGerkSelection);
 
 async function updateSampleNo(inputEl) {
   const sampleId = inputEl.dataset.sampleId;

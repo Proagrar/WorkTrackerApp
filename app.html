@@ -237,13 +237,10 @@
             </div>
             <div class="alert alert-error" id="woImportZonesError" hidden role="alert"></div>
           </div>
-          <!-- Admin only: appears once 1+ GERK rows are checked below. -->
-          <div id="wlgSelectionBar" class="wlg-selection-bar" hidden>
-            <span id="wlgSelectionCount" class="wlg-selection-count"></span>
-            <button type="button" class="btn btn-secondary btn-sm" id="wlgExportKmlBtn">Izvozi v KML</button>
-            <button type="button" class="btn btn-danger btn-sm" id="wlgBulkDeleteBtn">Briši</button>
-            <button type="button" class="btn btn-icon" id="wlgClearSelectionBtn" aria-label="Prekliči izbiro">✕</button>
-          </div>
+          <!-- Admin only: floating bulk-action toolbar, content built by
+               buildSelectionBar() in app.js — appears once 1+ GERK rows
+               are checked below. -->
+          <div id="wlgSelectionBar" class="wlg-selection-bar"></div>
           <div id="workLogGerkRows" class="wlg-table"></div>
           <!-- Admin only: add a GERK to an already-created order — the create
                form's own +/− only works before the first save. -->
