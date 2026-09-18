@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.87';
+const APP_VERSION = 'v1.88';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1187,7 +1187,7 @@ async function showWoDetailMap(workOrder) {
   for (const row of (segments || [])) {
     if (!row.segment_geojson) continue;
     const layer = L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
-      .bindTooltip(`${row.gerk_code} · ${row.segment_label || ''}`.trim())
+      .bindTooltip(row.segment_label || '', { permanent: true, direction: 'center', className: 'wo-map-segment-label' })
       .addTo(woMapSegmentLayer);
     layer.on('mouseover', () => highlightGerkRow(row.gerk_code, true));
     layer.on('mouseout',  () => highlightGerkRow(row.gerk_code, false));

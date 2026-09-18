@@ -1292,6 +1292,22 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 }
 .wo-capture-toggle input { width: 11px; height: 11px; cursor: pointer; }
 
+/* Permanent (always-on, not hover-only) Leaflet tooltip showing each
+   imported zone's segment number, centered on its polygon. Overrides
+   Leaflet's default white tooltip box with a small amber pill matching
+   the zone outline color (WO_MAP_SEGMENT_STYLE in app.js). */
+.leaflet-tooltip.wo-map-segment-label {
+  background: #D97706;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: .6875rem;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  white-space: nowrap;
+}
+
 .wo-capture-marker {
   display: flex;
   align-items: center;
