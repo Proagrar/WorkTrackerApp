@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.95';
+const APP_VERSION = 'v1.96';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2752,30 +2752,48 @@ function showOperatorsError(msg) {
 }
 function showOperatorsSuccess(html) {
   // innerHTML, not textContent — this is the one spot that needs to
-  // embed a live mailto: link (credentials-send), not just plain text.
+  // embed a live "send credentials" button, not just plain text.
   operatorsSuccessEl.innerHTML = html;
   operatorsSuccessEl.hidden = false;
   operatorsErrorEl.hidden = true;
+  const sendBtn = operatorsSuccessEl.querySelector('[data-action="operator-send-credentials"]');
+  if (sendBtn) sendBtn.addEventListener('click', () => sendOperatorCredentials(sendBtn));
 }
 
-// A mailto: link, not an automated send — there's no email-sending
-// backend here (Resend is only wired for Supabase's own auth emails).
-// This opens the admin's own mail client with the message pre-filled;
-// they hit send themselves. Only ever built right after a create or a
-// password reset, the only moments the plaintext password is known —
-// it isn't retrievable afterward.
-function operatorCredentialsMailto(email, fullName, password) {
-  const appUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
-  const subject = encodeURIComponent('WorkTracker — podatki za prijavo');
-  const body = encodeURIComponent(
-    `Pozdravljeni${fullName ? ' ' + fullName : ''},\n\n` +
-    `Vaši podatki za prijavo v WorkTracker:\n\n` +
-    `Povezava: ${appUrl}\n` +
-    `Uporabniško ime (e-pošta): ${email}\n` +
-    `Geslo: ${password}\n\n` +
-    `Lep pozdrav`
-  );
-  return `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+function operatorsAppUrl() {
+  return window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+}
+
+// The button carries what it needs as data-* attributes rather than a
+// closure, since it's injected via showOperatorsSuccess's raw
+// innerHTML and wired up after the fact. Only ever built right after
+// a create or a password reset, the only moments the plaintext
+// password is known — it isn't retrievable afterward.
+function renderCredentialsSentMessage(prefix, email, fullName, password) {
+  return `${prefix} <button type="button" class="btn btn-secondary btn-sm" data-action="operator-send-credentials" data-email="${escHtml(email)}" data-name="${escHtml(fullName || '')}" data-password="${escHtml(password)}">📧 Pošlji podatke</button>`;
+}
+
+// Real send via the send-credentials Edge Function (Resend), not a
+// mailto: draft — admin-gated server-side too, see that function.
+async function sendOperatorCredentials(btn) {
+  const email    = btn.dataset.email;
+  const fullName = btn.dataset.name;
+  const password = btn.dataset.password;
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Pošiljam…';
+  try {
+    const { data, error } = await supabase.functions.invoke('send-credentials', {
+      body: { email, full_name: fullName || null, password, app_url: operatorsAppUrl() },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    btn.textContent = '✓ Poslano';
+  } catch (e) {
+    showOperatorsError(e.message || 'Napaka pri pošiljanju e-pošte.');
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 async function openOperatorsModal() {
@@ -2861,9 +2879,7 @@ async function createOperatorFromForm() {
     if (error) throw error;
     toggleAddOperatorForm(false);
     await renderOperatorsList();
-    showOperatorsSuccess(
-      `✓ Uporabnik ustvarjen. <a href="${operatorCredentialsMailto(email, fullName, password)}">📧 Pošlji podatke</a>`
-    );
+    showOperatorsSuccess(renderCredentialsSentMessage('✓ Uporabnik ustvarjen.', email, fullName, password));
   } catch (e) {
     showOperatorsError(e.message || 'Napaka pri ustvarjanju uporabnika.');
   } finally {
@@ -2881,9 +2897,7 @@ async function resetOperatorPassword(btn) {
   try {
     const { error } = await supabase.rpc('set_operator_password', { p_email: email, p_password: password });
     if (error) throw error;
-    showOperatorsSuccess(
-      `✓ Geslo ponastavljeno. <a href="${operatorCredentialsMailto(email, name, password)}">📧 Pošlji podatke</a>`
-    );
+    showOperatorsSuccess(renderCredentialsSentMessage('✓ Geslo ponastavljeno.', email, name, password));
   } catch (e) {
     showOperatorsError(e.message || 'Napaka pri ponastavitvi gesla.');
   } finally {
