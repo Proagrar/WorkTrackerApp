@@ -237,10 +237,6 @@
             </div>
             <div class="alert alert-error" id="woImportZonesError" hidden role="alert"></div>
           </div>
-          <!-- Admin only: floating bulk-action toolbar, content built by
-               buildSelectionBar() in app.js — appears once 1+ GERK rows
-               are checked below. -->
-          <div id="wlgSelectionBar" class="wlg-selection-bar"></div>
           <div id="workLogGerkRows" class="wlg-table"></div>
           <!-- Admin only: add a GERK to an already-created order — the create
                form's own +/− only works before the first save. -->
@@ -283,6 +279,15 @@
       </div>
     </div>
   </div>
+
+  <!-- Admin only: floating bulk-action toolbar for the GERK list above,
+       content built by buildSelectionBar() in app.js. A sibling of
+       #formModal (not nested inside it) on purpose — the modal sheet
+       has overflow:hidden and a slide-in transform, either of which
+       can trap a position:fixed descendant into that ancestor's own
+       box instead of the real viewport, which is what made the map
+       paint on top of it before. -->
+  <div id="wlgSelectionBar" class="wlg-selection-bar"></div>
 
   <!-- ── Delete Confirm ──────────────────────────────────────── -->
   <!-- ── Work Order Add / Edit Modal ─────────────────────────── -->
