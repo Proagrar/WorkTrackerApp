@@ -270,10 +270,9 @@
         <div id="formError"   class="alert alert-error"   hidden role="alert"></div>
         <div id="formSuccess" class="alert alert-success" hidden role="status"></div>
 
-        <button type="button" id="woDeleteBtn" class="btn btn-danger btn-block" hidden>Izbriši nalog</button>
-
         <div class="form-actions">
-          <button type="button" id="cancelBtn" class="btn btn-secondary btn-block">Zapri</button>
+          <button type="button" id="cancelBtn" class="btn btn-secondary btn-flex">Zaključi delo</button>
+          <button type="button" id="woDeleteBtn" class="btn btn-danger btn-sm" hidden>Izbriši nalog</button>
         </div>
         </div>
       </div>
@@ -494,7 +493,25 @@
       <div class="work-form">
         <p class="field-hint">Samo obkljukani so na voljo za izbiro pri "Izvajalec" na delovnem nalogu.</p>
         <div id="operatorsError" class="alert alert-error" hidden role="alert"></div>
+        <div id="operatorsSuccess" class="alert alert-success" hidden role="status"></div>
         <div id="operatorsList" class="wo-gerk-checklist"></div>
+
+        <!-- Admin only -->
+        <div id="operatorsAddWrap" class="operators-add-wrap" hidden>
+          <button type="button" class="btn btn-secondary btn-sm" id="operatorsAddToggleBtn">+ Dodaj uporabnika</button>
+          <div id="operatorsAddForm" class="operators-add-form" hidden>
+            <input class="field-input" type="text" id="newOperatorName" placeholder="Ime in priimek" autocomplete="off">
+            <input class="field-input" type="email" id="newOperatorEmail" placeholder="E-pošta" autocomplete="off">
+            <!-- type="text", not "password" on purpose — the admin is
+                 setting someone else's password and needs to read it
+                 back to send it on, not hide their own input. -->
+            <input class="field-input" type="text" id="newOperatorPassword" placeholder="Geslo" autocomplete="off">
+            <div class="operators-add-actions">
+              <button type="button" class="btn btn-primary btn-sm" id="operatorsAddConfirmBtn">Ustvari</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="operatorsAddCancelBtn">Prekliči</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

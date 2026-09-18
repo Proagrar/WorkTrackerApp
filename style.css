@@ -1832,6 +1832,32 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-gerk-check-item:last-child { border-bottom: none; }
 .wo-gerk-check-item:hover { background: var(--blue-50); }
 
+/* Izvajalci list rows, admin variant: the existing check-item label
+   plus a pair of per-row action icons — border-bottom moves to this
+   outer wrapper so :last-child still lands on the real last row once
+   the label is no longer the direct child of .wo-gerk-checklist. */
+.operator-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border-light);
+}
+.operator-row:last-child { border-bottom: none; }
+.operator-row .wo-gerk-check-item { flex: 1; min-width: 0; border-bottom: none; }
+.operator-row-actions { display: flex; align-items: center; gap: 2px; padding-right: 8px; flex-shrink: 0; }
+.operator-row-actions .btn-icon { width: 32px; height: 32px; font-size: .9375rem; }
+
+.operators-add-wrap { margin-bottom: 10px; }
+.operators-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--border-light);
+  border-radius: var(--radius-md);
+}
+.operators-add-actions { display: flex; gap: 8px; }
+
 .wo-gerk-check-item input[type="checkbox"] {
   width: 18px;
   height: 18px;

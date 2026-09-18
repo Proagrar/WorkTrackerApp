@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.92';
+const APP_VERSION = 'v1.93';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -120,6 +120,15 @@ const operatorsModal      = document.getElementById('operatorsModal');
 const operatorsModalClose = document.getElementById('operatorsModalClose');
 const operatorsListEl     = document.getElementById('operatorsList');
 const operatorsErrorEl    = document.getElementById('operatorsError');
+const operatorsSuccessEl  = document.getElementById('operatorsSuccess');
+const operatorsAddWrap    = document.getElementById('operatorsAddWrap');
+const operatorsAddToggleBtn = document.getElementById('operatorsAddToggleBtn');
+const operatorsAddForm    = document.getElementById('operatorsAddForm');
+const newOperatorName     = document.getElementById('newOperatorName');
+const newOperatorEmail    = document.getElementById('newOperatorEmail');
+const newOperatorPassword = document.getElementById('newOperatorPassword');
+const operatorsAddConfirmBtn = document.getElementById('operatorsAddConfirmBtn');
+const operatorsAddCancelBtn  = document.getElementById('operatorsAddCancelBtn');
 
 // ── Add customer modal refs (admin: "Seznam strank" + inline from
 // the work-order form's customer search when no match exists) ───
@@ -2663,22 +2672,77 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Operators (Izvajalci) modal ───────────────────────────────
+function showOperatorsError(msg) {
+  operatorsErrorEl.textContent = msg;
+  operatorsErrorEl.hidden = false;
+  operatorsSuccessEl.hidden = true;
+}
+function showOperatorsSuccess(html) {
+  // innerHTML, not textContent — this is the one spot that needs to
+  // embed a live mailto: link (credentials-send), not just plain text.
+  operatorsSuccessEl.innerHTML = html;
+  operatorsSuccessEl.hidden = false;
+  operatorsErrorEl.hidden = true;
+}
+
+// A mailto: link, not an automated send — there's no email-sending
+// backend here (Resend is only wired for Supabase's own auth emails).
+// This opens the admin's own mail client with the message pre-filled;
+// they hit send themselves. Only ever built right after a create or a
+// password reset, the only moments the plaintext password is known —
+// it isn't retrievable afterward.
+function operatorCredentialsMailto(email, fullName, password) {
+  const appUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+  const subject = encodeURIComponent('WorkTracker — podatki za prijavo');
+  const body = encodeURIComponent(
+    `Pozdravljeni${fullName ? ' ' + fullName : ''},\n\n` +
+    `Vaši podatki za prijavo v WorkTracker:\n\n` +
+    `Povezava: ${appUrl}\n` +
+    `Uporabniško ime (e-pošta): ${email}\n` +
+    `Geslo: ${password}\n\n` +
+    `Lep pozdrav`
+  );
+  return `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+}
+
 async function openOperatorsModal() {
   operatorsErrorEl.hidden = true;
-  const { data } = await supabase.rpc('get_operators_with_email');
+  operatorsSuccessEl.hidden = true;
+  operatorsAddWrap.hidden = currentRole !== 'admin';
+  toggleAddOperatorForm(false);
+  await renderOperatorsList();
+  operatorsModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+async function renderOperatorsList() {
+  const { data, error } = await supabase.rpc('get_operators_with_email');
+  if (error) { showOperatorsError(error.message || 'Napaka pri nalaganju.'); return; }
+
+  const isAdmin = currentRole === 'admin';
   operatorsListEl.innerHTML = (data || []).map(p => `
-    <label class="wo-gerk-check-item">
-      <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
-      <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
-      <span class="wo-gerk-check-name">${escHtml(p.email || '')}</span>
-    </label>`).join('');
+    <div class="operator-row">
+      <label class="wo-gerk-check-item">
+        <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
+        <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
+        <span class="wo-gerk-check-name">${escHtml(p.email || '')}</span>
+      </label>
+      ${isAdmin ? `
+      <div class="operator-row-actions">
+        <button type="button" class="btn btn-icon" data-action="operator-reset-pw" data-email="${escHtml(p.email)}" data-name="${escHtml(p.full_name || '')}" aria-label="Ponastavi geslo" title="Ponastavi geslo">🔑</button>
+        <button type="button" class="btn btn-icon" data-action="operator-delete" data-email="${escHtml(p.email)}" aria-label="Izbriši uporabnika" title="Izbriši uporabnika">🗑</button>
+      </div>` : ''}
+    </div>`).join('');
 
   operatorsListEl.querySelectorAll('.operator-eligible-checkbox').forEach(cb => {
     cb.addEventListener('change', () => setOperatorEligibility(cb));
   });
-
-  operatorsModal.hidden = false;
-  document.body.style.overflow = 'hidden';
+  operatorsListEl.querySelectorAll('[data-action="operator-reset-pw"]').forEach(btn => {
+    btn.addEventListener('click', () => resetOperatorPassword(btn));
+  });
+  operatorsListEl.querySelectorAll('[data-action="operator-delete"]').forEach(btn => {
+    btn.addEventListener('click', () => deleteOperatorRow(btn));
+  });
 }
 
 async function setOperatorEligibility(cb) {
@@ -2691,10 +2755,84 @@ async function setOperatorEligibility(cb) {
     operatorsList = []; // stale — force loadOperatorsList() to refetch next time the create-order form opens
   } catch (e) {
     cb.checked = !eligible; // revert the checkbox — the write didn't actually land
-    operatorsErrorEl.textContent = e.message || 'Napaka pri shranjevanju.';
-    operatorsErrorEl.hidden = false;
+    showOperatorsError(e.message || 'Napaka pri shranjevanju.');
   } finally {
     cb.disabled = false;
+  }
+}
+
+function toggleAddOperatorForm(show) {
+  operatorsAddForm.hidden = !show;
+  if (show) {
+    newOperatorName.value = '';
+    newOperatorEmail.value = '';
+    newOperatorPassword.value = '';
+    newOperatorName.focus();
+  }
+}
+
+async function createOperatorFromForm() {
+  const fullName = newOperatorName.value.trim();
+  const email    = newOperatorEmail.value.trim();
+  const password = newOperatorPassword.value;
+  if (!fullName || !email || !password) {
+    showOperatorsError('Izpolnite ime, e-pošto in geslo.');
+    return;
+  }
+
+  operatorsAddConfirmBtn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('create_operator', {
+      p_email: email, p_password: password, p_full_name: fullName,
+    });
+    if (error) throw error;
+    toggleAddOperatorForm(false);
+    await renderOperatorsList();
+    showOperatorsSuccess(
+      `✓ Uporabnik ustvarjen. <a href="${operatorCredentialsMailto(email, fullName, password)}">📧 Pošlji podatke</a>`
+    );
+  } catch (e) {
+    showOperatorsError(e.message || 'Napaka pri ustvarjanju uporabnika.');
+  } finally {
+    operatorsAddConfirmBtn.disabled = false;
+  }
+}
+
+async function resetOperatorPassword(btn) {
+  const email = btn.dataset.email;
+  const name  = btn.dataset.name;
+  const password = prompt(`Novo geslo za ${name || email}:`);
+  if (!password) return; // cancelled or left blank
+
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('set_operator_password', { p_email: email, p_password: password });
+    if (error) throw error;
+    showOperatorsSuccess(
+      `✓ Geslo ponastavljeno. <a href="${operatorCredentialsMailto(email, name, password)}">📧 Pošlji podatke</a>`
+    );
+  } catch (e) {
+    showOperatorsError(e.message || 'Napaka pri ponastavitvi gesla.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteOperatorRow(btn) {
+  const email = btn.dataset.email;
+  if (!confirm(`Izbrišem uporabnika ${email}? Tega ni mogoče razveljaviti.`)) return;
+
+  btn.disabled = true;
+  try {
+    const { error } = await supabase.rpc('delete_operator', { p_email: email });
+    if (error) throw error;
+    operatorsList = []; // stale — same as eligibility change above
+    await renderOperatorsList();
+    showOperatorsSuccess(`✓ Uporabnik ${escHtml(email)} izbrisan.`);
+  } catch (e) {
+    showOperatorsError(e.message || 'Napaka pri brisanju uporabnika.');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -2705,6 +2843,9 @@ function closeOperatorsModal() {
 
 operatorsModalClose.addEventListener('click', closeOperatorsModal);
 operatorsModal.addEventListener('click', e => { if (e.target === operatorsModal) closeOperatorsModal(); });
+operatorsAddToggleBtn.addEventListener('click', () => toggleAddOperatorForm(operatorsAddForm.hidden));
+operatorsAddCancelBtn.addEventListener('click', () => toggleAddOperatorForm(false));
+operatorsAddConfirmBtn.addEventListener('click', createOperatorFromForm);
 
 // ── Add customer modal ────────────────────────────────────────
 // context: 'decl' (from "Seznam strank") refreshes that list after
