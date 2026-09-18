@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.93';
+const APP_VERSION = 'v1.94';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -845,7 +845,7 @@ function renderWorkLogGerkRows(rows) {
             ${currentRole === 'admin' ? `<input type="checkbox" class="wlg-select-checkbox" data-action="wlg-select" data-code="${escHtml(r.code)}" aria-label="Izberi GERK" ${selectedGerkCodes.has(r.code) ? 'checked' : ''}>` : ''}
             <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
             <span class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></span>
-            ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
+            <span class="wlg-field-map-slot" data-code="${escHtml(r.code)}">${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}</span>
           </span>
           ${meta ? `<span class="wlg-meta">${escHtml(meta)}</span>` : ''}
           ${renderGerkLabTypeCell(r)}
@@ -1244,6 +1244,27 @@ async function showWoDetailMap(workOrder) {
   }
 
   drawCapturedPointsOnMap();
+  updateGerkMapLinksFromShapes();
+}
+
+// The 📍 link next to each GERK row falls back to fields.centroid_lat/
+// lng at render time (see renderWorkLogGerkRows), which is a separate,
+// precomputed column — not live-joined against gerk_polygon, so it
+// didn't get the SI/HR country-collision fix and can be stale in two
+// ways: null for ~10% of fields (pin just never showed), or, worse,
+// silently pointing at a Croatian parcel that happens to share the
+// same GERK number (pin shows, but goes to the wrong country). Once
+// the official shape itself is drawn — already correctly SI-only —
+// deriving the pin from its own centroid is strictly more trustworthy
+// than the cached column, so it wins whenever a shape is available.
+function updateGerkMapLinksFromShapes() {
+  workLogGerkRowsEl.querySelectorAll('.wlg-field-map-slot').forEach(slot => {
+    const code = slot.dataset.code;
+    const shape = woMapLayersByCode.get(code)?.shape;
+    if (!shape) return; // no official polygon — leave whatever fields.centroid_* already rendered
+    const center = shape.getBounds().getCenter();
+    slot.innerHTML = `<a class="wlg-field-map" href="https://www.google.com/maps?q=${center.lat},${center.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`;
+  });
 }
 
 // "Prikaži točke" gates both the numbered markers and the path
