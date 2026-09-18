@@ -970,6 +970,9 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   color: var(--text-secondary);
 }
 
+.road-time-comment { color: var(--text-muted); font-style: italic; }
+.road-comment-input { margin-top: 6px; }
+
 .road-time-remove {
   background: none;
   border: none;

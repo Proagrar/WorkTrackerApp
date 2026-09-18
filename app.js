@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.94';
+const APP_VERSION = 'v1.95';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -77,6 +77,7 @@ const roadTypeSel = document.getElementById('roadType');
 const roadHourSel = document.getElementById('roadHour');
 const roadMinSel  = document.getElementById('roadMin');
 const roadAddBtn  = document.getElementById('roadAddBtn');
+const roadCommentInput = document.getElementById('roadComment');
 const roadTimeListEl = document.getElementById('roadTimeList');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
 const wlgSelectionBar   = document.getElementById('wlgSelectionBar');
@@ -815,6 +816,13 @@ function renderSampleDepthCell(s) {
   return `<select class="sample-field-input wlg-globina-select" data-sample-id="${escHtml(s.id)}">${opts}</select>`;
 }
 
+// Free-text, admin-editable like renderSampleNoCell — short note about
+// this specific segment (e.g. why it was skipped, a field observation).
+function renderSampleCommentCell(s) {
+  if (currentRole !== 'admin') return s.comment ? escHtml(s.comment) : '—';
+  return `<input type="text" class="sample-field-input wlg-comment-input" data-sample-id="${escHtml(s.id)}" value="${escHtml(s.comment || '')}" maxlength="200">`;
+}
+
 
 function renderWorkLogGerkRows(rows) {
   // Prune any selected code that no longer has a row (GERK removed,
@@ -909,6 +917,7 @@ function renderSamplesSection(samples, gerkId) {
                 <option value="">Globina…</option>
                 ${SAMPLE_DEPTHS.map(d => `<option value="${d}">${d} cm</option>`).join('')}
               </select>
+              <input type="text" class="wlg-new-sample-input" data-role="new-comment" placeholder="Opomba" maxlength="200">
               <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-add-sample-confirm">Dodaj</button>
               <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-add-sample-cancel">Prekliči</button>
             </div>
@@ -920,13 +929,14 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. segmenta</th><th>Vzorčenje</th><th>Globina</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. segmenta</th><th>Vzorčenje</th><th>Globina</th><th>Opomba</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
                   <td>${renderSampleNoCell(s)}</td>
                   <td>${renderSamplingCell(s)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
+                  <td>${renderSampleCommentCell(s)}</td>
                   ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
@@ -1260,9 +1270,24 @@ async function showWoDetailMap(workOrder) {
 function updateGerkMapLinksFromShapes() {
   workLogGerkRowsEl.querySelectorAll('.wlg-field-map-slot').forEach(slot => {
     const code = slot.dataset.code;
-    const shape = woMapLayersByCode.get(code)?.shape;
-    if (!shape) return; // no official polygon — leave whatever fields.centroid_* already rendered
-    const center = shape.getBounds().getCenter();
+    const entry = woMapLayersByCode.get(code);
+    // Prefer the official boundary's centroid; a text-named GERK (no
+    // registry match at all) has no .shape, so fall back to its
+    // imported zones' combined centroid — same fallback chain already
+    // used by highlightGerkOnWoMap/exportSelectedGerksToKml. Only
+    // when neither exists does the fields.centroid_* link (set at
+    // render time, possibly null) stay as-is.
+    let center = null;
+    if (entry?.shape) {
+      center = entry.shape.getBounds().getCenter();
+    } else if (entry?.zoneLayers?.length) {
+      let combined = entry.zoneLayers[0].getBounds();
+      for (const l of entry.zoneLayers.slice(1)) combined = combined.extend(l.getBounds());
+      center = combined.getCenter();
+    } else if (entry?.latlng) {
+      center = { lat: entry.latlng[0], lng: entry.latlng[1] };
+    }
+    if (!center) return;
     slot.innerHTML = `<a class="wlg-field-map" href="https://www.google.com/maps?q=${center.lat},${center.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`;
   });
 }
@@ -1816,6 +1841,9 @@ function wireGerkRowButtons() {
   workLogGerkRowsEl.querySelectorAll('.wlg-globina-select').forEach(sel => {
     sel.addEventListener('change', () => updateSampleGlobina(sel));
   });
+  workLogGerkRowsEl.querySelectorAll('.wlg-comment-input').forEach(input => {
+    input.addEventListener('change', () => updateSampleComment(input));
+  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-open-map"]').forEach(btn => {
     btn.addEventListener('click', () => openMapModal(Number(btn.dataset.lat), Number(btn.dataset.lng), btn.dataset.label));
   });
@@ -1854,6 +1882,7 @@ async function addSample(btn) {
   const sampleNo  = wrap.querySelector('[data-role="new-sample-no"]').value.trim();
   const vzorcenje = wrap.querySelector('[data-role="new-vzorcenje"]').value || null;
   const globina   = wrap.querySelector('[data-role="new-globina"]').value;
+  const comment   = wrap.querySelector('[data-role="new-comment"]').value.trim() || null;
   if (!sampleNo) { showFormError('Vpišite št. segmenta.'); return; }
 
   const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.id === gerkId);
@@ -1868,8 +1897,9 @@ async function addSample(btn) {
         sample_no: sampleNo,
         sampling_note: vzorcenje,
         sampling_depth_cm: globina ? parseInt(globina, 10) : null,
+        comment,
       })
-      .select('id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha')
+      .select('id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha, comment')
       .single();
     if (error) throw error;
 
@@ -2145,6 +2175,27 @@ async function updateSampleNo(inputEl) {
       ? 'Ta št. segmenta je znotraj GERK-a že v uporabi.'
       : (e.message || 'Napaka pri shranjevanju.'));
     if (sample) inputEl.value = sample.sample_no;
+  } finally {
+    inputEl.disabled = false;
+  }
+}
+
+async function updateSampleComment(inputEl) {
+  const sampleId = inputEl.dataset.sampleId;
+  const value = inputEl.value.trim();
+  const gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+    .find(g => (g.delovni_nalogi_vzorci || []).some(s => s.id === sampleId));
+  const sample = gerk?.delovni_nalogi_vzorci.find(s => s.id === sampleId);
+  if (sample && (sample.comment || '') === value) return;
+
+  inputEl.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ comment: value || null }).eq('id', sampleId);
+    if (error) throw error;
+    if (sample) sample.comment = value || null;
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri shranjevanju.');
+    if (sample) inputEl.value = sample.comment || '';
   } finally {
     inputEl.disabled = false;
   }
@@ -2487,7 +2538,7 @@ function renderRoadTimeList() {
   }
   roadTimeListEl.innerHTML = currentRoadTimeEntries.map(e => `
     <div class="road-time-row" data-id="${e.id}">
-      <span><span class="road-time-type">${escHtml(e.vehicle_type || 'Traktor')}</span> · ${fmtHM(e.minutes)}</span>
+      <span><span class="road-time-type">${escHtml(e.vehicle_type || 'Traktor')}</span> · ${fmtHM(e.minutes)}${e.comment ? ` · <span class="road-time-comment">${escHtml(e.comment)}</span>` : ''}</span>
       <button type="button" class="road-time-remove" data-action="road-remove" aria-label="Odstrani">✕</button>
     </div>`).join('');
 
@@ -2507,13 +2558,14 @@ async function addRoadTime() {
       p_minutes:        minutes,
       p_vehicle_type:   roadTypeSel.value,
       p_work_date:      currentDetailDate,
+      p_comment:        roadCommentInput.value.trim() || null,
     });
     if (error) throw error;
     const result = Array.isArray(data) ? data[0] : data;
     currentDetailLogId     = result.log_id;
     currentRoadTimeEntries = result.entries || [];
     renderRoadTimeList();
-    roadHourSel.value = '0'; roadMinSel.value = '00';
+    roadHourSel.value = '0'; roadMinSel.value = '00'; roadCommentInput.value = '';
   } catch (e) {
     showFormError('Napaka pri shranjevanju časa na poti.');
   } finally {
@@ -3073,7 +3125,7 @@ async function loadWorkOrders() {
   const [{ data, error }, { data: centerPoints }, { data: durations }] = await Promise.all([
     supabase
       .from('delovni_nalogi')
-      .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, tip_lab_analize, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha))')
+      .select('*, customers(naziv, company_name), profiles(full_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, lokacija, tip_lab_analize, delovni_nalogi_vzorci(id, sample_no, sampling_date, sending_date, sampling_note, sending_note, sampling_depth_cm, area_ha, comment))')
       .order('ustvarjen', { ascending: false }),
     // One batched call for every row's map point, instead of one RPC
     // round trip per row — see get_work_orders_center_points.
