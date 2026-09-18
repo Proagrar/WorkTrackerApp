@@ -613,11 +613,12 @@ input, select, textarea { font-family: inherit; }
   height: 52px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  background: #1C1C1E;
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+  gap: 0;
+  padding: 0 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  box-shadow: 0 12px 28px rgba(16,24,40,.16), 0 2px 6px rgba(16,24,40,.08);
   overflow-x: auto;
   opacity: 0;
   visibility: hidden;
@@ -629,41 +630,42 @@ input, select, textarea { font-family: inherit; }
   transition: opacity .2s ease, visibility 0s linear 0s;
 }
 
+.wlg-sel-summary {
+  font-size: .8125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  padding: 0 10px 0 14px;
+  font-variant-numeric: tabular-nums;
+}
+
 .wlg-sel-close {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #9CA3AF;
+  color: var(--text-secondary);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.wlg-sel-close:hover { background: rgba(255,255,255,.1); color: #fff; }
-.wlg-sel-close:active { background: rgba(255,255,255,.16); }
-.wlg-sel-close:focus-visible { outline: 2px solid #60A5FA; outline-offset: 2px; }
-
-.wlg-sel-summary {
-  font-size: .8125rem;
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  padding: 0 10px 0 2px;
-  font-variant-numeric: tabular-nums;
-}
+.wlg-sel-close:hover { background: var(--border-light); color: var(--text-primary); }
+.wlg-sel-close:active { background: var(--border); }
+.wlg-sel-close:focus-visible { outline: 2px solid var(--blue-800); outline-offset: 2px; }
 
 .wlg-sel-sep {
   width: 1px;
-  height: 24px;
+  height: 26px;
   flex-shrink: 0;
-  background: rgba(255,255,255,.14);
+  margin: 0 6px;
+  background: var(--border);
 }
 
-.wlg-sel-actions { display: flex; align-items: center; gap: 2px; padding-left: 4px; }
+.wlg-sel-actions { display: flex; align-items: center; }
 
 .wlg-sel-action {
   display: flex;
@@ -675,26 +677,27 @@ input, select, textarea { font-family: inherit; }
   border: none;
   border-radius: 9px;
   background: transparent;
-  color: #E5E7EB;
+  color: var(--text-primary);
   font-size: .8125rem;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.wlg-sel-action svg { flex-shrink: 0; }
-.wlg-sel-action:hover:not(:disabled) { background: rgba(255,255,255,.1); }
-.wlg-sel-action:active:not(:disabled) { background: rgba(255,255,255,.16); }
-.wlg-sel-action:focus-visible { outline: 2px solid #60A5FA; outline-offset: -2px; }
-.wlg-sel-action:disabled { color: #6B7280; cursor: not-allowed; }
+.wlg-sel-action svg { flex-shrink: 0; color: var(--text-secondary); }
+.wlg-sel-action:hover:not(:disabled) { background: var(--border-light); }
+.wlg-sel-action:active:not(:disabled) { background: var(--border); }
+.wlg-sel-action:focus-visible { outline: 2px solid var(--blue-800); outline-offset: -2px; }
+.wlg-sel-action:disabled { color: var(--text-muted); cursor: not-allowed; }
+.wlg-sel-action:disabled svg { color: var(--text-muted); }
 
-.wlg-sel-action--danger { color: #F87171; }
-.wlg-sel-action--danger:hover:not(:disabled) { background: rgba(248,113,113,.14); }
-.wlg-sel-action--danger:active:not(:disabled) { background: rgba(248,113,113,.22); }
+.wlg-sel-action--danger, .wlg-sel-action--danger svg { color: var(--danger); }
+.wlg-sel-action--danger:hover:not(:disabled) { background: var(--error-bg); }
+.wlg-sel-action--danger:active:not(:disabled) { background: #FEE2E2; }
 
-.wlg-sel-action--positive { color: #4ADE80; }
-.wlg-sel-action--positive:hover:not(:disabled) { background: rgba(74,222,128,.14); }
-.wlg-sel-action--positive:active:not(:disabled) { background: rgba(74,222,128,.22); }
+.wlg-sel-action--positive, .wlg-sel-action--positive svg { color: var(--success); }
+.wlg-sel-action--positive:hover:not(:disabled) { background: var(--success-bg); }
+.wlg-sel-action--positive:active:not(:disabled) { background: #DCFCE7; }
 
 .wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
 

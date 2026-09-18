@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.90';
+const APP_VERSION = 'v1.91';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1915,11 +1915,12 @@ function buildSelectionBar() {
   wlgSelectionBar.setAttribute('role', 'toolbar');
   wlgSelectionBar.setAttribute('aria-label', 'Skupinska dejanja za izbrane GERKE');
   wlgSelectionBar.innerHTML = `
-    <button type="button" class="wlg-sel-close" data-action="wlg-sel-close" aria-label="Prekliči izbiro" title="Prekliči izbiro">${WLG_SEL_ICON_CLOSE}</button>
     <span class="wlg-sel-summary"></span>
+    <button type="button" class="wlg-sel-close" data-action="wlg-sel-close" aria-label="Prekliči izbiro" title="Prekliči izbiro">${WLG_SEL_ICON_CLOSE}</button>
     <span class="wlg-sel-sep" aria-hidden="true"></span>
     <div class="wlg-sel-actions">
-      ${GERK_SELECTION_ACTIONS.map(a => `
+      ${GERK_SELECTION_ACTIONS.map((a, i) => `
+        ${i > 0 ? '<span class="wlg-sel-sep" aria-hidden="true"></span>' : ''}
         <button type="button" class="wlg-sel-action wlg-sel-action--${a.variant}" data-action-id="${a.id}" aria-label="${escHtml(a.tooltip)}" title="${escHtml(a.tooltip)}">
           ${a.icon}<span class="wlg-sel-action-label">${escHtml(a.label)}</span>
         </button>`).join('')}
