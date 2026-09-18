@@ -596,6 +596,21 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
 
+.wlg-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--blue-50);
+  border: 1.5px solid var(--blue-100);
+  border-radius: var(--radius-md);
+}
+.wlg-selection-count { font-size: .8125rem; font-weight: 600; color: var(--blue-800); margin-right: auto; }
+.wlg-selection-bar .btn-icon { width: 28px; height: 28px; flex-shrink: 0; }
+
+.wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
+
 .wlg-row {
   display: flex;
   flex-direction: column;

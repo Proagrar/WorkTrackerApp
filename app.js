@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.88';
+const APP_VERSION = 'v1.89';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -79,6 +79,11 @@ const roadMinSel  = document.getElementById('roadMin');
 const roadAddBtn  = document.getElementById('roadAddBtn');
 const roadTimeListEl = document.getElementById('roadTimeList');
 const workLogGerkRowsEl = document.getElementById('workLogGerkRows');
+const wlgSelectionBar   = document.getElementById('wlgSelectionBar');
+const wlgSelectionCount = document.getElementById('wlgSelectionCount');
+const wlgExportKmlBtn   = document.getElementById('wlgExportKmlBtn');
+const wlgBulkDeleteBtn  = document.getElementById('wlgBulkDeleteBtn');
+const wlgClearSelectionBtn = document.getElementById('wlgClearSelectionBtn');
 const tractorInput = document.getElementById('tractor');
 const descInput   = document.getElementById('description');
 const formError   = document.getElementById('formError');
@@ -807,8 +812,14 @@ function renderSampleDepthCell(s) {
 
 
 function renderWorkLogGerkRows(rows) {
+  // Prune any selected code that no longer has a row (GERK removed,
+  // order reloaded) so the selection bar's count never lies.
+  const validCodes = new Set(rows.map(r => r.code));
+  for (const code of selectedGerkCodes) if (!validCodes.has(code)) selectedGerkCodes.delete(code);
+
   if (!rows.length) {
     workLogGerkRowsEl.innerHTML = `<p class="field-hint">Ta delovni nalog nima dodanih GERKOV.</p>`;
+    updateGerkSelectionBar();
     return;
   }
   workLogGerkRowsEl.innerHTML = rows.map(r => {
@@ -826,6 +837,7 @@ function renderWorkLogGerkRows(rows) {
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info" data-action="wlg-highlight-map">
           <span class="wlg-code-line">
+            ${currentRole === 'admin' ? `<input type="checkbox" class="wlg-select-checkbox" data-action="wlg-select" data-code="${escHtml(r.code)}" aria-label="Izberi GERK" ${selectedGerkCodes.has(r.code) ? 'checked' : ''}>` : ''}
             <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
             <span class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></span>
             ${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}
@@ -868,6 +880,7 @@ function renderWorkLogGerkRows(rows) {
   }).join('');
 
   wireGerkRowButtons();
+  updateGerkSelectionBar();
 }
 
 // Admins can always see + add segments (even zero today — that's the
@@ -961,10 +974,12 @@ let currentRoadTimeEntries = [];
 let currentAllGerkEntries  = []; // every operator's work_log_gerks for this work order — powers the "who else worked on this" view
 let currentCapturedPoints  = []; // gerk_captured_point rows for this work order — the right-side map capture panel
 let currentGerkSegments    = []; // get_work_order_gerk_segments rows — one per imported zone, powers the per-GERK badge + map layer
+let selectedGerkCodes      = new Set(); // admin-only multi-select on the GERK list, powers the contextual selection bar
 
 async function openWorkOrderDetail(workOrder) {
   currentDetailWorkOrder  = workOrder;
   currentDetailDate       = todayISO();
+  selectedGerkCodes       = new Set();
 
   modalTitle.textContent = workOrder.stevilka || 'Delovni nalog';
   hideFormFeedback();
@@ -1723,6 +1738,13 @@ async function saveGerkEdit(btn) {
 }
 
 function wireGerkRowButtons() {
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-select"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedGerkCodes.add(cb.dataset.code);
+      else selectedGerkCodes.delete(cb.dataset.code);
+      updateGerkSelectionBar();
+    });
+  });
   workLogGerkRowsEl.querySelectorAll('[data-action="wlg-start"]').forEach(btn => {
     btn.addEventListener('click', () => startGerk(btn));
   });
@@ -1878,6 +1900,164 @@ async function removeGerkFromOrder(btn) {
   // touches the map layers.
   await showWoDetailMap(currentDetailWorkOrder);
 }
+
+// ── GERK selection bar (admin-only multi-select on the detail view) ──
+function updateGerkSelectionBar() {
+  const n = selectedGerkCodes.size;
+  wlgSelectionBar.hidden = n === 0;
+  if (n > 0) wlgSelectionCount.textContent = `${n} ${n === 1 ? 'izbran' : 'izbranih'}`;
+}
+
+function clearGerkSelection() {
+  selectedGerkCodes = new Set();
+  workLogGerkRowsEl.querySelectorAll('[data-action="wlg-select"]').forEach(cb => { cb.checked = false; });
+  updateGerkSelectionBar();
+}
+
+// Same two guards as the single-row remove (samples/segments, logged
+// time) — checked in bulk up front instead of one row at a time, so a
+// batch with a mix of removable/blocked GERKs still removes whichever
+// it safely can rather than refusing the whole thing.
+async function bulkDeleteSelectedGerks() {
+  const codes = [...selectedGerkCodes];
+  if (!codes.length) return;
+
+  const rows = codes
+    .map(code => (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === code))
+    .filter(Boolean);
+  if (!rows.length) return;
+
+  if (!confirm(`Odstranim ${rows.length} izbranih GERKOV iz naloga?`)) return;
+
+  wlgBulkDeleteBtn.disabled = true;
+  try {
+    const ids = rows.map(g => g.id);
+    const { data: sampleRows } = await supabase
+      .from('delovni_nalogi_vzorci')
+      .select('delovni_nalog_gerk_id')
+      .in('delovni_nalog_gerk_id', ids);
+    const idsWithSamples = new Set((sampleRows || []).map(s => s.delovni_nalog_gerk_id));
+
+    const removable = [];
+    const blocked = [];
+    for (const gerk of rows) {
+      const hasLoggedTime = currentAllGerkEntries.some(e => e.gerk_code === gerk.gerk_code && (e.start_time || e.completed));
+      if (idsWithSamples.has(gerk.id) || hasLoggedTime) blocked.push(gerk.gerk_code);
+      else removable.push(gerk);
+    }
+
+    if (!removable.length) {
+      showFormError('Noben izmed izbranih GERKOV ni mogoče odstraniti — imajo segmente ali zabeležen čas.');
+      return;
+    }
+
+    const { error } = await supabase.from('delovni_nalogi_gerki').delete().in('id', removable.map(g => g.id));
+    if (error) throw error;
+
+    const removedIds = new Set(removable.map(g => g.id));
+    currentDetailWorkOrder.delovni_nalogi_gerki = (currentDetailWorkOrder.delovni_nalogi_gerki || []).filter(g => !removedIds.has(g.id));
+    clearGerkSelection();
+    await loadDetailForDate();
+    await loadWorkOrders();
+    await showWoDetailMap(currentDetailWorkOrder);
+    showFormSuccess(`✓ ${removable.length} GERKOV odstranjenih.` + (blocked.length ? ` Preskočenih (segmenti/čas): ${blocked.join(', ')}.` : ''));
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri odstranjevanju.');
+  } finally {
+    wlgBulkDeleteBtn.disabled = false;
+  }
+}
+
+function downloadTextFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function kmlRingCoords(ring) {
+  return ring.map(([lng, lat]) => `${lng},${lat},0`).join(' ');
+}
+function kmlPolygon(coordinates) {
+  // coordinates[0] is the outer ring — inner rings (holes) aren't used
+  // by any shape in this app, so they're not carried into the export.
+  return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${kmlRingCoords(coordinates[0])}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+}
+function geojsonToKmlGeometry(geojson) {
+  if (!geojson) return '';
+  if (geojson.type === 'Polygon') return kmlPolygon(geojson.coordinates);
+  if (geojson.type === 'MultiPolygon') return `<MultiGeometry>${geojson.coordinates.map(kmlPolygon).join('')}</MultiGeometry>`;
+  return '';
+}
+function buildKmlDocument(features) {
+  const placemarks = features.map(f => `
+    <Placemark>
+      <name>${escHtml(f.name)}</name>
+      ${geojsonToKmlGeometry(f.geojson)}
+    </Placemark>`).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>${placemarks}
+</Document></kml>`;
+}
+
+// A Leaflet GeoJSON layer's own toGeoJSON() wraps its geometry in a
+// Feature (single sub-layer) or FeatureCollection (more than one) —
+// normalizing here so callers always just get the bare geometry.
+function layerGeometry(layer) {
+  const gj = layer.toGeoJSON();
+  if (gj.type === 'FeatureCollection') return gj.features[0]?.geometry ?? null;
+  if (gj.type === 'Feature') return gj.geometry;
+  return gj;
+}
+
+// Exports whatever geometry is already drawn on the map for each
+// selected GERK — its official boundary shape when it has one,
+// otherwise its imported KML zones (a text-named GERK with no
+// registry polygon has only those). A GERK with neither is skipped
+// and called out in the result message rather than silently dropped.
+function exportSelectedGerksToKml() {
+  const codes = [...selectedGerkCodes];
+  if (!codes.length) return;
+
+  const features = [];
+  const skipped = [];
+  for (const code of codes) {
+    const entry = woMapLayersByCode.get(code);
+    if (entry?.shape) {
+      const geojson = layerGeometry(entry.shape);
+      if (geojson) features.push({ name: code, geojson });
+      else skipped.push(code);
+    } else if (entry?.zoneLayers?.length) {
+      for (const layer of entry.zoneLayers) {
+        const geojson = layerGeometry(layer);
+        if (!geojson) continue;
+        const label = layer.getTooltip?.()?.getContent() || '';
+        features.push({ name: `${code} · ${label}`.trim(), geojson });
+      }
+    } else {
+      skipped.push(code);
+    }
+  }
+
+  if (!features.length) {
+    showFormError('Noben izbran GERK nima geometrije za izvoz.');
+    return;
+  }
+
+  const kml = buildKmlDocument(features);
+  const filename = `${(currentDetailWorkOrder?.stevilka || 'gerki').replace(/[^\w.-]+/g, '_')}_export.kml`;
+  downloadTextFile(filename, kml, 'application/vnd.google-earth.kml+xml');
+  showFormSuccess(`✓ Izvoženih ${features.length} ${features.length === 1 ? 'oblika' : 'oblik'} v KML.` + (skipped.length ? ` Brez geometrije: ${skipped.join(', ')}.` : ''));
+}
+
+wlgExportKmlBtn.addEventListener('click', exportSelectedGerksToKml);
+wlgBulkDeleteBtn.addEventListener('click', bulkDeleteSelectedGerks);
+wlgClearSelectionBtn.addEventListener('click', clearGerkSelection);
 
 async function updateSampleNo(inputEl) {
   const sampleId = inputEl.dataset.sampleId;
