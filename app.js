@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.96';
+const APP_VERSION = 'v1.97';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -128,6 +128,8 @@ const operatorsAddForm    = document.getElementById('operatorsAddForm');
 const newOperatorName     = document.getElementById('newOperatorName');
 const newOperatorEmail    = document.getElementById('newOperatorEmail');
 const newOperatorPassword = document.getElementById('newOperatorPassword');
+const newOperatorRole     = document.getElementById('newOperatorRole');
+const newOperatorOrg      = document.getElementById('newOperatorOrg');
 const operatorsAddConfirmBtn = document.getElementById('operatorsAddConfirmBtn');
 const operatorsAddCancelBtn  = document.getElementById('operatorsAddCancelBtn');
 
@@ -2811,18 +2813,29 @@ async function renderOperatorsList() {
   if (error) { showOperatorsError(error.message || 'Napaka pri nalaganju.'); return; }
 
   const isAdmin = currentRole === 'admin';
+  const ROLE_LABELS = { admin: 'Administrator', supervisor: 'Srednji nivo', operator: 'Navadni uporabnik' };
   operatorsListEl.innerHTML = (data || []).map(p => `
-    <div class="operator-row">
-      <label class="wo-gerk-check-item">
-        <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
-        <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
-        <span class="wo-gerk-check-name">${escHtml(p.email || '')}</span>
-      </label>
+    <div class="operator-block">
+      <div class="operator-row">
+        <label class="wo-gerk-check-item">
+          <input type="checkbox" class="operator-eligible-checkbox" data-profile-id="${escHtml(p.id)}" ${p.eligible_izvajalec ? 'checked' : ''}>
+          <span class="wo-gerk-check-code">${escHtml(p.full_name || '—')}</span>
+          <span class="wo-gerk-check-name">${escHtml(p.email || '')}</span>
+        </label>
+        ${isAdmin ? `
+        <div class="operator-row-actions">
+          <button type="button" class="btn btn-icon" data-action="operator-reset-pw" data-email="${escHtml(p.email)}" data-name="${escHtml(p.full_name || '')}" aria-label="Ponastavi geslo" title="Ponastavi geslo">🔑</button>
+          <button type="button" class="btn btn-icon" data-action="operator-delete" data-email="${escHtml(p.email)}" aria-label="Izbriši uporabnika" title="Izbriši uporabnika">🗑</button>
+        </div>` : ''}
+      </div>
       ${isAdmin ? `
-      <div class="operator-row-actions">
-        <button type="button" class="btn btn-icon" data-action="operator-reset-pw" data-email="${escHtml(p.email)}" data-name="${escHtml(p.full_name || '')}" aria-label="Ponastavi geslo" title="Ponastavi geslo">🔑</button>
-        <button type="button" class="btn btn-icon" data-action="operator-delete" data-email="${escHtml(p.email)}" aria-label="Izbriši uporabnika" title="Izbriši uporabnika">🗑</button>
-      </div>` : ''}
+      <div class="operator-meta-row" data-profile-id="${escHtml(p.id)}">
+        <select class="operator-role-select" data-profile-id="${escHtml(p.id)}">
+          ${Object.entries(ROLE_LABELS).map(([v, label]) => `<option value="${v}"${p.role === v ? ' selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <input type="text" class="operator-org-input" data-profile-id="${escHtml(p.id)}" placeholder="Organizacija" value="${escHtml(p.organization || '')}" ${p.role === 'admin' ? 'hidden' : ''}>
+      </div>` : `
+      <div class="operator-meta-row operator-meta-row--readonly">${ROLE_LABELS[p.role] || p.role || '—'}${p.organization ? ` · ${escHtml(p.organization)}` : ''}</div>`}
     </div>`).join('');
 
   operatorsListEl.querySelectorAll('.operator-eligible-checkbox').forEach(cb => {
@@ -2834,6 +2847,45 @@ async function renderOperatorsList() {
   operatorsListEl.querySelectorAll('[data-action="operator-delete"]').forEach(btn => {
     btn.addEventListener('click', () => deleteOperatorRow(btn));
   });
+  operatorsListEl.querySelectorAll('.operator-role-select').forEach(sel => {
+    sel.addEventListener('change', () => updateOperatorRoleOrg(sel));
+  });
+  operatorsListEl.querySelectorAll('.operator-org-input').forEach(input => {
+    input.addEventListener('change', () => updateOperatorRoleOrg(input));
+  });
+}
+
+// Shared by both the role <select> and the organization <input> in a
+// row's meta line — whichever fired, read the CURRENT value of both
+// (they're siblings under the same .operator-meta-row) and save both
+// together, since set_operator_role_org always sets the full pair.
+async function updateOperatorRoleOrg(el) {
+  const profileId = el.dataset.profileId;
+  const metaRow = el.closest('.operator-meta-row');
+  const roleSel = metaRow.querySelector('.operator-role-select');
+  const orgInput = metaRow.querySelector('.operator-org-input');
+  const role = roleSel.value;
+  const org  = orgInput.value.trim() || null;
+
+  if (role === 'supervisor' && !org) {
+    showOperatorsError('Za srednji nivo (vodjo) vpišite organizacijo.');
+    return;
+  }
+
+  el.disabled = true;
+  try {
+    const { error } = await supabase.rpc('set_operator_role_org', {
+      p_profile_id: profileId, p_role: role, p_organization: org,
+    });
+    if (error) throw error;
+    orgInput.hidden = role === 'admin';
+    if (role === 'admin') orgInput.value = '';
+  } catch (e) {
+    showOperatorsError(e.message || 'Napaka pri shranjevanju.');
+    await renderOperatorsList(); // revert to last known-good state
+  } finally {
+    el.disabled = false;
+  }
 }
 
 async function setOperatorEligibility(cb) {
@@ -2858,16 +2910,35 @@ function toggleAddOperatorForm(show) {
     newOperatorName.value = '';
     newOperatorEmail.value = '';
     newOperatorPassword.value = '';
+    newOperatorRole.value = 'operator';
+    newOperatorOrg.value = '';
+    updateNewOperatorOrgHint();
     newOperatorName.focus();
   }
 }
+
+// Admin needs no organization (sees everything); supervisor requires
+// one (it's what scopes who they supervise); operator's is optional
+// (plenty of operators aren't under any supervisor's org at all).
+function updateNewOperatorOrgHint() {
+  const role = newOperatorRole.value;
+  newOperatorOrg.hidden = role === 'admin';
+  newOperatorOrg.placeholder = role === 'supervisor' ? 'Organizacija (obvezno)' : 'Organizacija (neobvezno)';
+}
+newOperatorRole.addEventListener('change', updateNewOperatorOrgHint);
 
 async function createOperatorFromForm() {
   const fullName = newOperatorName.value.trim();
   const email    = newOperatorEmail.value.trim();
   const password = newOperatorPassword.value;
+  const role     = newOperatorRole.value;
+  const org      = newOperatorOrg.value.trim() || null;
   if (!fullName || !email || !password) {
     showOperatorsError('Izpolnite ime, e-pošto in geslo.');
+    return;
+  }
+  if (role === 'supervisor' && !org) {
+    showOperatorsError('Za srednji nivo (vodjo) vpišite organizacijo.');
     return;
   }
 
@@ -2875,6 +2946,7 @@ async function createOperatorFromForm() {
   try {
     const { error } = await supabase.rpc('create_operator', {
       p_email: email, p_password: password, p_full_name: fullName,
+      p_role: role, p_organization: org,
     });
     if (error) throw error;
     toggleAddOperatorForm(false);

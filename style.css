@@ -1836,18 +1836,32 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-gerk-check-item:hover { background: var(--blue-50); }
 
 /* Izvajalci list rows, admin variant: the existing check-item label
-   plus a pair of per-row action icons — border-bottom moves to this
-   outer wrapper so :last-child still lands on the real last row once
-   the label is no longer the direct child of .wo-gerk-checklist. */
+   plus a pair of per-row action icons, and a second "meta" row below
+   for role/organization — border-bottom moves to the outer .operator-block
+   wrapper so :last-child still lands on the real last user once each
+   user spans two rows instead of one. */
+.operator-block { border-bottom: 1px solid var(--border-light); }
+.operator-block:last-child { border-bottom: none; }
 .operator-row {
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--border-light);
 }
-.operator-row:last-child { border-bottom: none; }
 .operator-row .wo-gerk-check-item { flex: 1; min-width: 0; border-bottom: none; }
 .operator-row-actions { display: flex; align-items: center; gap: 2px; padding-right: 8px; flex-shrink: 0; }
 .operator-row-actions .btn-icon { width: 32px; height: 32px; font-size: .9375rem; }
+
+.operator-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px 40px;
+}
+.operator-meta-row .operator-role-select { flex: 0 0 auto; width: auto; font-size: .8125rem; padding: 4px 6px; }
+.operator-meta-row .operator-org-input { flex: 1; min-width: 0; font-size: .8125rem; padding: 4px 6px; }
+.operator-meta-row--readonly {
+  color: var(--text-muted);
+  font-size: .8125rem;
+}
 
 .operators-add-wrap { margin-bottom: 10px; }
 .operators-add-form {

@@ -507,6 +507,12 @@
                  setting someone else's password and needs to read it
                  back to send it on, not hide their own input. -->
             <input class="field-input" type="text" id="newOperatorPassword" placeholder="Geslo" autocomplete="off">
+            <select class="field-input" id="newOperatorRole">
+              <option value="operator">Navadni uporabnik</option>
+              <option value="supervisor">Srednji nivo (vodja organizacije)</option>
+              <option value="admin">Administrator</option>
+            </select>
+            <input class="field-input" type="text" id="newOperatorOrg" placeholder="Organizacija (neobvezno)" autocomplete="off">
             <div class="operators-add-actions">
               <button type="button" class="btn btn-primary btn-sm" id="operatorsAddConfirmBtn">Ustvari</button>
               <button type="button" class="btn btn-secondary btn-sm" id="operatorsAddCancelBtn">Prekliči</button>
