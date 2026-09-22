@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.97';
+const APP_VERSION = 'v1.98';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -57,8 +57,7 @@ const woImportZonesWrap = document.getElementById('woImportZonesWrap');
 const woKmlInput = document.getElementById('woKmlInput');
 const woImportZonesPickBtn = document.getElementById('woImportZonesPickBtn');
 const woImportZonesForm = document.getElementById('woImportZonesForm');
-const woImportZonesFilename = document.getElementById('woImportZonesFilename');
-const woImportZonesGerk = document.getElementById('woImportZonesGerk');
+const woImportZonesFiles = document.getElementById('woImportZonesFiles');
 const woImportZonesGerkList = document.getElementById('woImportZonesGerkList');
 const woImportZonesType = document.getElementById('woImportZonesType');
 const woImportZonesGlobina = document.getElementById('woImportZonesGlobina');
@@ -169,8 +168,7 @@ const woNewImportZonesWrap      = document.getElementById('woNewImportZonesWrap'
 const woNewKmlInput             = document.getElementById('woNewKmlInput');
 const woNewImportZonesPickBtn   = document.getElementById('woNewImportZonesPickBtn');
 const woNewImportZonesForm      = document.getElementById('woNewImportZonesForm');
-const woNewImportZonesFilename  = document.getElementById('woNewImportZonesFilename');
-const woNewImportZonesGerk      = document.getElementById('woNewImportZonesGerk');
+const woNewImportZonesFiles     = document.getElementById('woNewImportZonesFiles');
 const woNewImportZonesGerkList  = document.getElementById('woNewImportZonesGerkList');
 const woNewImportZonesType      = document.getElementById('woNewImportZonesType');
 const woNewImportZonesGlobina   = document.getElementById('woNewImportZonesGlobina');
@@ -1124,7 +1122,7 @@ async function showWoDetailMap(workOrder) {
   woCaptureList.innerHTML = '';
   woCaptureError.hidden = true;
   woCaptureShowPoints.checked = true;
-  pendingKmlSegments = null;
+  pendingKmlImports = [];
   woImportZonesForm.hidden = true;
   woImportZonesError.hidden = true;
   woMapHasFitBounds = false;
@@ -2397,124 +2395,170 @@ async function confirmReplaceExistingSegmentation(gerkCode, type) {
 // Top-level (one instance per work order, above the GERK list) rather
 // than per-row — importing enriches the matching GERK if it's already
 // on this order, or adds it first if not, so it can't be scoped to a
-// row that might not exist yet.
-let pendingKmlSegments = null;
+// row that might not exist yet. One entry per selected file — Type/
+// Globina/Date are shared across the whole batch (importing several
+// KMLs in one go is normally the same kind of segmentation, same day),
+// but each file gets its own target GERK since one file = one field.
+let pendingKmlImports = [];
 
 function showKmlImportError(msg) {
   woImportZonesError.textContent = msg;
   woImportZonesError.hidden = false;
 }
 
+function renderKmlImportFiles() {
+  woImportZonesFiles.innerHTML = pendingKmlImports.map((imp, i) => `
+    <div class="wlg-import-zones-file-row">
+      <span class="wlg-import-zones-filename">${escHtml(imp.file.name)} (${imp.segments.length} ${imp.segments.length === 1 ? 'cona' : 'cone'})</span>
+      <input type="text" class="sample-field-input wlg-import-zones-file-gerk" data-index="${i}" placeholder="GERK" list="woImportZonesGerkList" autocomplete="off" value="${escHtml(imp.gerkCode)}">
+      ${pendingKmlImports.length > 1 ? `<button type="button" class="btn btn-icon wlg-import-zones-file-remove" data-index="${i}" aria-label="Odstrani datoteko" title="Odstrani datoteko">✕</button>` : ''}
+    </div>`).join('');
+  woImportZonesFiles.querySelectorAll('.wlg-import-zones-file-gerk').forEach(inp => {
+    inp.addEventListener('change', () => { pendingKmlImports[parseInt(inp.dataset.index, 10)].gerkCode = inp.value.trim(); });
+  });
+  woImportZonesFiles.querySelectorAll('.wlg-import-zones-file-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pendingKmlImports.splice(parseInt(btn.dataset.index, 10), 1);
+      if (!pendingKmlImports.length) { cancelKmlImport(); return; }
+      renderKmlImportFiles();
+    });
+  });
+}
+
 async function onKmlFileSelected(input) {
-  const file = input.files[0];
-  input.value = ''; // allow re-selecting the same file afterward
-  if (!file) return;
+  const files = Array.from(input.files);
+  input.value = ''; // allow re-selecting the same file(s) afterward
+  if (!files.length) return;
   woImportZonesError.hidden = true;
 
-  try {
-    const text = await file.text();
-    const { segments, detectedGerkId } = parseKmlSegments(text);
-    pendingKmlSegments = segments;
-    woImportZonesFilename.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
-    // Pre-fill from the file's own Schema/Folder name when found — still
-    // just a starting guess, editable, not trusted outright (see
-    // parseKmlSegments' comment on why it isn't a real labeled field).
-    woImportZonesGerk.value = detectedGerkId || '';
-    // GERK codes are free text now, so typing one that doesn't exactly
-    // match this order's existing GERK silently creates zone data that
-    // never links to anything and never renders — offering the real
-    // codes here (not just a placeholder guess) is the actual fix.
-    woImportZonesGerkList.innerHTML = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
-      .map(g => `<option value="${escHtml(g.gerk_code)}">`).join('');
-    woImportZonesType.value = 'vzorčenje';
-    woImportZonesGlobina.value = '';
-    updateImportZonesGlobinaVisibility();
-    woImportZonesDate.value = todayISO();
-    woImportZonesForm.hidden = false;
-  } catch (e) {
-    showKmlImportError(e.message || 'Napaka pri branju KML datoteke.');
+  const parseErrors = [];
+  pendingKmlImports = [];
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const { segments, detectedGerkId } = parseKmlSegments(text);
+      // Pre-fill from the file's own Schema/Folder name when found —
+      // still just a starting guess, editable, not trusted outright
+      // (see parseKmlSegments' comment on why it isn't a real labeled
+      // field).
+      pendingKmlImports.push({ file, segments, gerkCode: detectedGerkId || '' });
+    } catch (e) {
+      parseErrors.push(`${file.name}: ${e.message || 'napaka pri branju'}`);
+    }
   }
+  if (parseErrors.length) showKmlImportError(parseErrors.join(' | '));
+  if (!pendingKmlImports.length) { woImportZonesForm.hidden = true; return; }
+
+  // GERK codes are free text now, so typing one that doesn't exactly
+  // match this order's existing GERK silently creates zone data that
+  // never links to anything and never renders — offering the real
+  // codes here (not just a placeholder guess) is the actual fix.
+  woImportZonesGerkList.innerHTML = (currentDetailWorkOrder.delovni_nalogi_gerki || [])
+    .map(g => `<option value="${escHtml(g.gerk_code)}">`).join('');
+  renderKmlImportFiles();
+  woImportZonesType.value = 'vzorčenje';
+  woImportZonesGlobina.value = '';
+  updateImportZonesGlobinaVisibility();
+  woImportZonesDate.value = todayISO();
+  woImportZonesForm.hidden = false;
 }
 
 function cancelKmlImport() {
-  pendingKmlSegments = null;
+  pendingKmlImports = [];
   woImportZonesForm.hidden = true;
 }
 
 async function confirmKmlImport(btn) {
-  const segments = pendingKmlSegments;
-  if (!segments || !currentDetailWorkOrder) return;
+  if (!pendingKmlImports.length || !currentDetailWorkOrder) return;
 
-  const gerkCode  = woImportZonesGerk.value.trim();
   const type      = woImportZonesType.value.trim();
   const validFrom = woImportZonesDate.value;
   woImportZonesError.hidden = true;
-  if (!gerkCode)  { showKmlImportError('Vpišite GERK (številko ali ime polja).'); return; }
   if (!type)      { showKmlImportError('Vpišite tip segmentacije.'); return; }
   if (!validFrom) { showKmlImportError('Izberite datum veljavnosti.'); return; }
+  if (pendingKmlImports.some(imp => !imp.gerkCode.trim())) { showKmlImportError('Vpišite GERK za vsako datoteko.'); return; }
+
+  // Globina only applies for Vzorčenje imports, and the one value
+  // picked here is applied to every segment every file in this batch
+  // creates.
+  const globina = type === 'vzorčenje' && woImportZonesGlobina.value ? parseInt(woImportZonesGlobina.value, 10) : null;
 
   btn.disabled = true;
+  let importedFiles = 0, importedZones = 0;
+  const errors = [];
   try {
-    if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) return;
+    for (const imp of pendingKmlImports) {
+      const gerkCode = imp.gerkCode.trim();
+      try {
+        if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) continue;
 
-    let gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === gerkCode);
-    if (!gerk) {
-      // No format requirement — a known field's own area is used when
-      // there is one, a plain string name (not in the registry at all)
-      // works too, same as adding a GERK anywhere else in the app.
-      const known = (await supabase.from('fields').select('id, area_ha')
-        .eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', gerkCode).maybeSingle()).data;
-      const { data, error } = await supabase
-        .from('delovni_nalogi_gerki')
-        .insert({
-          delovni_nalog_id: currentDetailWorkOrder.id,
-          gerk_code:        gerkCode,
-          kolicina_ha:      known?.area_ha ?? null,
-        })
-        .select('id, gerk_code, kolicina_ha, lokacija, tip_lab_analize')
-        .single();
-      if (error) throw error;
-      if (known?.id) {
-        const { error: fieldIdError } = await supabase.from('delovni_nalogi_gerki').update({ field_id: known.id }).eq('id', data.id);
-        if (fieldIdError) console.warn('field_id backfill failed for', gerkCode, fieldIdError);
+        let gerk = (currentDetailWorkOrder.delovni_nalogi_gerki || []).find(g => g.gerk_code === gerkCode);
+        if (!gerk) {
+          // No format requirement — a known field's own area is used when
+          // there is one, a plain string name (not in the registry at all)
+          // works too, same as adding a GERK anywhere else in the app.
+          const known = (await supabase.from('fields').select('id, area_ha')
+            .eq('customer_id', currentDetailWorkOrder.stranka_id).eq('cadastre_id', gerkCode).maybeSingle()).data;
+          const { data, error } = await supabase
+            .from('delovni_nalogi_gerki')
+            .insert({
+              delovni_nalog_id: currentDetailWorkOrder.id,
+              gerk_code:        gerkCode,
+              kolicina_ha:      known?.area_ha ?? null,
+            })
+            .select('id, gerk_code, kolicina_ha, lokacija, tip_lab_analize')
+            .single();
+          if (error) throw error;
+          if (known?.id) {
+            const { error: fieldIdError } = await supabase.from('delovni_nalogi_gerki').update({ field_id: known.id }).eq('id', data.id);
+            if (fieldIdError) console.warn('field_id backfill failed for', gerkCode, fieldIdError);
+          }
+          gerk = { ...data, delovni_nalogi_vzorci: [] };
+          currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), gerk];
+        }
+
+        const { error: importError } = await supabase.rpc('import_gerk_segmentation', {
+          p_gerk_id:    gerkCode,
+          p_type:       type,
+          p_valid_from: validFrom,
+          p_segments:   imp.segments,
+        });
+        if (importError) throw importError;
+
+        // Each imported zone also becomes its own segment (delovni_nalogi_vzorci
+        // row) on this GERK — its label (e.g. "10734") as the segment number —
+        // so it shows up in the same segment list as manually/pasted-in ones,
+        // not only as a shape on the map. Skips any label already present
+        // (re-importing the same file, or one already added by hand).
+        const existingSegmentNos = new Set((gerk.delovni_nalogi_vzorci || []).map(s => s.sample_no));
+        const newSegmentRows = imp.segments
+          .map(s => s.label)
+          .filter(label => !existingSegmentNos.has(label))
+          .map(label => ({ delovni_nalog_gerk_id: gerk.id, sample_no: label, sampling_depth_cm: globina }));
+        if (newSegmentRows.length) {
+          const { error: segError } = await supabase.from('delovni_nalogi_vzorci').insert(newSegmentRows);
+          if (segError) console.warn('Napaka pri dodajanju segmentov iz uvoženih con:', segError);
+        }
+
+        importedFiles++;
+        importedZones += imp.segments.length;
+      } catch (e) {
+        errors.push(`${gerkCode || imp.file.name}: ${e.message || 'napaka'}`);
       }
-      gerk = { ...data, delovni_nalogi_vzorci: [] };
-      currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), gerk];
     }
 
-    const { error: importError } = await supabase.rpc('import_gerk_segmentation', {
-      p_gerk_id:    gerkCode,
-      p_type:       type,
-      p_valid_from: validFrom,
-      p_segments:   segments,
-    });
-    if (importError) throw importError;
-
-    // Each imported zone also becomes its own segment (delovni_nalogi_vzorci
-    // row) on this GERK — its label (e.g. "10734") as the segment number —
-    // so it shows up in the same segment list as manually/pasted-in ones,
-    // not only as a shape on the map. Skips any label already present
-    // (re-importing the same file, or one already added by hand). Globina
-    // only applies for Vzorčenje imports, and the one value picked here
-    // is applied to every segment this import creates at once.
-    const globina = type === 'vzorčenje' && woImportZonesGlobina.value ? parseInt(woImportZonesGlobina.value, 10) : null;
-    const existingSegmentNos = new Set((gerk.delovni_nalogi_vzorci || []).map(s => s.sample_no));
-    const newSegmentRows = segments
-      .map(s => s.label)
-      .filter(label => !existingSegmentNos.has(label))
-      .map(label => ({ delovni_nalog_gerk_id: gerk.id, sample_no: label, sampling_depth_cm: globina }));
-    if (newSegmentRows.length) {
-      const { error: segError } = await supabase.from('delovni_nalogi_vzorci').insert(newSegmentRows);
-      if (segError) console.warn('Napaka pri dodajanju segmentov iz uvoženih con:', segError);
+    if (importedFiles) {
+      cancelKmlImport();
+      showFormSuccess(
+        `✓ ${importedZones} ${importedZones === 1 ? 'cona' : 'cone'} uvoženih iz ${importedFiles} ${importedFiles === 1 ? 'datoteke' : 'datotek'}.` +
+        (errors.length ? ` Napake: ${errors.join(' | ')}` : '')
+      );
+      await loadDetailForDate();
+      await loadWorkOrders();
+      await showWoDetailMap(currentDetailWorkOrder); // draw the newly imported zones (and any GERK's own shape, if it was just added)
+    } else if (errors.length) {
+      showKmlImportError(errors.join(' | '));
     }
-
-    cancelKmlImport();
-    showFormSuccess(`✓ ${segments.length} ${segments.length === 1 ? 'cona' : 'cone'} uvoženih (GERK ${gerkCode}).`);
-    await loadDetailForDate();
-    await loadWorkOrders();
-    await showWoDetailMap(currentDetailWorkOrder); // draw the newly imported zones (and the GERK's own shape, if it was just added)
-  } catch (e) {
-    showKmlImportError(e.message || 'Napaka pri uvozu con.');
   } finally {
     btn.disabled = false;
   }
@@ -3541,8 +3585,9 @@ function ensureGerkRowForPaste(code, hectares) {
 // submit. Globina (Vzorčenje imports only) doesn't have a per-segment
 // slot at this stage — it feeds the existing "Globina (za vse
 // segmente)" bulk select instead, same mechanism the create form
-// already uses to apply depth to every segment at save time.
-let pendingNewKmlSegments = null;
+// already uses to apply depth to every segment at save time. One
+// entry per selected file, same batch model as the detail-view import.
+let pendingNewKmlImports = [];
 
 function showNewKmlImportError(msg) {
   woNewImportZonesError.textContent = msg;
@@ -3555,72 +3600,105 @@ function updateNewImportZonesGlobinaVisibility() {
   if (!isSampling) woNewImportZonesGlobina.value = '';
 }
 
+function renderNewKmlImportFiles() {
+  woNewImportZonesFiles.innerHTML = pendingNewKmlImports.map((imp, i) => `
+    <div class="wlg-import-zones-file-row">
+      <span class="wlg-import-zones-filename">${escHtml(imp.file.name)} (${imp.segments.length} ${imp.segments.length === 1 ? 'cona' : 'cone'})</span>
+      <input type="text" class="sample-field-input wlg-import-zones-file-gerk" data-index="${i}" placeholder="GERK" list="woNewImportZonesGerkList" autocomplete="off" value="${escHtml(imp.gerkCode)}">
+      ${pendingNewKmlImports.length > 1 ? `<button type="button" class="btn btn-icon wlg-import-zones-file-remove" data-index="${i}" aria-label="Odstrani datoteko" title="Odstrani datoteko">✕</button>` : ''}
+    </div>`).join('');
+  woNewImportZonesFiles.querySelectorAll('.wlg-import-zones-file-gerk').forEach(inp => {
+    inp.addEventListener('change', () => { pendingNewKmlImports[parseInt(inp.dataset.index, 10)].gerkCode = inp.value.trim(); });
+  });
+  woNewImportZonesFiles.querySelectorAll('.wlg-import-zones-file-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pendingNewKmlImports.splice(parseInt(btn.dataset.index, 10), 1);
+      if (!pendingNewKmlImports.length) { cancelNewKmlImport(); return; }
+      renderNewKmlImportFiles();
+    });
+  });
+}
+
 async function onNewKmlFileSelected(input) {
-  const file = input.files[0];
+  const files = Array.from(input.files);
   input.value = '';
-  if (!file) return;
+  if (!files.length) return;
   woNewImportZonesError.hidden = true;
 
-  try {
-    const text = await file.text();
-    const { segments, detectedGerkId } = parseKmlSegments(text);
-    pendingNewKmlSegments = segments;
-    woNewImportZonesFilename.textContent = `${file.name} (${segments.length} ${segments.length === 1 ? 'cona' : 'cone'})`;
-    woNewImportZonesGerk.value = detectedGerkId || '';
-    // Same reasoning as the detail-view import — offer the GERK codes
-    // already staged on this form so far, so typing one that doesn't
-    // exactly match doesn't silently create orphaned zone data.
-    woNewImportZonesGerkList.innerHTML = getFormGerks(woGerksListEl)
-      .map(g => `<option value="${escHtml(g.code)}">`).join('');
-    woNewImportZonesType.value = 'vzorčenje';
-    woNewImportZonesGlobina.value = '';
-    updateNewImportZonesGlobinaVisibility();
-    woNewImportZonesDate.value = todayISO();
-    woNewImportZonesForm.hidden = false;
-  } catch (e) {
-    showNewKmlImportError(e.message || 'Napaka pri branju KML datoteke.');
+  const parseErrors = [];
+  pendingNewKmlImports = [];
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const { segments, detectedGerkId } = parseKmlSegments(text);
+      pendingNewKmlImports.push({ file, segments, gerkCode: detectedGerkId || '' });
+    } catch (e) {
+      parseErrors.push(`${file.name}: ${e.message || 'napaka pri branju'}`);
+    }
   }
+  if (parseErrors.length) showNewKmlImportError(parseErrors.join(' | '));
+  if (!pendingNewKmlImports.length) { woNewImportZonesForm.hidden = true; return; }
+
+  // Same reasoning as the detail-view import — offer the GERK codes
+  // already staged on this form so far, so typing one that doesn't
+  // exactly match doesn't silently create orphaned zone data.
+  woNewImportZonesGerkList.innerHTML = getFormGerks(woGerksListEl)
+    .map(g => `<option value="${escHtml(g.code)}">`).join('');
+  renderNewKmlImportFiles();
+  woNewImportZonesType.value = 'vzorčenje';
+  woNewImportZonesGlobina.value = '';
+  updateNewImportZonesGlobinaVisibility();
+  woNewImportZonesDate.value = todayISO();
+  woNewImportZonesForm.hidden = false;
 }
 
 function cancelNewKmlImport() {
-  pendingNewKmlSegments = null;
+  pendingNewKmlImports = [];
   woNewImportZonesForm.hidden = true;
 }
 
 async function confirmNewKmlImport(btn) {
-  const segments = pendingNewKmlSegments;
-  if (!segments) return;
+  if (!pendingNewKmlImports.length) return;
 
-  const gerkCode  = woNewImportZonesGerk.value.trim();
   const type      = woNewImportZonesType.value.trim();
   const validFrom = woNewImportZonesDate.value;
   const globina   = woNewImportZonesGlobina.value;
   woNewImportZonesError.hidden = true;
-  if (!gerkCode)  { showNewKmlImportError('Vpišite GERK (številko ali ime polja).'); return; }
   if (!type)      { showNewKmlImportError('Vpišite tip segmentacije.'); return; }
   if (!validFrom) { showNewKmlImportError('Izberite datum veljavnosti.'); return; }
+  if (pendingNewKmlImports.some(imp => !imp.gerkCode.trim())) { showNewKmlImportError('Vpišite GERK za vsako datoteko.'); return; }
 
   btn.disabled = true;
+  let importedFiles = 0;
+  const errors = [];
   try {
-    if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) return;
+    for (const imp of pendingNewKmlImports) {
+      const gerkCode = imp.gerkCode.trim();
+      try {
+        if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) continue;
 
-    const { error } = await supabase.rpc('import_gerk_segmentation', {
-      p_gerk_id:    gerkCode,
-      p_type:       type,
-      p_valid_from: validFrom,
-      p_segments:   segments,
-    });
-    if (error) throw error;
+        const { error } = await supabase.rpc('import_gerk_segmentation', {
+          p_gerk_id:    gerkCode,
+          p_type:       type,
+          p_valid_from: validFrom,
+          p_segments:   imp.segments,
+        });
+        if (error) throw error;
 
-    if (type === 'vzorčenje' && globina) woBulkDepthSel.value = globina;
+        const known = fields.find(f => f.code === gerkCode);
+        const row = ensureGerkRowForPaste(gerkCode, known?.area ?? null);
+        if (row) addGerkSegments(row, imp.segments.map(s => ({ fms: null, sampleNo: s.label, vzorcenje: null })));
 
-    const known = fields.find(f => f.code === gerkCode);
-    const row = ensureGerkRowForPaste(gerkCode, known?.area ?? null);
-    if (row) addGerkSegments(row, segments.map(s => ({ fms: null, sampleNo: s.label, vzorcenje: null })));
+        importedFiles++;
+      } catch (e) {
+        errors.push(`${gerkCode || imp.file.name}: ${e.message || 'napaka'}`);
+      }
+    }
 
-    cancelNewKmlImport();
-  } catch (e) {
-    showNewKmlImportError(e.message || 'Napaka pri uvozu con.');
+    if (type === 'vzorčenje' && globina && importedFiles) woBulkDepthSel.value = globina;
+
+    if (errors.length) showNewKmlImportError(errors.join(' | '));
+    if (importedFiles) cancelNewKmlImport(); // hides the form; errors (if any) stay visible below it
   } finally {
     btn.disabled = false;
   }
@@ -3997,10 +4075,10 @@ async function openWorkOrderModal() {
   woCustomerGerksList.innerHTML = '';
   woGerkPasteInput.value = '';
   woStevilkaLabel.textContent = 'Številka bo dodeljena samodejno ob shranjevanju';
-  pendingNewKmlSegments = null;
+  pendingNewKmlImports = [];
   woNewImportZonesForm.hidden = true;
   woNewImportZonesError.hidden = true;
-  woNewImportZonesFilename.textContent = '';
+  woNewImportZonesFiles.innerHTML = '';
 
   if (!customers.length) await loadCustomers();
   if (!operatorsList.length) await loadOperatorsList();

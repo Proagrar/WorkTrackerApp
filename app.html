@@ -209,11 +209,10 @@
           <!-- Admin only: import a KML file — enriches the matching GERK's
                row if it's already on this order, adds it first if not. -->
           <div class="wlg-import-zones" id="woImportZonesWrap" hidden>
-            <input type="file" accept=".kml" class="wlg-kml-input" id="woKmlInput" hidden>
+            <input type="file" accept=".kml" multiple class="wlg-kml-input" id="woKmlInput" hidden>
             <button type="button" class="btn btn-secondary btn-sm" id="woImportZonesPickBtn">Uvozi cone (KML)</button>
             <div class="wlg-import-zones-form" id="woImportZonesForm" hidden>
-              <span class="wlg-import-zones-filename" id="woImportZonesFilename"></span>
-              <input type="text" class="sample-field-input" id="woImportZonesGerk" placeholder="GERK" list="woImportZonesGerkList" autocomplete="off">
+              <div class="wlg-import-zones-files" id="woImportZonesFiles"></div>
               <datalist id="woImportZonesGerkList"></datalist>
               <select class="sample-field-input" id="woImportZonesType">
                 <option value="vzorčenje">Vzorčenje</option>
@@ -345,11 +344,10 @@
                away; the GERK itself is just added to the list below like
                any pasted/typed one, and saved with the rest on submit. -->
           <div class="wlg-import-zones" id="woNewImportZonesWrap">
-            <input type="file" accept=".kml" class="wlg-kml-input" id="woNewKmlInput" hidden>
+            <input type="file" accept=".kml" multiple class="wlg-kml-input" id="woNewKmlInput" hidden>
             <button type="button" class="btn btn-secondary btn-sm" id="woNewImportZonesPickBtn">Uvozi cone (KML)</button>
             <div class="wlg-import-zones-form" id="woNewImportZonesForm" hidden>
-              <span class="wlg-import-zones-filename" id="woNewImportZonesFilename"></span>
-              <input type="text" class="sample-field-input" id="woNewImportZonesGerk" placeholder="GERK" list="woNewImportZonesGerkList" autocomplete="off">
+              <div class="wlg-import-zones-files" id="woNewImportZonesFiles"></div>
               <datalist id="woNewImportZonesGerkList"></datalist>
               <select class="sample-field-input" id="woNewImportZonesType">
                 <option value="vzorčenje">Vzorčenje</option>

@@ -933,6 +933,15 @@ input, select, textarea { font-family: inherit; }
 }
 .wlg-import-zones-filename--warn { color: var(--error); font-weight: 600; }
 
+/* One row per selected file when several KMLs are imported at once —
+   each gets its own editable target GERK, since a batch import maps
+   one file to one GERK each. */
+.wlg-import-zones-files { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; }
+.wlg-import-zones-file-row { display: flex; align-items: center; gap: 6px; }
+.wlg-import-zones-file-row .wlg-import-zones-filename { flex-basis: auto; flex: 1; min-width: 0; }
+.wlg-import-zones-file-row .sample-field-input { width: 140px; flex-shrink: 0; }
+.wlg-import-zones-file-remove { width: 26px; height: 26px; font-size: .8125rem; flex-shrink: 0; }
+
 .wlg-segmentation-info { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
 
 .wlg-segmentation-icon {
