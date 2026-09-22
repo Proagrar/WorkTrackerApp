@@ -29,6 +29,10 @@
     <div class="header-user">
       <span id="operatorName" class="header-name">—</span>
       <span id="adminBadge" class="admin-badge" hidden>Admin</span>
+      <!-- Admin only: switches between full admin controls (deletes, role
+           edits, soft-delete, etc.) and a plain view with those hidden —
+           see isAdminView() in app.js. -->
+      <button id="adminViewToggle" class="admin-view-toggle" hidden></button>
       <button id="logoutBtn" class="btn btn-ghost-white btn-sm">Odjava</button>
     </div>
   </header>
@@ -102,6 +106,9 @@
                 </div>
               </div>
             </div>
+            <!-- Admin view only: switches the list to archived (soft-
+                 deleted) orders — see woShowDeletedActive in app.js. -->
+            <button type="button" id="woShowDeletedBtn" class="btn btn-secondary btn-sm wo-show-deleted-btn" hidden>🗑 Izbrisani</button>
             <div class="wo-search-wrap">
               <input type="text" id="woSearchStranka" class="wo-search-input" placeholder="Išči stranko..." autocomplete="off">
               <ul id="woSearchSuggestions" class="gerk-suggestions" hidden></ul>
@@ -184,6 +191,7 @@
 
         <button type="button" id="woReleaseBtn" class="btn btn-secondary btn-block" hidden>Sprosti nalog</button>
 
+        <span id="woDeletedBadge" class="wo-deleted-badge" hidden>🗑 Arhivirano</span>
         <p id="woHeaderMeta" class="wo-header-meta"></p>
 
         <div class="field">
@@ -272,6 +280,11 @@
 
         <div class="form-actions">
           <button type="button" id="cancelBtn" class="btn btn-secondary btn-flex">Zaključi delo</button>
+          <!-- Admin only: archive instead of hard-delete — no guard, always
+               reversible via "Obnovi". Hard delete stays for truly empty
+               orders (see its own guard in app.js). -->
+          <button type="button" id="woSoftDeleteBtn" class="btn btn-secondary btn-sm" hidden>Arhiviraj</button>
+          <button type="button" id="woRestoreBtn" class="btn btn-secondary btn-sm" hidden>Obnovi</button>
           <button type="button" id="woDeleteBtn" class="btn btn-danger btn-sm" hidden>Izbriši nalog</button>
         </div>
         </div>

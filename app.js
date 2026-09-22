@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.99';
+const APP_VERSION = 'v1.100';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -12,6 +12,13 @@ let currentUser  = null;
 let currentRole  = 'operator';
 let currentUserName = '';
 let currentOrg   = null;
+// Admin-only "act as a regular user" toggle — hides admin controls
+// (deletes, role editing, soft-delete, etc.) without changing what
+// data is visible/queried. Remembered per device; defaults to on
+// (today's behavior) the first time, so nothing changes until an
+// admin explicitly switches into Regular view.
+let adminViewActive = localStorage.getItem('adminViewActive') !== '0';
+function isAdminView() { return currentRole === 'admin' && adminViewActive; }
 let profileMap   = {};
 let logs         = [];
 let fields       = [];
@@ -34,6 +41,7 @@ const addBtn         = document.getElementById('addBtn');
 const logsList       = document.getElementById('logsList');
 const exportLogsBtn  = document.getElementById('exportLogsBtn');
 const adminBadge = document.getElementById('adminBadge');
+const adminViewToggle = document.getElementById('adminViewToggle');
 
 const monthLabel   = document.getElementById('monthLabel');
 const prevMonthBtn = document.getElementById('prevMonthBtn');
@@ -49,6 +57,9 @@ const woReleaseBtn = document.getElementById('woReleaseBtn');
 const woStatusEdit = document.getElementById('woStatusEdit');
 const woStatusBadge = document.getElementById('woStatusBadge');
 const woDeleteBtn = document.getElementById('woDeleteBtn');
+const woSoftDeleteBtn = document.getElementById('woSoftDeleteBtn');
+const woRestoreBtn = document.getElementById('woRestoreBtn');
+const woDeletedBadge = document.getElementById('woDeletedBadge');
 const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
 const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
@@ -97,6 +108,11 @@ const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
 const woStatusFilterMenu = document.getElementById('woStatusFilterMenu');
 let woStatusFilterValues = new Set(); // empty = no filter, show all statuses
 const woSearchSuggestions = document.getElementById('woSearchSuggestions');
+// Admin-view-only: shows archived (soft-deleted) orders instead of the
+// normal list. Always forced back off when leaving Admin view (see the
+// adminViewToggle handler), so deleted orders never show by default.
+const woShowDeletedBtn = document.getElementById('woShowDeletedBtn');
+let woShowDeletedActive = false;
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
 const fabMenu               = document.getElementById('fabMenu');
@@ -270,9 +286,13 @@ async function loadLogs() {
       <p>Nalaganje...</p>
     </div>`;
 
+  // !inner + the dot-path filter below excludes logs belonging to an
+  // archived (soft-deleted) work order — without !inner, PostgREST
+  // can't apply a filter on an embedded resource as a real restriction.
   let query = supabase
     .from('work_logs')
-    .select('*, work_log_gerks(*), work_log_road_time(minutes, vehicle_type), delovni_nalogi(stevilka, status, customers(naziv, company_name))')
+    .select('*, work_log_gerks(*), work_log_road_time(minutes, vehicle_type), delovni_nalogi!inner(stevilka, status, deleted_at, customers(naziv, company_name))')
+    .is('delovni_nalogi.deleted_at', null)
     .order('work_date', { ascending: false })
     .order('created_at', { ascending: false });
 
@@ -761,12 +781,12 @@ woBulkDepthSel.innerHTML = '<option value="">Globina…</option>' +
 // segment is added (see the "+ Dodaj segment" form), never edited
 // afterward in this table.
 function renderSampleNoCell(s) {
-  if (currentRole !== 'admin') return escHtml(s.sample_no);
+  if (!isAdminView()) return escHtml(s.sample_no);
   return `<input type="text" class="sample-field-input wlg-sampleno-input" data-sample-id="${escHtml(s.id)}" value="${escHtml(s.sample_no)}">`;
 }
 
 function renderSamplingCell(s) {
-  if (currentRole !== 'admin') return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
+  if (!isAdminView()) return s.sampling_note ? escHtml(s.sampling_note) : fmtSampleDate(s.sampling_date);
   const opts = ['<option value="">—</option>']
     .concat(SAMPLE_ACTIONS.map(a => `<option value="${escHtml(a)}"${s.sampling_note === a ? ' selected' : ''}>${escHtml(a)}</option>`))
     .join('');
@@ -782,7 +802,7 @@ const LAB_ANALYSIS_TYPES = ['basic', 'micro elements'];
 
 function renderGerkLabTypeCell(r) {
   if (!r.gerkId) return '';
-  if (currentRole !== 'admin') {
+  if (!isAdminView()) {
     return r.tipLabAnalize ? `<span class="wlg-lab-type">${escHtml(r.tipLabAnalize)}</span>` : '';
   }
   const opts = ['<option value="">-</option>']
@@ -809,7 +829,7 @@ async function updateGerkLabType(selectEl) {
 
 // Read-only, same reasoning as renderSamplingCell — set once at entry.
 function renderSampleDepthCell(s) {
-  if (currentRole !== 'admin') return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
+  if (!isAdminView()) return s.sampling_depth_cm ? `${s.sampling_depth_cm} cm` : '—';
   const opts = ['<option value="">—</option>']
     .concat(SAMPLE_DEPTHS.map(d => `<option value="${d}"${s.sampling_depth_cm === d ? ' selected' : ''}>${d} cm</option>`))
     .join('');
@@ -819,7 +839,7 @@ function renderSampleDepthCell(s) {
 // Free-text, admin-editable like renderSampleNoCell — short note about
 // this specific segment (e.g. why it was skipped, a field observation).
 function renderSampleCommentCell(s) {
-  if (currentRole !== 'admin') return s.comment ? escHtml(s.comment) : '—';
+  if (!isAdminView()) return s.comment ? escHtml(s.comment) : '—';
   return `<input type="text" class="sample-field-input wlg-comment-input" data-sample-id="${escHtml(s.id)}" value="${escHtml(s.comment || '')}" maxlength="200">`;
 }
 
@@ -850,7 +870,7 @@ function renderWorkLogGerkRows(rows) {
            data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
         <div class="wlg-info" data-action="wlg-highlight-map">
           <span class="wlg-code-line">
-            ${currentRole === 'admin' ? `<input type="checkbox" class="wlg-select-checkbox" data-action="wlg-select" data-code="${escHtml(r.code)}" aria-label="Izberi GERK" ${selectedGerkCodes.has(r.code) ? 'checked' : ''}>` : ''}
+            ${isAdminView() ? `<input type="checkbox" class="wlg-select-checkbox" data-action="wlg-select" data-code="${escHtml(r.code)}" aria-label="Izberi GERK" ${selectedGerkCodes.has(r.code) ? 'checked' : ''}>` : ''}
             <span class="wlg-code">${escHtml(r.code)}</span>${name ? ` <span class="wlg-name">${escHtml(name)}</span>` : ''}
             <span class="wlg-segmentation-info" data-code="${escHtml(r.code)}"></span>
             <span class="wlg-field-map-slot" data-code="${escHtml(r.code)}">${f?.lat != null && f?.lng != null ? `<a class="wlg-field-map" href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>` : ''}</span>
@@ -877,7 +897,7 @@ function renderWorkLogGerkRows(rows) {
           </label>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-save">Shrani</button>
           <button type="button" class="btn btn-secondary btn-sm" data-action="wlg-edit-cancel">Prekliči</button>
-          ${currentRole === 'admin' && r.gerkId ? `<button type="button" class="btn btn-danger btn-sm" data-action="wlg-remove-gerk" data-gerk-row-id="${escHtml(r.gerkId)}">Odstrani GERK</button>` : ''}
+          ${isAdminView() && r.gerkId ? `<button type="button" class="btn btn-danger btn-sm" data-action="wlg-remove-gerk" data-gerk-row-id="${escHtml(r.gerkId)}">Odstrani GERK</button>` : ''}
         </div>
         ${others.length ? `
         <div class="wlg-others">
@@ -900,11 +920,11 @@ function renderWorkLogGerkRows(rows) {
 // point of the + button), everyone else only sees the panel when
 // there's actually something to show.
 function renderSamplesSection(samples, gerkId) {
-  if (!samples.length && currentRole !== 'admin') return '';
+  if (!samples.length && !isAdminView()) return '';
   // Vzorčenje/Globina can also be set here, at creation — but stay
   // editable afterward too, admin-only (see renderSamplingCell/
   // renderSampleDepthCell).
-  const addSection = currentRole === 'admin' && gerkId ? `
+  const addSection = isAdminView() && gerkId ? `
           <div class="wlg-add-sample-wrap" data-gerk-id="${escHtml(gerkId)}">
             <button type="button" class="btn btn-secondary btn-sm wlg-add-sample" data-action="wlg-add-sample-toggle">+ Dodaj segment</button>
             <div class="wlg-add-sample-form" hidden>
@@ -929,7 +949,7 @@ function renderSamplesSection(samples, gerkId) {
         </button>
         <div class="wlg-samples-panel" hidden>
           <table class="wlg-samples-table">
-            <thead><tr><th>Št. segmenta</th><th>Vzorčenje</th><th>Globina</th><th>Opomba</th>${currentRole === 'admin' ? '<th></th>' : ''}</tr></thead>
+            <thead><tr><th>Št. segmenta</th><th>Vzorčenje</th><th>Globina</th><th>Opomba</th>${isAdminView() ? '<th></th>' : ''}</tr></thead>
             <tbody>
               ${samples.map(s => `
                 <tr>
@@ -937,7 +957,7 @@ function renderSamplesSection(samples, gerkId) {
                   <td>${renderSamplingCell(s)}</td>
                   <td>${renderSampleDepthCell(s)}</td>
                   <td>${renderSampleCommentCell(s)}</td>
-                  ${currentRole === 'admin' ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
+                  ${isAdminView() ? `<td><button type="button" class="wlg-remove-sample" data-action="wlg-remove-sample" data-sample-id="${escHtml(s.id)}" aria-label="Izbriši segment">✕</button></td>` : ''}
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -953,7 +973,7 @@ function updateOrderHeader() {
 
   // Release: only meaningful once claimed — the current izvajalec or an
   // admin, only while it's actually claimed.
-  const isAdmin = currentRole === 'admin';
+  const isAdmin = isAdminView();
   woReleaseBtn.hidden = !(wo.status === 'V delu' && (wo.izvajalec === currentUser.id || isAdmin));
 
   // Status: admin gets an editable dropdown (only way to change it now
@@ -969,6 +989,12 @@ function updateOrderHeader() {
   // Admin-only: delete the order outright — unreachable any other way.
   woDeleteBtn.hidden = !isAdmin;
   woImportZonesWrap.hidden = !isAdmin;
+
+  // Archive (soft delete) / restore — mutually exclusive on deleted_at.
+  const isDeleted = !!wo.deleted_at;
+  woSoftDeleteBtn.hidden = !isAdmin || isDeleted;
+  woRestoreBtn.hidden    = !isAdmin || !isDeleted;
+  woDeletedBadge.hidden  = !isDeleted;
 
   // Everyone who's actually logged a GERK on this order, not just whoever
   // originally claimed it — a second operator picking up mid-order doesn't
@@ -1006,7 +1032,7 @@ async function openWorkOrderDetail(workOrder) {
   workLogDateInput.value = currentDetailDate;
 
   woAddExistingGerkCode.value = '';
-  if (currentRole === 'admin') loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
+  if (isAdminView()) loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
 
   await loadDetailForDate();
 
@@ -1343,7 +1369,7 @@ function renderGerkSegmentationInfo() {
     if (!list) { el.innerHTML = ''; return; }
     el.innerHTML = Array.from(list.values()).map(s => {
       const detail = `${s.type} · ${s.count} ${s.count === 1 ? 'cona' : 'con'} · velja od ${fmtSampleDate(s.validFrom)}${s.validTo ? ' do ' + fmtSampleDate(s.validTo) : ''}`;
-      return currentRole === 'admin'
+      return isAdminView()
         ? `<button type="button" class="wlg-segmentation-icon" data-action="wlg-remove-segmentation" data-segmentation-id="${escHtml(s.id)}" title="${escHtml(detail)} — klikni za odstranitev">🌐</button>`
         : `<span class="wlg-segmentation-icon" title="${escHtml(detail)}">🌐</span>`;
     }).join('');
@@ -2696,6 +2722,32 @@ woDeleteBtn.addEventListener('click', async () => {
   await loadWorkOrders();
 });
 
+// Archive: unlike the hard delete above, no guard — nothing is
+// destroyed, just hidden from the main list and Evidenca dela (see
+// filteredWorkOrders/loadLogs), and reversible via "Obnovi".
+woSoftDeleteBtn.addEventListener('click', async () => {
+  if (!confirm('Arhiviram ta delovni nalog? Ne bo več viden v glavnem seznamu ali v Evidenci dela, dokler ga ne obnovite (gumb "Obnovi" v arhiviranih nalogih).')) return;
+  woSoftDeleteBtn.disabled = true;
+  const { error } = await supabase.from('delovni_nalogi').update({ deleted_at: new Date().toISOString() }).eq('id', currentDetailWorkOrder.id);
+  woSoftDeleteBtn.disabled = false;
+  if (error) return showFormError('Napaka pri arhiviranju naloga.');
+  closeModal();
+  await loadWorkOrders();
+});
+
+woRestoreBtn.addEventListener('click', async () => {
+  woRestoreBtn.disabled = true;
+  const { error } = await supabase.from('delovni_nalogi').update({ deleted_at: null }).eq('id', currentDetailWorkOrder.id);
+  woRestoreBtn.disabled = false;
+  if (error) return showFormError('Napaka pri obnavljanju naloga.');
+  currentDetailWorkOrder.deleted_at = null;
+  const listRow = workOrders.find(w => w.id === currentDetailWorkOrder.id);
+  if (listRow) listRow.deleted_at = null;
+  updateOrderHeader();
+  showFormSuccess('✓ Nalog obnovljen.');
+  await loadWorkOrders();
+});
+
 // Customer-scoped suggestions for the "add GERK to existing order"
 // datalist — same customer this work order already belongs to.
 async function loadCustomerGerkDatalist(customerId) {
@@ -2839,7 +2891,7 @@ async function sendOperatorCredentials(btn) {
 async function openOperatorsModal() {
   operatorsErrorEl.hidden = true;
   operatorsSuccessEl.hidden = true;
-  operatorsAddWrap.hidden = currentRole !== 'admin';
+  operatorsAddWrap.hidden = !isAdminView();
   toggleAddOperatorForm(false);
   await renderOperatorsList();
   operatorsModal.hidden = false;
@@ -2850,7 +2902,7 @@ async function renderOperatorsList() {
   const { data, error } = await supabase.rpc('get_operators_with_email');
   if (error) { showOperatorsError(error.message || 'Napaka pri nalaganju.'); return; }
 
-  const isAdmin = currentRole === 'admin';
+  const isAdmin = isAdminView();
   const ROLE_LABELS = { admin: 'Administrator', supervisor: 'Srednji nivo', operator: 'Navadni uporabnik' };
   operatorsListEl.innerHTML = (data || []).map(p => `
     <div class="operator-block">
@@ -3194,8 +3246,34 @@ function switchTab(tab) {
 }
 
 function updateFabVisibility() {
-  addBtn.hidden = currentRole !== 'admin';
+  addBtn.hidden = !isAdminView();
 }
+
+// Renders the header's Admin/Regular view switch (admin-only) and
+// refreshes every admin-gated bit of UI currently on screen — needed
+// because flipping the toggle doesn't reload anything, it just needs
+// the same render functions that already branch on isAdminView() to
+// run again against the new value.
+function renderAdminViewToggle() {
+  adminViewToggle.hidden = currentRole !== 'admin';
+  if (currentRole !== 'admin') return;
+  adminViewToggle.textContent = adminViewActive ? '🛠 Admin način' : '👁 Uporabniški način';
+  adminViewToggle.classList.toggle('admin-view-toggle--regular', !adminViewActive);
+  adminViewToggle.title = adminViewActive
+    ? 'V administratorskem načinu — klikni za preklop v uporabniški način (skrije skrbniške gumbe)'
+    : 'V uporabniškem načinu — klikni za preklop nazaj v administratorski način';
+}
+
+adminViewToggle.addEventListener('click', () => {
+  adminViewActive = !adminViewActive;
+  localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
+  if (!isAdminView()) woShowDeletedActive = false; // never leave the archived list showing once out of Admin view
+  renderAdminViewToggle();
+  updateFabVisibility();
+  updateShowDeletedButton();
+  if (currentDetailWorkOrder) updateOrderHeader();
+  if (currentTab === 'nalogi' && workOrdersLoaded) renderWorkOrders();
+});
 
 tabEvidenca.addEventListener('click', () => switchTab('evidenca'));
 tabNalogi.addEventListener('click',   () => switchTab('nalogi'));
@@ -3277,7 +3355,9 @@ async function loadWorkOrders() {
 
 function filteredWorkOrders() {
   const q = woSearchStranka.value.trim().toLowerCase();
+  const showDeleted = isAdminView() && woShowDeletedActive;
   return workOrders.filter(wo => {
+    if (showDeleted ? !wo.deleted_at : !!wo.deleted_at) return false;
     if (woStatusFilterValues.size && !woStatusFilterValues.has(wo.status)) return false;
     if (!q) return true;
     const stranka = wo.customers?.naziv || wo.customers?.company_name || '';
@@ -3289,7 +3369,9 @@ function renderWorkOrders() {
   const fwo = filteredWorkOrders();
 
   if (fwo.length === 0) {
-    const msg = woSearchStranka.value.trim() || woStatusFilterValues.size ? 'Ni zadetkov.' : 'Ni delovnih nalogov.';
+    const msg = woSearchStranka.value.trim() || woStatusFilterValues.size
+      ? 'Ni zadetkov.'
+      : (isAdminView() && woShowDeletedActive ? 'Ni arhiviranih nalogov.' : 'Ni delovnih nalogov.');
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     return;
   }
@@ -3312,6 +3394,7 @@ function renderWorkOrders() {
       totalHa:      gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
       izvajalec:    wo.profiles?.full_name || '—',
       status:       wo.status,
+      deleted:      !!wo.deleted_at,
       lat:          point?.lat ?? null,
       lng:          point?.lng ?? null,
     };
@@ -3333,7 +3416,7 @@ function renderWorkOrders() {
       ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
       : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
     return `
-      <div class="log-compact wo-compact ${rowMod}${r.status === 'Izvedeno' ? ' wo-compact--izvedeno' : ''}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
+      <div class="log-compact wo-compact ${rowMod}${r.status === 'Izvedeno' ? ' wo-compact--izvedeno' : ''}${r.deleted ? ' wo-compact--deleted' : ''}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-vnos">${fmtSampleDate(r.vnos)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
@@ -3411,6 +3494,19 @@ woStatusFilterMenu.querySelectorAll('.wo-status-filter-cb').forEach(cb => {
   });
 });
 
+function updateShowDeletedButton() {
+  woShowDeletedBtn.hidden = !isAdminView();
+  woShowDeletedBtn.classList.toggle('wo-show-deleted-btn--active', woShowDeletedActive);
+  woShowDeletedBtn.textContent = woShowDeletedActive ? '◀ Nazaj' : '🗑 Izbrisani';
+  woShowDeletedBtn.title = woShowDeletedActive ? 'Nazaj na običajen seznam' : 'Prikaži arhivirane (izbrisane) naloge';
+}
+
+woShowDeletedBtn.addEventListener('click', () => {
+  woShowDeletedActive = !woShowDeletedActive;
+  updateShowDeletedButton();
+  renderWorkOrders();
+});
+
 woSearchStranka.addEventListener('input', () => { renderWorkOrders(); showWoSearchSuggestions(); });
 woSearchStranka.addEventListener('focus', showWoSearchSuggestions);
 woSearchStranka.addEventListener('blur', () => {
@@ -3460,7 +3556,7 @@ function showCustomerSuggestions(matches, query) {
   // admin-gated) and only admins can insert into customers (see the
   // "Admins can insert customers" RLS policy) — so this is always safe
   // to offer here, not just when matches come up empty.
-  const addNewItem = currentRole === 'admin' && query
+  const addNewItem = isAdminView() && query
     ? `<li class="gerk-suggestion-item gerk-suggestion-item--add" data-action="add-new"><span class="gerk-suggestion-code">+ Dodaj novo stranko: "${escHtml(query)}"</span></li>`
     : '';
   if (!matches.length && !addNewItem) { woStrankaSuggestions.hidden = true; return; }
@@ -4282,8 +4378,10 @@ async function boot() {
   } else {
     adminBadge.hidden = true;
   }
+  renderAdminViewToggle();
   renderGreeting(displayName);
   updateFabVisibility();
+  updateShowDeletedButton();
 
   // Delovni Nalogi is the default visible tab now — load it first so the
   // user isn't staring at a spinner; Evidenca dela loads in the background

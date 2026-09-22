@@ -372,6 +372,21 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap;
 }
 
+.admin-view-toggle {
+  font-size: .6875rem;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.3);
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.admin-view-toggle:hover { background: rgba(255,255,255,.25); }
+.admin-view-toggle--regular { background: rgba(255,255,255,.06); opacity: .8; }
+
 
 /* ============================================================
    APP MAIN
@@ -458,6 +473,8 @@ input, select, textarea { font-family: inherit; }
 
 .wo-compact { cursor: pointer; }
 .wo-compact--izvedeno { background: var(--success-bg); }
+.wo-compact--deleted { opacity: .6; }
+.wo-compact--deleted .lc-date { text-decoration: line-through; }
 
 .wo-th {
   appearance: none;
@@ -1037,6 +1054,17 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   min-height: 1.2em;
 }
 
+.wo-deleted-badge {
+  display: inline-block;
+  font-size: .75rem;
+  font-weight: 600;
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 3px 9px;
+  border-radius: 20px;
+  margin-bottom: 6px;
+}
+
 /* ── Greeting ───────────────────────────────────────────────── */
 .greeting-section {
   background: linear-gradient(135deg, var(--blue-800) 0%, var(--blue-700) 100%);
@@ -1163,6 +1191,9 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-status-filter-wrap { position: relative; flex-shrink: 0; }
 
 .wo-status-filter-btn { height: 34px; white-space: nowrap; }
+
+.wo-show-deleted-btn { height: 34px; white-space: nowrap; flex-shrink: 0; }
+.wo-show-deleted-btn--active { background: var(--blue-800); color: #fff; }
 
 .wo-status-filter-menu {
   position: absolute;
