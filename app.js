@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v1.98';
+const APP_VERSION = 'v1.99';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1917,31 +1917,27 @@ async function addSample(btn) {
   }
 }
 
-// Removing a GERK from an already-created order — blocked if it has
-// any recorded segments or logged time, same "don't destroy real
-// data" rule as deleting a whole work order. delovni_nalogi_vzorci
-// would otherwise cascade-delete silently along with it.
+// Removing a GERK from an already-created order — its segments/samples
+// (delovni_nalogi_vzorci) cascade-delete automatically via the DB's
+// own ON DELETE CASCADE FK, so no separate guard/warning for those.
+// Logged work time (work_log_gerks) isn't FK-tied to this row at all
+// (it's keyed by gerk_code, independent of delovni_nalogi_gerki.id),
+// so it survives the removal as historical data — but since that can
+// leave it looking orphaned from the order's current GERK list, it's
+// not a silent, no-warning removal either: a soft warn-then-continue,
+// not a hard block.
 async function removeGerkFromOrder(btn) {
   const gerkRowId = btn.dataset.gerkRowId;
   const gerkCode  = btn.closest('.wlg-row').dataset.code;
 
-  const { count: sampleCount } = await supabase
-    .from('delovni_nalogi_vzorci')
-    .select('id', { count: 'exact', head: true })
-    .eq('delovni_nalog_gerk_id', gerkRowId);
-  if (sampleCount > 0) {
-    return showFormError('Ni mogoče odstraniti — GERK ima zabeležene segmente/vzorce.');
-  }
-
   // currentAllGerkEntries already holds every operator's work_log_gerks
   // rows for this order (loaded once in loadDetailForDate) — no need for
-  // a second round trip to check for logged time.
+  // a round trip to check for logged time.
   const hasLoggedTime = currentAllGerkEntries.some(e => e.gerk_code === gerkCode && (e.start_time || e.completed));
-  if (hasLoggedTime) {
-    return showFormError('Ni mogoče odstraniti — na GERKU je že zabeležen čas dela.');
-  }
-
-  if (!confirm('Odstranim ta GERK iz naloga?')) return;
+  const confirmMsg = hasLoggedTime
+    ? `Na GERKU "${gerkCode}" je že zabeležen čas dela. Odstranitev bo izbrisala tudi vse njegove segmente/vzorce (zabeležen čas dela ostane v evidenci). Nadaljujem?`
+    : 'Odstranim ta GERK iz naloga? Izbrisani bodo tudi vsi njegovi segmenti/vzorci.';
+  if (!confirm(confirmMsg)) return;
 
   btn.disabled = true;
   const { error } = await supabase.from('delovni_nalogi_gerki').delete().eq('id', gerkRowId);
@@ -2013,10 +2009,12 @@ function clearGerkSelection() {
   updateGerkSelectionBar();
 }
 
-// Same two guards as the single-row remove (samples/segments, logged
-// time) — checked in bulk up front instead of one row at a time, so a
-// batch with a mix of removable/blocked GERKs still removes whichever
-// it safely can rather than refusing the whole thing.
+// Same reasoning as the single-row remove: segments/samples cascade-
+// delete automatically via the DB's own FK, no guard needed. Logged
+// time isn't FK-tied to these rows, so it survives removal as
+// historical data — GERKs with logged time get one combined warning
+// (which ones, and that they'll still be removed if confirmed) rather
+// than either a silent removal or a hard block.
 async function bulkDeleteSelectedGerks(btn) {
   const codes = [...selectedGerkCodes];
   if (!codes.length) return;
@@ -2026,30 +2024,25 @@ async function bulkDeleteSelectedGerks(btn) {
     .filter(Boolean);
   if (!rows.length) return;
 
-  if (!confirm(`Odstranim ${rows.length} izbranih GERKOV iz naloga?`)) return;
+  const withLoggedTime = rows.filter(g => currentAllGerkEntries.some(e => e.gerk_code === g.gerk_code && (e.start_time || e.completed)));
+  let removable = rows;
+  if (withLoggedTime.length) {
+    const proceed = confirm(
+      `Na ${withLoggedTime.length} od izbranih GERKOV (${withLoggedTime.map(g => g.gerk_code).join(', ')}) je že zabeležen čas dela. ` +
+      `Odstranitev bo izbrisala tudi njihove segmente/vzorce (zabeležen čas dela ostane v evidenci).\n\n` +
+      `Odstranim vseh ${rows.length} izbranih GERKOV (vključno s temi)?`
+    );
+    if (!proceed) {
+      removable = rows.filter(g => !withLoggedTime.includes(g));
+      if (!removable.length) return;
+      if (!confirm(`Odstranim preostalih ${removable.length} GERKOV (brez zabeleženega časa) iz naloga?`)) return;
+    }
+  } else if (!confirm(`Odstranim ${rows.length} izbranih GERKOV iz naloga? Izbrisani bodo tudi njihovi segmenti/vzorci.`)) {
+    return;
+  }
 
   btn.disabled = true;
   try {
-    const ids = rows.map(g => g.id);
-    const { data: sampleRows } = await supabase
-      .from('delovni_nalogi_vzorci')
-      .select('delovni_nalog_gerk_id')
-      .in('delovni_nalog_gerk_id', ids);
-    const idsWithSamples = new Set((sampleRows || []).map(s => s.delovni_nalog_gerk_id));
-
-    const removable = [];
-    const blocked = [];
-    for (const gerk of rows) {
-      const hasLoggedTime = currentAllGerkEntries.some(e => e.gerk_code === gerk.gerk_code && (e.start_time || e.completed));
-      if (idsWithSamples.has(gerk.id) || hasLoggedTime) blocked.push(gerk.gerk_code);
-      else removable.push(gerk);
-    }
-
-    if (!removable.length) {
-      showFormError('Noben izmed izbranih GERKOV ni mogoče odstraniti — imajo segmente ali zabeležen čas.');
-      return;
-    }
-
     const { error } = await supabase.from('delovni_nalogi_gerki').delete().in('id', removable.map(g => g.id));
     if (error) throw error;
 
@@ -2059,7 +2052,8 @@ async function bulkDeleteSelectedGerks(btn) {
     await loadDetailForDate();
     await loadWorkOrders();
     await showWoDetailMap(currentDetailWorkOrder);
-    showFormSuccess(`✓ ${removable.length} GERKOV odstranjenih.` + (blocked.length ? ` Preskočenih (segmenti/čas): ${blocked.join(', ')}.` : ''));
+    const skipped = rows.length - removable.length;
+    showFormSuccess(`✓ ${removable.length} GERKOV odstranjenih.` + (skipped ? ` Preskočenih: ${skipped}.` : ''));
   } catch (e) {
     showFormError(e.message || 'Napaka pri odstranjevanju.');
   } finally {
