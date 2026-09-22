@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.02';
+const APP_VERSION = 'v2.03';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -59,7 +59,6 @@ const woReleaseBtn = document.getElementById('woReleaseBtn');
 const woStatusEdit = document.getElementById('woStatusEdit');
 const woStatusBadge = document.getElementById('woStatusBadge');
 const woDeleteBtn = document.getElementById('woDeleteBtn');
-const woSoftDeleteBtn = document.getElementById('woSoftDeleteBtn');
 const woRestoreBtn = document.getElementById('woRestoreBtn');
 const woDeletedBadge = document.getElementById('woDeletedBadge');
 const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
@@ -115,6 +114,13 @@ const woSearchSuggestions = document.getElementById('woSearchSuggestions');
 // adminViewToggle handler), so deleted orders never show by default.
 const woShowDeletedBtn = document.getElementById('woShowDeletedBtn');
 let woShowDeletedActive = false;
+// Admin-view-only bulk-select on the main work orders list (checkboxes
+// next to each row's Št.), powering the floating woSelectionBar below —
+// same pattern as selectedGerkCodes/wlgSelectionBar in the detail view.
+// Not offered while browsing the "Izbrisani" list itself (nothing to
+// delete there that isn't already deleted).
+const woSelectionBar = document.getElementById('woSelectionBar');
+let selectedWorkOrderIds = new Set();
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
 const fabMenu               = document.getElementById('fabMenu');
@@ -988,15 +994,13 @@ function updateOrderHeader() {
     woStatusBadge.className = `wo-status-badge wo-summary-value wo-status--${slugStatus(wo.status)}`;
   }
 
-  // Admin-only: delete the order outright — unreachable any other way.
-  woDeleteBtn.hidden = !isAdmin;
   woImportZonesWrap.hidden = !isAdmin;
 
-  // Archive (soft delete) / restore — mutually exclusive on deleted_at.
+  // Delete (archive) / restore — mutually exclusive on deleted_at, admin-only.
   const isDeleted = !!wo.deleted_at;
-  woSoftDeleteBtn.hidden = !isAdmin || isDeleted;
-  woRestoreBtn.hidden    = !isAdmin || !isDeleted;
-  woDeletedBadge.hidden  = !isDeleted;
+  woDeleteBtn.hidden    = !isAdmin || isDeleted;
+  woRestoreBtn.hidden   = !isAdmin || !isDeleted;
+  woDeletedBadge.hidden = !isDeleted;
 
   // Everyone who's actually logged a GERK on this order, not just whoever
   // originally claimed it — a second operator picking up mid-order doesn't
@@ -2700,39 +2704,23 @@ woStatusEdit.addEventListener('change', async () => {
   await loadWorkOrders();
 });
 
+// "Izbriši" = archive (deleted_at), not a hard delete — nothing is
+// destroyed, just hidden from the main list and Evidenca dela (see
+// filteredWorkOrders/loadLogs), and reversible via "Obnovi" in the
+// "Izbrisani" list. Same single action regardless of logged time;
+// there's no separate hard-delete path anymore. Shared with the main
+// list's bulk-delete (see bulkDeleteSelectedWorkOrders) so both go
+// through the same update.
+async function softDeleteWorkOrders(ids) {
+  return supabase.from('delovni_nalogi').update({ deleted_at: new Date().toISOString() }).in('id', ids);
+}
+
 woDeleteBtn.addEventListener('click', async () => {
+  if (!confirm('Izbrišem ta delovni nalog? Ne bo več viden v glavnem seznamu ali v Evidenci dela, dokler ga ne obnovite (v seznamu "Izbrisani").')) return;
   woDeleteBtn.disabled = true;
-  // Pre-check for a clear message — the DB itself also refuses via
-  // work_logs' NO ACTION foreign key either way, this is just a nicer
-  // error than a raw constraint violation.
-  const { count } = await supabase
-    .from('work_logs')
-    .select('id', { count: 'exact', head: true })
-    .eq('work_order_id', currentDetailWorkOrder.id);
-  if (count > 0) {
-    woDeleteBtn.disabled = false;
-    return showFormError('Ni mogoče izbrisati — nalog ima že beležen čas dela.');
-  }
-  if (!confirm('Izbrišem ta delovni nalog? Tega ni mogoče razveljaviti.')) {
-    woDeleteBtn.disabled = false;
-    return;
-  }
-  const { error } = await supabase.from('delovni_nalogi').delete().eq('id', currentDetailWorkOrder.id);
+  const { error } = await softDeleteWorkOrders([currentDetailWorkOrder.id]);
   woDeleteBtn.disabled = false;
   if (error) return showFormError('Napaka pri brisanju naloga.');
-  closeModal();
-  await loadWorkOrders();
-});
-
-// Archive: unlike the hard delete above, no guard — nothing is
-// destroyed, just hidden from the main list and Evidenca dela (see
-// filteredWorkOrders/loadLogs), and reversible via "Obnovi".
-woSoftDeleteBtn.addEventListener('click', async () => {
-  if (!confirm('Arhiviram ta delovni nalog? Ne bo več viden v glavnem seznamu ali v Evidenci dela, dokler ga ne obnovite (gumb "Obnovi" v arhiviranih nalogih).')) return;
-  woSoftDeleteBtn.disabled = true;
-  const { error } = await supabase.from('delovni_nalogi').update({ deleted_at: new Date().toISOString() }).eq('id', currentDetailWorkOrder.id);
-  woSoftDeleteBtn.disabled = false;
-  if (error) return showFormError('Napaka pri arhiviranju naloga.');
   closeModal();
   await loadWorkOrders();
 });
@@ -3269,7 +3257,7 @@ function renderAdminViewToggle() {
 adminViewToggle.addEventListener('change', () => {
   adminViewActive = adminViewToggle.checked;
   localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
-  if (!isAdminView()) woShowDeletedActive = false; // never leave the archived list showing once out of Admin view
+  if (!isAdminView()) { woShowDeletedActive = false; clearWoSelection(); } // never leave the archived list or a bulk selection showing once out of Admin view
   renderAdminViewToggle();
   updateFabVisibility();
   updateShowDeletedButton();
@@ -3370,18 +3358,29 @@ function filteredWorkOrders() {
 function renderWorkOrders() {
   const fwo = filteredWorkOrders();
 
+  // Prune any selected id that fell out of the filtered set (search,
+  // status filter, or a re-sort) so the selection bar's count never
+  // lies — same reasoning as the GERK selection's pruning.
+  const validIds = new Set(fwo.map(wo => wo.id));
+  for (const id of selectedWorkOrderIds) if (!validIds.has(id)) selectedWorkOrderIds.delete(id);
+
   if (fwo.length === 0) {
     const msg = woSearchStranka.value.trim() || woStatusFilterValues.size
       ? 'Ni zadetkov.'
       : (isAdminView() && woShowDeletedActive ? 'Ni arhiviranih nalogov.' : 'Ni delovnih nalogov.');
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
+    updateWoSelectionBar();
     return;
   }
 
+  // Bulk-select checkboxes only make sense against the normal (not
+  // already-archived) list, and only for admins actually in Admin view.
+  const selectable = isAdminView() && !woShowDeletedActive;
+
   workOrdersList.className = 'logs-list logs-list--compact';
 
-  const rowMod  = 'wo-compact--enhanced';
-  const headMod = 'wo-lc-header--enhanced';
+  const rowMod  = 'wo-compact--enhanced' + (selectable ? ' wo-compact--selectable' : '');
+  const headMod = 'wo-lc-header--enhanced' + (selectable ? ' wo-lc-header--selectable' : '');
 
   const rowData = fwo.map(wo => {
     const gerks = wo.delovni_nalogi_gerki || [];
@@ -3404,6 +3403,7 @@ function renderWorkOrders() {
 
   const header = `
     <div class="lc-header wo-lc-header ${headMod}">
+      ${selectable ? '<span class="wo-th" aria-hidden="true"></span>' : ''}
       ${WO_SORT_COLUMNS.map(col => {
         const active = woSortKey === col.key;
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -3417,8 +3417,12 @@ function renderWorkOrders() {
     const mapsCell = r.lat != null && r.lng != null
       ? `<a class="wo-c-maps" href="https://www.google.com/maps?q=${r.lat},${r.lng}" target="_blank" rel="noopener" aria-label="Odpri na zemljevidu">📍</a>`
       : `<span class="wo-c-maps wo-c-maps--empty">—</span>`;
+    const checkboxCell = selectable
+      ? `<span class="wo-select-cell"><input type="checkbox" class="wo-select-checkbox" data-id="${escHtml(r.id)}" aria-label="Izberi nalog" ${selectedWorkOrderIds.has(r.id) ? 'checked' : ''}></span>`
+      : '';
     return `
       <div class="log-compact wo-compact ${rowMod}${r.status === 'Izvedeno' ? ' wo-compact--izvedeno' : ''}${r.deleted ? ' wo-compact--deleted' : ''}" role="listitem" data-action="wo-open" data-id="${escHtml(r.id)}">
+        ${checkboxCell}
         <span class="lc-date">${escHtml(r.stevilka)}</span>
         <span class="wo-c-vnos">${fmtSampleDate(r.vnos)}</span>
         <span class="wo-c-stranka">${escHtml(r.stranka)}</span>
@@ -3433,6 +3437,7 @@ function renderWorkOrders() {
 
   workOrdersList.innerHTML = header + rows;
   wireWorkOrderButtons();
+  updateWoSelectionBar();
 }
 
 function wireWorkOrderButtons() {
@@ -3452,6 +3457,16 @@ function wireWorkOrderButtons() {
       woSortDir = (woSortKey === key && woSortDir === 'asc') ? 'desc' : 'asc';
       woSortKey = key;
       renderWorkOrders();
+    });
+  });
+  // stopPropagation so checking the box doesn't also trigger the row's
+  // own click listener above and open the detail modal.
+  workOrdersList.querySelectorAll('.wo-select-checkbox').forEach(cb => {
+    cb.addEventListener('click', e => {
+      e.stopPropagation();
+      if (cb.checked) selectedWorkOrderIds.add(cb.dataset.id);
+      else selectedWorkOrderIds.delete(cb.dataset.id);
+      updateWoSelectionBar();
     });
   });
 }
@@ -3506,8 +3521,56 @@ function updateShowDeletedButton() {
 woShowDeletedBtn.addEventListener('click', () => {
   woShowDeletedActive = !woShowDeletedActive;
   updateShowDeletedButton();
+  clearWoSelection();
   renderWorkOrders();
 });
+
+// ── Main list bulk-select (admin view only) — mirrors the GERK
+// selection bar's structure/CSS (.wlg-selection-bar), just with a
+// single action since "delete" is now the only thing it needs to do.
+function buildWoSelectionBar() {
+  woSelectionBar.setAttribute('role', 'toolbar');
+  woSelectionBar.setAttribute('aria-label', 'Skupinska dejanja za izbrane naloge');
+  woSelectionBar.innerHTML = `
+    <span class="wlg-sel-summary"></span>
+    <button type="button" class="wlg-sel-close" data-action="wo-sel-close" aria-label="Prekliči izbiro" title="Prekliči izbiro">${WLG_SEL_ICON_CLOSE}</button>
+    <span class="wlg-sel-sep" aria-hidden="true"></span>
+    <div class="wlg-sel-actions">
+      <button type="button" class="wlg-sel-action wlg-sel-action--danger" data-action-id="wo-sel-delete" aria-label="Izbriši izbrane naloge" title="Izbriši izbrane naloge">
+        ${WLG_SEL_ICON_TRASH}<span class="wlg-sel-action-label">Izbriši</span>
+      </button>
+    </div>`;
+  woSelectionBar.querySelector('[data-action="wo-sel-close"]').addEventListener('click', clearWoSelection);
+  woSelectionBar.querySelector('[data-action-id="wo-sel-delete"]').addEventListener('click', e => bulkDeleteSelectedWorkOrders(e.currentTarget));
+}
+buildWoSelectionBar();
+
+function updateWoSelectionBar() {
+  const n = selectedWorkOrderIds.size;
+  woSelectionBar.classList.toggle('wlg-selection-bar--visible', n > 0);
+  if (n === 0) return;
+  const summaryEl = woSelectionBar.querySelector('.wlg-sel-summary');
+  if (summaryEl) summaryEl.textContent = `${n} ${n === 1 ? 'izbran' : 'izbranih'}`;
+}
+
+function clearWoSelection() {
+  selectedWorkOrderIds = new Set();
+  workOrdersList.querySelectorAll('.wo-select-checkbox').forEach(cb => { cb.checked = false; });
+  updateWoSelectionBar();
+}
+
+async function bulkDeleteSelectedWorkOrders(btn) {
+  const ids = [...selectedWorkOrderIds];
+  if (!ids.length) return;
+  if (!confirm(`Izbrišem ${ids.length} ${ids.length === 1 ? 'izbran nalog' : 'izbranih nalogov'}? Ne bodo več vidni v glavnem seznamu ali v Evidenci dela, dokler jih ne obnovite (v seznamu "Izbrisani").`)) return;
+
+  btn.disabled = true;
+  const { error } = await softDeleteWorkOrders(ids);
+  btn.disabled = false;
+  if (error) { alert(error.message || 'Napaka pri brisanju nalogov.'); return; }
+  clearWoSelection();
+  await loadWorkOrders();
+}
 
 woSearchStranka.addEventListener('input', () => { renderWorkOrders(); showWoSearchSuggestions(); });
 woSearchStranka.addEventListener('focus', showWoSearchSuggestions);

@@ -529,6 +529,16 @@ input, select, textarea { font-family: inherit; }
 .wo-compact--deleted { opacity: .6; }
 .wo-compact--deleted .lc-date { text-decoration: line-through; }
 
+/* Admin view only: an extra leading checkbox column for bulk-select —
+   same triple-class-selector trick as the base rule above, to keep
+   beating Evidenca dela's competing grid-template-columns rule. */
+.wo-lc-header.wo-lc-header.wo-lc-header--selectable,
+.wo-compact.wo-compact.wo-compact--selectable {
+  grid-template-columns: 22px 34px 56px 1fr 52px 40px 48px 70px 80px;
+}
+.wo-select-cell { display: flex; align-items: center; justify-content: center; }
+.wo-select-checkbox { width: 16px; height: 16px; cursor: pointer; }
+
 .wo-th {
   appearance: none;
   border: none;
@@ -1638,6 +1648,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   .wo-lc-header.wo-lc-header--enhanced,
   .wo-compact.wo-compact--enhanced {
     grid-template-columns: 48px minmax(64px,.6fr) minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
+  }
+  .wo-lc-header.wo-lc-header.wo-lc-header--enhanced.wo-lc-header--selectable,
+  .wo-compact.wo-compact.wo-compact--enhanced.wo-compact--selectable {
+    grid-template-columns: 28px 48px minmax(64px,.6fr) minmax(140px,1.6fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(64px,.7fr) minmax(90px,.8fr) minmax(100px,.9fr) 44px;
   }
 
   /* Modals read as centered desktop dialogs instead of mobile bottom sheets. */

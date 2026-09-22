@@ -284,10 +284,10 @@
 
         <div class="form-actions">
           <button type="button" id="cancelBtn" class="btn btn-secondary btn-flex">Zaključi delo</button>
-          <!-- Admin only: archive instead of hard-delete — no guard, always
-               reversible via "Obnovi". Hard delete stays for truly empty
-               orders (see its own guard in app.js). -->
-          <button type="button" id="woSoftDeleteBtn" class="btn btn-secondary btn-sm" hidden>Arhiviraj</button>
+          <!-- Admin only: "Izbriši" archives the order (deleted_at) — no
+               guard, always reversible via "Obnovi" in the "Izbrisani"
+               list. No separate hard-delete anymore, same action either
+               way regardless of logged time. -->
           <button type="button" id="woRestoreBtn" class="btn btn-secondary btn-sm" hidden>Obnovi</button>
           <button type="button" id="woDeleteBtn" class="btn btn-danger btn-sm" hidden>Izbriši nalog</button>
         </div>
@@ -304,6 +304,11 @@
        box instead of the real viewport, which is what made the map
        paint on top of it before. -->
   <div id="wlgSelectionBar" class="wlg-selection-bar"></div>
+
+  <!-- Admin view only: floating bulk-action toolbar for the main work
+       orders list, content built by buildWoSelectionBar() in app.js.
+       Reuses the same .wlg-selection-bar styling as the GERK one above. -->
+  <div id="woSelectionBar" class="wlg-selection-bar"></div>
 
   <!-- ── Delete Confirm ──────────────────────────────────────── -->
   <!-- ── Work Order Add / Edit Modal ─────────────────────────── -->
