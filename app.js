@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'v2.1';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -41,7 +41,9 @@ const addBtn         = document.getElementById('addBtn');
 const logsList       = document.getElementById('logsList');
 const exportLogsBtn  = document.getElementById('exportLogsBtn');
 const adminBadge = document.getElementById('adminBadge');
+const adminViewToggleWrap = document.getElementById('adminViewToggleWrap');
 const adminViewToggle = document.getElementById('adminViewToggle');
+const adminViewSwitchLabel = document.querySelector('#adminViewToggleWrap .admin-view-switch-label');
 
 const monthLabel   = document.getElementById('monthLabel');
 const prevMonthBtn = document.getElementById('prevMonthBtn');
@@ -3255,17 +3257,17 @@ function updateFabVisibility() {
 // the same render functions that already branch on isAdminView() to
 // run again against the new value.
 function renderAdminViewToggle() {
-  adminViewToggle.hidden = currentRole !== 'admin';
+  adminViewToggleWrap.hidden = currentRole !== 'admin';
   if (currentRole !== 'admin') return;
-  adminViewToggle.textContent = adminViewActive ? '🛠 Admin način' : '👁 Uporabniški način';
-  adminViewToggle.classList.toggle('admin-view-toggle--regular', !adminViewActive);
-  adminViewToggle.title = adminViewActive
-    ? 'V administratorskem načinu — klikni za preklop v uporabniški način (skrije skrbniške gumbe)'
-    : 'V uporabniškem načinu — klikni za preklop nazaj v administratorski način';
+  adminViewToggle.checked = adminViewActive;
+  adminViewSwitchLabel.textContent = adminViewActive ? 'Admin' : 'Uporabnik';
+  adminViewToggleWrap.title = adminViewActive
+    ? 'Administratorski način — izklopi za uporabniški način (skrije skrbniške gumbe)'
+    : 'Uporabniški način — vklopi za administratorski način';
 }
 
-adminViewToggle.addEventListener('click', () => {
-  adminViewActive = !adminViewActive;
+adminViewToggle.addEventListener('change', () => {
+  adminViewActive = adminViewToggle.checked;
   localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
   if (!isAdminView()) woShowDeletedActive = false; // never leave the archived list showing once out of Admin view
   renderAdminViewToggle();

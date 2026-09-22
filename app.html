@@ -32,7 +32,11 @@
       <!-- Admin only: switches between full admin controls (deletes, role
            edits, soft-delete, etc.) and a plain view with those hidden —
            see isAdminView() in app.js. -->
-      <button id="adminViewToggle" class="admin-view-toggle" hidden></button>
+      <label id="adminViewToggleWrap" class="admin-view-switch" hidden>
+        <input type="checkbox" id="adminViewToggle" class="admin-view-switch-input">
+        <span class="admin-view-switch-track"><span class="admin-view-switch-thumb"></span></span>
+        <span class="admin-view-switch-label"></span>
+      </label>
       <button id="logoutBtn" class="btn btn-ghost-white btn-sm">Odjava</button>
     </div>
   </header>
