@@ -39,6 +39,20 @@
   --fab-size:  58px;
 
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Motion — every transition/animation in this file should reference
+     one of these instead of its own magic number, so pacing reads as
+     one consistent "feel" rather than each component inventing its
+     own. -fast for simple property changes (color/background/border on
+     hover, press states); -base for things appearing/disappearing
+     (popovers, bars); -slow for larger movement (modal sheets).
+     -standard is a general-purpose ease for property changes; -out is
+     snappier and reads better for things entering/moving into place. */
+  --duration-fast: .15s;
+  --duration-base: .2s;
+  --duration-slow: .3s;
+  --ease-standard: cubic-bezier(.4, 0, .2, 1);
+  --ease-out:      cubic-bezier(.32, .72, 0, 1);
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -139,7 +153,7 @@ input, select, textarea { font-family: inherit; }
   border: 1.5px solid var(--border);
   border-radius: var(--radius-md);
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
   appearance: none;
   -webkit-appearance: none;
   overflow: hidden;
@@ -220,7 +234,7 @@ input, select, textarea { font-family: inherit; }
   font-weight: 600;
   border-radius: var(--radius-md);
   border: none;
-  transition: background .15s, opacity .15s, transform .1s;
+  transition: background var(--duration-fast) var(--ease-standard), opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
   white-space: nowrap;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -406,7 +420,7 @@ input, select, textarea { font-family: inherit; }
   background: rgba(255,255,255,.25);
   border: 1px solid rgba(255,255,255,.35);
   border-radius: 20px;
-  transition: background .15s ease;
+  transition: background var(--duration-fast) var(--ease-standard);
 }
 
 .admin-view-switch-thumb {
@@ -418,7 +432,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0,0,0,.3);
-  transition: transform .15s ease;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .admin-view-switch-input:checked ~ .admin-view-switch-track {
@@ -473,7 +487,7 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   font-size: .875rem;
   font-weight: 600;
-  transition: background .15s, color .15s, border-color .15s;
+  transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
 .tab-btn:hover { background: var(--border-light); }
@@ -701,12 +715,12 @@ input, select, textarea { font-family: inherit; }
   overflow-x: auto;
   opacity: 0;
   visibility: hidden;
-  transition: opacity .2s ease, visibility 0s linear .2s;
+  transition: opacity var(--duration-base) var(--ease-standard), visibility 0s linear var(--duration-base);
 }
 .wlg-selection-bar--visible {
   opacity: 1;
   visibility: visible;
-  transition: opacity .2s ease, visibility 0s linear 0s;
+  transition: opacity var(--duration-base) var(--ease-standard), visibility 0s linear 0s;
 }
 
 .wlg-sel-summary {
@@ -873,7 +887,7 @@ input, select, textarea { font-family: inherit; }
   font-size: .8125rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background .15s, color .15s;
+  transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
 .wlg-toggle-btn:hover:not(:disabled) { background: var(--blue-50); }
@@ -941,7 +955,7 @@ input, select, textarea { font-family: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .wlg-samples-toggle:hover { color: var(--blue-800); }
-.wlg-samples-chevron { transition: transform .15s; font-size: .7rem; }
+.wlg-samples-chevron { transition: transform var(--duration-fast) var(--ease-out); font-size: .7rem; }
 .wlg-samples-toggle--open .wlg-samples-chevron { transform: rotate(180deg); }
 
 .wlg-samples-panel {
@@ -1167,7 +1181,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   cursor: pointer;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background .15s, transform .1s;
+  transition: background var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
 }
 .month-nav-btn:hover  { background: var(--blue-900, #163a7a); }
 .month-nav-btn:active { transform: scale(.93); }
@@ -1268,7 +1282,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   outline: none;
-  transition: border-color .15s, box-shadow .15s, width .15s;
+  transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), width var(--duration-fast) var(--ease-standard);
 }
 .wo-search-input:focus {
   width: 180px;
@@ -1320,12 +1334,17 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   justify-content: center;
   box-shadow: var(--shadow-fab);
   z-index: 90;
-  transition: background .15s, transform .15s;
+  transition: background var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
 .fab:hover  { background: var(--blue-900); }
 .fab:active { transform: scale(.92); }
 
+/* Opacity/transform, not the `hidden` attribute — same reasoning as
+   .wlg-selection-bar above: display:none can't be transitioned, and
+   the visibility delay keeps it out of the way for clicks once faded
+   out instead of leaving an invisible-but-interactive menu floating
+   over the page. Grows from the FAB it opens from (bottom right). */
 .fab-menu {
   position: fixed;
   right: 20px;
@@ -1336,6 +1355,21 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   box-shadow: var(--shadow-md);
   overflow: hidden;
   z-index: 91;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(.94) translateY(6px);
+  transform-origin: bottom right;
+  transition: opacity var(--duration-fast) var(--ease-standard),
+              transform var(--duration-fast) var(--ease-out),
+              visibility 0s linear var(--duration-fast);
+}
+.fab-menu--visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1) translateY(0);
+  transition: opacity var(--duration-fast) var(--ease-standard),
+              transform var(--duration-fast) var(--ease-out),
+              visibility 0s linear 0s;
 }
 
 .fab-menu-item {
@@ -1348,6 +1382,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   border-bottom: 1px solid var(--border-light);
   font-size: .9375rem;
   color: var(--text-primary);
+  transition: background var(--duration-fast) var(--ease-standard);
 }
 .fab-menu-item:last-child { border-bottom: none; }
 .fab-menu-item:hover,
@@ -1365,7 +1400,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  animation: fadeIn .2s ease;
+  animation: fadeIn var(--duration-base) var(--ease-standard);
 }
 
 @keyframes fadeIn { from { opacity: 0; } }
@@ -1378,7 +1413,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   max-height: 92dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  animation: slideUp .25s cubic-bezier(.32,.72,0,1);
+  animation: slideUp var(--duration-slow) var(--ease-out);
   padding: 0 0 env(safe-area-inset-bottom);
 }
 
@@ -1857,7 +1892,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background .15s, color .15s, border-color .15s;
+  transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
 .gerk-remove-btn:hover {
@@ -1876,7 +1911,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   font-size: .875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background .15s, border-color .15s;
+  transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
 .btn-add-gerk:hover {

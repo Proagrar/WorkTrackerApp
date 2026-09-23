@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.13';
+const APP_VERSION = 'v2.14';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2941,16 +2941,18 @@ logoutBtn.addEventListener('click', async () => {
 });
 
 // ── FAB menu ───────────────────────────────────────────────────
+// Class toggle, not the `hidden` attribute — lets the open/close
+// transition actually play (see .fab-menu's own CSS comment).
 addBtn.addEventListener('click', (e) => {
   e.stopPropagation();
-  fabMenu.hidden = !fabMenu.hidden;
+  fabMenu.classList.toggle('fab-menu--visible');
 });
 fabMenu.addEventListener('click', e => e.stopPropagation());
-document.addEventListener('click', () => { fabMenu.hidden = true; });
+document.addEventListener('click', () => { fabMenu.classList.remove('fab-menu--visible'); });
 
 fabMenu.querySelectorAll('.fab-menu-item').forEach(btn => {
   btn.addEventListener('click', () => {
-    fabMenu.hidden = true;
+    fabMenu.classList.remove('fab-menu--visible');
     if (btn.dataset.action === 'new-work-order')  openWorkOrderModal();
     if (btn.dataset.action === 'customer-list')   openDeclModal();
     if (btn.dataset.action === 'operators-list')  openOperatorsModal();
