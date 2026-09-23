@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.12';
+const APP_VERSION = 'v2.13';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2686,13 +2686,28 @@ async function confirmKmlImport(btn) {
           currentDetailWorkOrder.delovni_nalogi_gerki = [...(currentDetailWorkOrder.delovni_nalogi_gerki || []), gerk];
         }
 
-        const { error: importError } = await supabase.rpc('import_gerk_segmentation', {
+        const { data: segmentationId, error: importError } = await supabase.rpc('import_gerk_segmentation', {
           p_gerk_id:    gerkCode,
           p_type:       type,
           p_valid_from: validFrom,
           p_segments:   imp.segments,
         });
         if (importError) throw importError;
+
+        // Backfill Ha from the imported zones' own area (gerk_segment.area_ha
+        // is a generated column computed from the actual polygon geometry —
+        // no registry lookup needed) when this GERK has none yet. Covers
+        // custom/sub-divided codes with no registry match at all (e.g. a
+        // large field split into "1526437_CH1", "1526437_MO7"...), which
+        // otherwise show no Ha despite the zone geometry being right there.
+        if (!gerk.kolicina_ha) {
+          const { data: segRows } = await supabase.from('gerk_segment').select('area_ha').eq('segmentation_id', segmentationId);
+          const importedHa = (segRows || []).reduce((s, r) => s + (Number(r.area_ha) || 0), 0);
+          if (importedHa > 0) {
+            const { error: haError } = await supabase.from('delovni_nalogi_gerki').update({ kolicina_ha: importedHa }).eq('id', gerk.id);
+            if (!haError) gerk.kolicina_ha = importedHa;
+          }
+        }
 
         // Each imported zone also becomes its own segment (delovni_nalogi_vzorci
         // row) on this GERK — its label (e.g. "10734") as the segment number —
@@ -3966,7 +3981,7 @@ async function confirmNewKmlImport(btn) {
       try {
         if (!(await confirmReplaceExistingSegmentation(gerkCode, type))) continue;
 
-        const { error } = await supabase.rpc('import_gerk_segmentation', {
+        const { data: segmentationId, error } = await supabase.rpc('import_gerk_segmentation', {
           p_gerk_id:    gerkCode,
           p_type:       type,
           p_valid_from: validFrom,
@@ -3974,8 +3989,18 @@ async function confirmNewKmlImport(btn) {
         });
         if (error) throw error;
 
+        // Same Ha fallback as the detail-view import — gerk_segment.area_ha
+        // is computed from the actual imported geometry, so a custom/
+        // sub-divided code with no registry match still gets a real Ha
+        // instead of showing nothing.
         const known = fields.find(f => f.code === gerkCode);
-        const row = ensureGerkRowForPaste(gerkCode, known?.area ?? null);
+        let hectares = known?.area ?? null;
+        if (!hectares) {
+          const { data: segRows } = await supabase.from('gerk_segment').select('area_ha').eq('segmentation_id', segmentationId);
+          const importedHa = (segRows || []).reduce((s, r) => s + (Number(r.area_ha) || 0), 0);
+          if (importedHa > 0) hectares = importedHa;
+        }
+        const row = ensureGerkRowForPaste(gerkCode, hectares);
         if (row) addGerkSegments(row, imp.segments.map(s => ({ fms: null, sampleNo: s.label, vzorcenje: null })));
 
         importedFiles++;
