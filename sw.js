@@ -1,4 +1,4 @@
-const CACHE = 'worktracker-v2.06';
+const CACHE = 'worktracker-v2.07';
 const SHELL = [
   './index.html',
   './app.html',
@@ -37,11 +37,16 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Network-first for HTML and JS — always picks up code changes when online.
-  // cache: 'no-store' bypasses the browser's own HTTP cache, not just ours —
-  // otherwise a Cache-Control header from GitHub Pages can make fetch()
-  // silently return a stale response with no real network round-trip.
-  if (url.endsWith('.html') || url.endsWith('.js')) {
+  // Network-first for HTML, JS and CSS — always picks up code changes when
+  // online. CSS used to be cache-first, but a deploy routinely changes app.js
+  // markup and style.css layout together (e.g. a new grid column added to
+  // both at once) — serving stale cached CSS against fresh JS/HTML silently
+  // breaks that layout (an item overflowing into an extra implicit grid row)
+  // until the user happens to hard-refresh. cache: 'no-store' bypasses the
+  // browser's own HTTP cache, not just ours — otherwise a Cache-Control
+  // header from GitHub Pages can make fetch() silently return a stale
+  // response with no real network round-trip.
+  if (url.endsWith('.html') || url.endsWith('.js') || url.endsWith('.css')) {
     e.respondWith(
       fetch(e.request, { cache: 'no-store' })
         .then(res => {
@@ -54,7 +59,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for CSS, icons, manifest
+  // Cache-first for icons, manifest — static assets that never change shape
+  // together with app code, so staleness isn't a correctness risk here.
   e.respondWith(
     caches.match(e.request).then((cached) => cached ?? fetch(e.request))
   );
