@@ -1515,6 +1515,58 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   pointer-events: none;
 }
 
+.wo-map-expand-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .85);
+  color: var(--text-primary);
+  font-size: .75rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wo-map-expand-btn:hover { background: #fff; }
+
+/* Expanded map mode — the button toggles this class on .wo-detail-layout.
+   Mobile: just grows the map's height (it's already full-width above the
+   content). Desktop (900px+, side-by-side layout): also shrinks the
+   content column to just the compact list's width. */
+.wo-detail-layout--map-expanded .wo-detail-map-wrap { height: 65vh; max-height: 620px; }
+@media (min-width: 900px) {
+  .wo-detail-layout--map-expanded .wo-detail-map-wrap { width: 78%; height: auto; max-height: none; }
+  .wo-detail-layout--map-expanded .wo-detail-content  { width: 22%; }
+}
+
+/* Compact GERK + segment list — code and segment numbers only, no
+   times/comments/edit controls, shown in place of #workLogGerkRows
+   while the map is expanded. */
+.wlg-compact-list { display: flex; flex-direction: column; }
+.wlg-compact-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  background: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.wlg-compact-row:last-child { border-bottom: none; }
+.wlg-compact-row:hover { background: var(--blue-50); }
+.wlg-compact-code { font-weight: 600; font-size: .875rem; flex-shrink: 0; }
+.wlg-compact-name { font-weight: 400; color: var(--text-secondary); }
+.wlg-compact-segs { font-size: .75rem; color: var(--text-secondary); text-align: right; overflow-wrap: anywhere; }
+
 .wo-capture-btn { width: 100%; white-space: normal; }
 
 .wo-capture-toggle {

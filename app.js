@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.08';
+const APP_VERSION = 'v2.09';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -79,6 +79,11 @@ const woImportZonesCancelBtn = document.getElementById('woImportZonesCancelBtn')
 const woImportZonesError = document.getElementById('woImportZonesError');
 const woDetailMap = document.getElementById('woDetailMap');
 const woMapGerkLabel = document.getElementById('woMapGerkLabel');
+const woMapExpandBtn = document.getElementById('woMapExpandBtn');
+const wlgCompactList = document.getElementById('wlgCompactList');
+const woDetailLayoutEl = document.querySelector('.wo-detail-layout');
+let woMapExpanded = false;
+let currentGerkPlanRows = []; // cached from the last renderWorkLogGerkRows call, reused by the compact map-expanded list
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
 const woCaptureError = document.getElementById('woCaptureError');
@@ -863,6 +868,8 @@ function renderSampleCommentCell(s) {
 
 
 function renderWorkLogGerkRows(rows) {
+  currentGerkPlanRows = rows;
+
   // Prune any selected code that no longer has a row (GERK removed,
   // order reloaded) so the selection bar's count never lies.
   const validCodes = new Set(rows.map(r => r.code));
@@ -933,7 +940,48 @@ function renderWorkLogGerkRows(rows) {
 
   wireGerkRowButtons();
   updateGerkSelectionBar();
+  if (woMapExpanded) renderCompactGerkList();
 }
+
+// Read-only code + segment-numbers list, shown in place of the full
+// interactive GERK rows while the map is expanded — reuses whatever
+// renderWorkLogGerkRows last built rather than re-deriving from
+// currentDetailWorkOrder, so it can never drift out of sync with it.
+function renderCompactGerkList() {
+  if (!currentGerkPlanRows.length) {
+    wlgCompactList.innerHTML = `<p class="field-hint">Ta delovni nalog nima dodanih GERKOV.</p>`;
+    return;
+  }
+  wlgCompactList.innerHTML = currentGerkPlanRows.map(r => {
+    const name = fields.find(f => f.code === r.code)?.name || '';
+    const segs = (r.samples || []).map(s => escHtml(s.sample_no)).join(', ');
+    return `
+      <button type="button" class="wlg-compact-row" data-code="${escHtml(r.code)}">
+        <span class="wlg-compact-code">${escHtml(r.code)}${name ? ` <span class="wlg-compact-name">${escHtml(name)}</span>` : ''}</span>
+        ${segs ? `<span class="wlg-compact-segs">${segs}</span>` : ''}
+      </button>`;
+  }).join('');
+  wlgCompactList.querySelectorAll('.wlg-compact-row').forEach(btn => {
+    btn.addEventListener('click', () => highlightGerkOnWoMap(btn.dataset.code));
+  });
+}
+
+function updateMapExpandState() {
+  woDetailLayoutEl?.classList.toggle('wo-detail-layout--map-expanded', woMapExpanded);
+  workLogGerkRowsEl.hidden = woMapExpanded;
+  wlgCompactList.hidden = !woMapExpanded;
+  woMapExpandBtn.textContent = woMapExpanded ? '⤡ Pomanjšaj zemljevid' : '⛶ Razširi zemljevid';
+  if (woMapExpanded) renderCompactGerkList();
+  // The map's own container just changed size — Leaflet only re-measures
+  // when told to, and needs the new size already applied in the DOM
+  // (hence rAF, not immediate) or it reads the stale one mid-transition.
+  requestAnimationFrame(() => woMap?.invalidateSize());
+}
+
+woMapExpandBtn.addEventListener('click', () => {
+  woMapExpanded = !woMapExpanded;
+  updateMapExpandState();
+});
 
 // Admins can always see + add segments (even zero today — that's the
 // point of the + button), everyone else only sees the panel when
@@ -1183,6 +1231,8 @@ async function showWoDetailMap(workOrder) {
   woMapHighlightedCode = null;
   if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
   woMapGerkLabel.hidden = true;
+  woMapExpanded = false;
+  updateMapExpandState();
 
   // invalidateSize() has to run — with the container actually part of
   // the visible layout — before any setView/fitBounds call below, or

@@ -160,6 +160,11 @@
       <div class="wo-detail-layout">
         <div class="wo-detail-map-wrap">
           <div id="woDetailMap" class="wo-detail-map"></div>
+          <!-- Shrinks the GERK list to a compact code+segment reference
+               (see renderCompactGerkList()) and grows the map — for
+               desktop side-by-side viewing where the full form isn't
+               needed, just orientation on the map. -->
+          <button type="button" id="woMapExpandBtn" class="wo-map-expand-btn">⛶ Razširi zemljevid</button>
           <!-- Set by highlightGerkOnWoMap() when a GERK row is clicked —
                just a name label, so it's clear which GERK is highlighted
                while panning/zooming, not an interactive control. -->
@@ -254,6 +259,10 @@
             <div class="alert alert-error" id="woImportZonesError" hidden role="alert"></div>
           </div>
           <div id="workLogGerkRows" class="wlg-table"></div>
+          <!-- Shown instead of the above while the map is expanded (see
+               woMapExpandBtn) — code + segment numbers only, click to
+               highlight on the map, no edit controls. -->
+          <div id="wlgCompactList" class="wlg-compact-list" hidden></div>
           <!-- Admin only: add a GERK to an already-created order — the create
                form's own +/− only works before the first save. -->
           <div class="gerk-wrap" id="woAddExistingGerkWrap" hidden>
