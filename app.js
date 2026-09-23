@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.16';
+const APP_VERSION = 'v2.17';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3064,7 +3064,7 @@ async function renderOperatorsList() {
   if (error) { showOperatorsError(error.message || 'Napaka pri nalaganju.'); return; }
 
   const isAdmin = isAdminView();
-  const ROLE_LABELS = { admin: 'Administrator', supervisor: 'Srednji nivo', operator: 'Navadni uporabnik' };
+  const ROLE_LABELS = { admin: 'Administrator', supervisor: 'Vodja organizacije', operator: 'Operater' };
   operatorsListEl.innerHTML = (data || []).map(p => `
     <div class="operator-block">
       <div class="operator-row">
@@ -3119,7 +3119,7 @@ async function updateOperatorRoleOrg(el) {
   const org  = orgInput.value.trim() || null;
 
   if (role === 'supervisor' && !org) {
-    showOperatorsError('Za srednji nivo (vodjo) vpišite organizacijo.');
+    showOperatorsError('Za vodjo organizacije vpišite organizacijo.');
     return;
   }
 
@@ -3189,7 +3189,7 @@ async function createOperatorFromForm() {
     return;
   }
   if (role === 'supervisor' && !org) {
-    showOperatorsError('Za srednji nivo (vodjo) vpišite organizacijo.');
+    showOperatorsError('Za vodjo organizacije vpišite organizacijo.');
     return;
   }
 
