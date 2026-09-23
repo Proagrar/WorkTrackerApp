@@ -1543,29 +1543,33 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   .wo-detail-layout--map-expanded .wo-detail-content  { width: 22%; }
 }
 
-/* Compact GERK + segment list — code and segment numbers only, no
-   times/comments/edit controls, shown in place of #workLogGerkRows
-   while the map is expanded. */
+/* Compact GERK list — code, segment numbers and Start/Konec, no
+   name/meta/comments/edit-time-panel, shown in place of #workLogGerkRows
+   while the map is expanded. Start/Konec here are real .wlg-toggle-btn
+   buttons (same class as the full list) that delegate their click to
+   the corresponding real, hidden button — see delegateCompactGerkAction. */
 .wlg-compact-list { display: flex; flex-direction: column; }
 .wlg-compact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-light);
+}
+.wlg-compact-row:last-child { border-bottom: none; }
+.wlg-compact-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  width: 100%;
-  padding: 8px 4px;
-  border: none;
-  border-bottom: 1px solid var(--border-light);
-  background: none;
-  text-align: left;
-  font: inherit;
   cursor: pointer;
 }
-.wlg-compact-row:last-child { border-bottom: none; }
-.wlg-compact-row:hover { background: var(--blue-50); }
-.wlg-compact-code { font-weight: 600; font-size: .875rem; flex-shrink: 0; }
+.wlg-compact-head:hover .wlg-compact-code { color: var(--blue-800); }
+.wlg-compact-code { font-weight: 600; font-size: .8125rem; flex-shrink: 0; }
 .wlg-compact-name { font-weight: 400; color: var(--text-secondary); }
-.wlg-compact-segs { font-size: .75rem; color: var(--text-secondary); text-align: right; overflow-wrap: anywhere; }
+.wlg-compact-segs { font-size: .6875rem; color: var(--text-secondary); text-align: right; overflow-wrap: anywhere; }
+.wlg-compact-row .wlg-toggle-btn { height: 32px; padding: 0 10px; font-size: .75rem; }
+.wlg-compact-row .wlg-time-value { font-size: .75rem; min-width: 0; }
 
 .wo-capture-btn { width: 100%; white-space: normal; }
 

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.09';
+const APP_VERSION = 'v2.10';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -83,7 +83,6 @@ const woMapExpandBtn = document.getElementById('woMapExpandBtn');
 const wlgCompactList = document.getElementById('wlgCompactList');
 const woDetailLayoutEl = document.querySelector('.wo-detail-layout');
 let woMapExpanded = false;
-let currentGerkPlanRows = []; // cached from the last renderWorkLogGerkRows call, reused by the compact map-expanded list
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
 const woCaptureError = document.getElementById('woCaptureError');
@@ -868,8 +867,6 @@ function renderSampleCommentCell(s) {
 
 
 function renderWorkLogGerkRows(rows) {
-  currentGerkPlanRows = rows;
-
   // Prune any selected code that no longer has a row (GERK removed,
   // order reloaded) so the selection bar's count never lies.
   const validCodes = new Set(rows.map(r => r.code));
@@ -943,27 +940,70 @@ function renderWorkLogGerkRows(rows) {
   if (woMapExpanded) renderCompactGerkList();
 }
 
-// Read-only code + segment-numbers list, shown in place of the full
-// interactive GERK rows while the map is expanded — reuses whatever
-// renderWorkLogGerkRows last built rather than re-deriving from
-// currentDetailWorkOrder, so it can never drift out of sync with it.
+// Compact code + segment-numbers + Start/Konec view, shown in place of
+// the full interactive GERK rows while the map is expanded. Reads
+// straight from the real (hidden, not removed) .wlg-row elements in
+// workLogGerkRowsEl rather than keeping its own copy of the data, so
+// it's always exactly in sync with whatever renderWorkLogGerkRows last
+// built — including after a Start/Konec click (see
+// delegateCompactGerkAction, which re-renders this from the real row's
+// post-update DOM instead of predicting the result itself).
 function renderCompactGerkList() {
-  if (!currentGerkPlanRows.length) {
+  const rows = Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row'));
+  if (!rows.length) {
     wlgCompactList.innerHTML = `<p class="field-hint">Ta delovni nalog nima dodanih GERKOV.</p>`;
     return;
   }
-  wlgCompactList.innerHTML = currentGerkPlanRows.map(r => {
-    const name = fields.find(f => f.code === r.code)?.name || '';
-    const segs = (r.samples || []).map(s => escHtml(s.sample_no)).join(', ');
+  wlgCompactList.innerHTML = rows.map(row => {
+    const code = row.dataset.code;
+    const name = fields.find(f => f.code === code)?.name || '';
+    const startBtn = row.querySelector('[data-action="wlg-start"]');
+    const endBtn   = row.querySelector('[data-action="wlg-end"]');
+    const startVal = row.querySelector('[data-role="start-value"]')?.textContent || '';
+    const endVal   = row.querySelector('[data-role="end-value"]')?.textContent || '';
+    const segs = Array.from(row.querySelectorAll('.wlg-samples-table tbody tr')).map(tr => {
+      const cell = tr.querySelector('td');
+      return (cell?.querySelector('input')?.value ?? cell?.textContent ?? '').trim();
+    }).filter(Boolean).join(', ');
     return `
-      <button type="button" class="wlg-compact-row" data-code="${escHtml(r.code)}">
-        <span class="wlg-compact-code">${escHtml(r.code)}${name ? ` <span class="wlg-compact-name">${escHtml(name)}</span>` : ''}</span>
-        ${segs ? `<span class="wlg-compact-segs">${segs}</span>` : ''}
-      </button>`;
+      <div class="wlg-compact-row" data-code="${escHtml(code)}">
+        <div class="wlg-compact-head" data-action="wlg-highlight-map">
+          <span class="wlg-compact-code">${escHtml(code)}${name ? ` <span class="wlg-compact-name">${escHtml(name)}</span>` : ''}</span>
+          ${segs ? `<span class="wlg-compact-segs">${escHtml(segs)}</span>` : ''}
+        </div>
+        <div class="wlg-times">
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-compact-start" ${startBtn?.disabled ? 'disabled' : ''}>Start</button>
+          <span class="wlg-time-value">${escHtml(startVal)}</span>
+          <button type="button" class="wlg-toggle-btn" data-action="wlg-compact-end" ${endBtn?.disabled ? 'disabled' : ''}>Konec</button>
+          <span class="wlg-time-value">${escHtml(endVal)}</span>
+        </div>
+      </div>`;
   }).join('');
-  wlgCompactList.querySelectorAll('.wlg-compact-row').forEach(btn => {
-    btn.addEventListener('click', () => highlightGerkOnWoMap(btn.dataset.code));
+
+  wlgCompactList.querySelectorAll('[data-action="wlg-highlight-map"]').forEach(el => {
+    el.addEventListener('click', () => highlightGerkOnWoMap(el.closest('.wlg-compact-row')?.dataset.code));
   });
+  wlgCompactList.querySelectorAll('[data-action="wlg-compact-start"]').forEach(btn => {
+    btn.addEventListener('click', () => delegateCompactGerkAction(btn, 'wlg-start'));
+  });
+  wlgCompactList.querySelectorAll('[data-action="wlg-compact-end"]').forEach(btn => {
+    btn.addEventListener('click', () => delegateCompactGerkAction(btn, 'wlg-end'));
+  });
+}
+
+// Compact rows don't carry the full .wlg-row structure startGerk/endGerk/
+// applyGerkRowUpdate expect (edit panel, data-role spans, etc.) — rather
+// than duplicating that, this clicks the real (hidden) button for the
+// same GERK in the full list and awaits the exact same code path, then
+// re-renders the compact list from its result. One code path that ever
+// calls start_gerk/end_gerk, compact or not.
+async function delegateCompactGerkAction(compactBtn, action) {
+  const code = compactBtn.closest('.wlg-compact-row')?.dataset.code;
+  const realBtn = workLogGerkRowsEl.querySelector(`.wlg-row[data-code="${CSS.escape(code)}"] [data-action="${action}"]`);
+  if (!realBtn || realBtn.disabled) return;
+  compactBtn.disabled = true;
+  await (action === 'wlg-start' ? startGerk(realBtn) : endGerk(realBtn));
+  if (woMapExpanded) renderCompactGerkList();
 }
 
 function updateMapExpandState() {
