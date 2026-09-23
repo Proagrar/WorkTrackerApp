@@ -160,6 +160,10 @@
       <div class="wo-detail-layout">
         <div class="wo-detail-map-wrap">
           <div id="woDetailMap" class="wo-detail-map"></div>
+          <!-- Set by highlightGerkOnWoMap() when a GERK row is clicked —
+               just a name label, so it's clear which GERK is highlighted
+               while panning/zooming, not an interactive control. -->
+          <div id="woMapGerkLabel" class="wo-map-gerk-label" hidden></div>
           <div id="woCapturePanel" class="wo-capture-panel">
             <button type="button" id="woCaptureBtn" class="btn btn-primary btn-sm wo-capture-btn">📍 Poberi vzorec</button>
             <label class="wo-capture-toggle">

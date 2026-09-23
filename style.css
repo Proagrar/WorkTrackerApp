@@ -1493,6 +1493,28 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   overflow-y: auto;
 }
 
+/* Highlighted GERK's name, floated over the map — purely informational
+   (pointer-events: none) so it never blocks dragging/zooming under it. */
+.wo-map-gerk-label {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: calc(100% - 160px);
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, .85);
+  color: var(--text-primary);
+  font-size: .8125rem;
+  font-weight: 600;
+  border-radius: 20px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .wo-capture-btn { width: 100%; white-space: normal; }
 
 .wo-capture-toggle {

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.07';
+const APP_VERSION = 'v2.08';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -78,6 +78,7 @@ const woImportZonesConfirmBtn = document.getElementById('woImportZonesConfirmBtn
 const woImportZonesCancelBtn = document.getElementById('woImportZonesCancelBtn');
 const woImportZonesError = document.getElementById('woImportZonesError');
 const woDetailMap = document.getElementById('woDetailMap');
+const woMapGerkLabel = document.getElementById('woMapGerkLabel');
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
 const woCaptureError = document.getElementById('woCaptureError');
@@ -1105,6 +1106,16 @@ function highlightGerkOnWoMap(code) {
 
   const entry = woMapLayersByCode.get(code);
   woMapHighlightedCode = code;
+
+  // Name overlay — shown regardless of whether there's any geometry to
+  // fit/highlight below, so clicking a GERK always confirms which one
+  // you picked even if it has no shape/zone drawn yet.
+  const row = workLogGerkRowsEl.querySelector(`.wlg-row[data-code="${CSS.escape(code)}"]`);
+  const label = [row?.querySelector('.wlg-code')?.textContent, row?.querySelector('.wlg-name')?.textContent]
+    .filter(Boolean).join(' ');
+  woMapGerkLabel.textContent = label || code;
+  woMapGerkLabel.hidden = false;
+
   if (!entry) return; // no marker/shape/zone for this GERK — nothing to show
 
   if (entry.shape) {
@@ -1171,6 +1182,7 @@ async function showWoDetailMap(workOrder) {
   woMapLayersByCode = new Map();
   woMapHighlightedCode = null;
   if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
+  woMapGerkLabel.hidden = true;
 
   // invalidateSize() has to run — with the container actually part of
   // the visible layout — before any setView/fitBounds call below, or
