@@ -1521,12 +1521,15 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-map-expand-btn:hover { background: #fff; }
 
 /* Expanded map mode — the button toggles this class on .wo-detail-layout.
-   Mobile: just grows the map's height (it's already full-width above the
-   content). Desktop (900px+, side-by-side layout): also shrinks the
-   content column to just the compact list's width. */
-.wo-detail-layout--map-expanded .wo-detail-map-wrap { height: 65vh; max-height: 620px; }
+   Width only, never height — height stays whatever the normal (non-
+   expanded) sizing already gives it (fixed on mobile, stretch-to-
+   content with a floor on desktop — see .wo-detail-map-wrap's own
+   comment further up). Mobile has no separate width to grow into
+   either (the map's already 100% there, stacked above the content), so
+   expand only really does something at the desktop breakpoint below —
+   on mobile it's just the compact GERK list swap. */
 @media (min-width: 900px) {
-  .wo-detail-layout--map-expanded .wo-detail-map-wrap { width: 78%; height: auto; max-height: none; }
+  .wo-detail-layout--map-expanded .wo-detail-map-wrap { width: 78%; }
   .wo-detail-layout--map-expanded .wo-detail-content  { width: 22%; }
 }
 

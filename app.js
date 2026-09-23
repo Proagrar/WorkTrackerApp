@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.11';
+const APP_VERSION = 'v2.12';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -80,6 +80,7 @@ const woMapGerkLabel = document.getElementById('woMapGerkLabel');
 const woMapExpandBtn = document.getElementById('woMapExpandBtn');
 const wlgCompactList = document.getElementById('wlgCompactList');
 const woDetailLayoutEl = document.querySelector('.wo-detail-layout');
+const woDetailMapWrapEl = document.querySelector('.wo-detail-map-wrap');
 let woMapExpanded = false;
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
@@ -1005,6 +1006,22 @@ async function delegateCompactGerkAction(compactBtn, action) {
 }
 
 function updateMapExpandState() {
+  // The map and content column share a row with align-items: stretch,
+  // so the map's real height already tracks .wo-detail-content's height
+  // (that's the "adaptive" sizing wanted in the normal view — see the
+  // wrap's own CSS comment). Swapping in the much shorter compact list
+  // would shrink .wo-detail-content and, via that same stretch, shrink
+  // the map along with it — expand should only ever change width, never
+  // height. Freezing the map's current pixel height BEFORE the content
+  // swap (and only that — not touched by the class toggle below) keeps
+  // it exactly as it was; clearing the inline style on the way back out
+  // hands sizing back to the normal CSS-driven behavior.
+  if (woMapExpanded) {
+    if (woDetailMapWrapEl) woDetailMapWrapEl.style.height = woDetailMapWrapEl.getBoundingClientRect().height + 'px';
+  } else if (woDetailMapWrapEl) {
+    woDetailMapWrapEl.style.height = '';
+  }
+
   woDetailLayoutEl?.classList.toggle('wo-detail-layout--map-expanded', woMapExpanded);
   workLogGerkRowsEl.hidden = woMapExpanded;
   wlgCompactList.hidden = !woMapExpanded;
