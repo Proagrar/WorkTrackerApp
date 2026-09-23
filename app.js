@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.05';
+const APP_VERSION = 'v2.06';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3901,11 +3901,15 @@ woGerkPasteBtn.addEventListener('click', () => {
   const rawLines = woGerkPasteInput.value.split('\n').filter(l => l.trim() !== '');
   if (!rawLines.length) return;
 
-  // A header row ("GERK  Ha  FMS  Sample no") starts with a non-numeric
-  // first cell — drop it rather than choke on it as a bogus GERK code.
+  // A header row ("GERK  Ha  FMS  Sample no") has a non-numeric Ha
+  // (2nd) cell — drop it rather than choke on it as a bogus GERK entry.
+  // Checking the Ha cell instead of the GERK code itself matters now
+  // that GERK codes aren't always purely numeric (e.g. "1526437_CH1"
+  // sub-field codes) — the first real data row would otherwise get
+  // misread as a header and silently dropped.
   let lines = rawLines;
-  const firstCode = (lines[0].split('\t')[0] || '').trim();
-  if (firstCode && !/^\d+$/.test(firstCode)) lines = lines.slice(1);
+  const firstHa = (lines[0].split('\t')[1] || '').trim();
+  if (firstHa && !/^\d+([.,]\d+)?$/.test(firstHa)) lines = lines.slice(1);
 
   // 4+ tab-separated cells on any row means this is the lab's GERK +
   // segment sheet, not a plain code (+ha) list — handle the whole
