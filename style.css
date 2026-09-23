@@ -200,12 +200,6 @@ input, select, textarea { font-family: inherit; }
   min-height: 90px;
 }
 
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 .time-wrap {
   display: flex;
   align-items: center;
@@ -316,8 +310,7 @@ input, select, textarea { font-family: inherit; }
   animation: spin .7s linear infinite;
 }
 
-.btn-secondary .btn-spinner,
-.btn-ghost .btn-spinner {
+.btn-secondary .btn-spinner {
   border-color: rgba(0,0,0,.15);
   border-top-color: var(--text-primary);
 }
@@ -806,10 +799,6 @@ input, select, textarea { font-family: inherit; }
 .wlg-sel-action--danger:hover:not(:disabled) { background: var(--error-bg); }
 .wlg-sel-action--danger:active:not(:disabled) { background: #FEE2E2; }
 
-.wlg-sel-action--positive, .wlg-sel-action--positive svg { color: var(--success); }
-.wlg-sel-action--positive:hover:not(:disabled) { background: var(--success-bg); }
-.wlg-sel-action--positive:active:not(:disabled) { background: #DCFCE7; }
-
 .wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
 
 /* rowFadeIn plays automatically on every re-render — innerHTML
@@ -1049,7 +1038,6 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-secondary);
   flex-basis: 100%;
 }
-.wlg-import-zones-filename--warn { color: var(--error); font-weight: 600; }
 
 /* One row per selected file when several KMLs are imported at once —
    each gets its own editable target GERK, since a batch import maps
@@ -1122,31 +1110,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 }
 .wlg-remove-sample:hover { color: var(--danger); }
 
-.wlg-capture-location {
-  background: none;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--blue-800);
-  font-size: .71875rem;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  padding: 3px 6px;
-  margin-left: 4px;
-  white-space: nowrap;
-}
-.wlg-capture-location:hover { background: var(--blue-50); }
-.wlg-capture-location:disabled { opacity: .5; cursor: not-allowed; }
-
-
 /* ── Work order header: start/status button + meta ─────────── */
-.btn-started {
-  background: var(--success);
-}
-.btn-started:disabled {
-  opacity: 1;
-  cursor: default;
-}
 
 .wo-header-meta {
   font-size: .8125rem;
@@ -1731,12 +1695,6 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
      way, capped only by the modal's own max-height further up. */
   .wo-detail-map-wrap { width: 50%; height: auto; min-height: 400px; max-height: none; order: 2; }
   .wo-detail-content  { width: 50%; order: 1; }
-}
-
-.dialog-body {
-  padding: 8px 20px 16px;
-  font-size: .9375rem;
-  color: var(--text-secondary);
 }
 
 .map-container {
