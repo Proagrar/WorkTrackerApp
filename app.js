@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.03';
+const APP_VERSION = 'v2.04';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -696,6 +696,10 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
     const mine   = logByCode[pf.gerk_code];
     const others = othersByCode[pf.gerk_code] || [];
     const locked = lockedEntryFor(mine, others);
+    // When the locked entry came from someone else (not "mine"), carry
+    // its real owner/date so an admin editing it doesn't default the
+    // edit panel to the currently-viewed date/operator — see saveGerkEdit.
+    const lockedOther = locked && locked !== mine ? locked : null;
     return {
       code:      pf.gerk_code,
       gerkId:    pf.id,
@@ -706,6 +710,8 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
       endTime:   locked?.end_time ?? null,
       duration:  locked?.duration ?? null,
       completed: locked?.completed ?? false,
+      ownerId:   lockedOther?.work_logs?.operator_id ?? null,
+      ownerDate: lockedOther?.work_logs?.work_date ?? null,
       canEnd:    !!mine?.start_time && !mine?.completed,
       samples:   pf.delovni_nalogi_vzorci || [],
       otherEntries: others,
@@ -716,10 +722,13 @@ function buildGerkPlanRows(workOrder, todaysGerks) {
   (todaysGerks || []).filter(g => !planCodes.has(g.gerk_code)).forEach(g => {
     const others = othersByCode[g.gerk_code] || [];
     const locked = lockedEntryFor(g, others);
+    const lockedOther = locked && locked !== g ? locked : null;
     rows.push({
       code: g.gerk_code, hectares: g.hectares, lokacija: null,
       startTime: locked?.start_time ?? null, endTime: locked?.end_time ?? null,
       duration: locked?.duration ?? null, completed: locked?.completed ?? false,
+      ownerId:   lockedOther?.work_logs?.operator_id ?? null,
+      ownerDate: lockedOther?.work_logs?.work_date ?? null,
       canEnd: !!g.start_time && !g.completed,
       samples: [],
       otherEntries: others,
@@ -875,7 +884,8 @@ function renderWorkLogGerkRows(rows) {
     const others    = r.otherEntries || [];
     return `
       <div class="wlg-row${completed ? ' wlg-row--completed' : ''}" data-code="${escHtml(r.code)}"
-           data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}">
+           data-start="${r.startTime || ''}" data-end="${r.endTime || ''}" data-duration="${r.duration ?? ''}"
+           data-owner="${r.ownerId || ''}" data-owner-date="${r.ownerDate || ''}">
         <div class="wlg-info" data-action="wlg-highlight-map">
           <span class="wlg-code-line">
             ${isAdminView() ? `<input type="checkbox" class="wlg-select-checkbox" data-action="wlg-select" data-code="${escHtml(r.code)}" aria-label="Izberi GERK" ${selectedGerkCodes.has(r.code) ? 'checked' : ''}>` : ''}
@@ -1755,7 +1765,10 @@ function toggleGerkEdit(btn) {
   const panel = row.querySelector('.wlg-edit-panel');
   panel.hidden = !panel.hidden;
   if (!panel.hidden) {
-    row.querySelector('.wlg-edit-date').value  = currentDetailDate;
+    // If this row's locked time belongs to another operator (admin
+    // viewing/editing someone else's entry), default to THAT entry's
+    // real date, not whatever date is currently open in the picker.
+    row.querySelector('.wlg-edit-date').value  = row.dataset.ownerDate || currentDetailDate;
     row.querySelector('.wlg-edit-start').value = toTimeInputValue(row.dataset.start);
     row.querySelector('.wlg-edit-end').value   = toTimeInputValue(row.dataset.end);
   }
@@ -1780,10 +1793,14 @@ function timeInputToISO(dateStr, timeVal) {
 
 async function saveGerkEdit(btn) {
   const row      = btn.closest('.wlg-row');
-  const dateVal  = row.querySelector('.wlg-edit-date').value || currentDetailDate;
+  const ownerId  = row.dataset.owner || null;
+  // Baseline is the entry's own date when it belongs to another operator
+  // (admin edit), otherwise the date currently open in the picker.
+  const baseDate = row.dataset.ownerDate || currentDetailDate;
+  const dateVal  = row.querySelector('.wlg-edit-date').value || baseDate;
   const startVal = row.querySelector('.wlg-edit-start').value;
   const endVal   = row.querySelector('.wlg-edit-end').value;
-  const moved    = dateVal !== currentDetailDate;
+  const moved    = dateVal !== baseDate;
 
   btn.disabled = true;
   try {
@@ -1793,7 +1810,8 @@ async function saveGerkEdit(btn) {
       p_start_time:     timeInputToISO(dateVal, startVal),
       p_end_time:       timeInputToISO(dateVal, endVal),
       p_work_date:      dateVal,
-      p_previous_work_date: currentDetailDate,
+      p_previous_work_date: baseDate,
+      p_target_operator_id: ownerId,
     });
     if (error) throw error;
     if (moved) {
@@ -1803,12 +1821,11 @@ async function saveGerkEdit(btn) {
       // Reloading is simplest and matches what a fresh open would show.
       await loadDetailForDate();
       showFormSuccess(`Vnos prestavljen na ${fmtSampleDate(dateVal)}.`);
-    } else if (!startVal && !endVal) {
-      // Clearing a field (blank start+end) — an admin clear may have
-      // deleted an entry that belonged to a different operator/date
-      // entirely, so the row's own RPC result isn't enough here; a
-      // full reload also refreshes the "who else worked this" list and
-      // header total, which a single-row patch wouldn't.
+    } else if ((!startVal && !endVal) || ownerId) {
+      // Clearing a field (blank start+end), or an admin editing another
+      // operator's entry — either way the row's own RPC result isn't
+      // enough: a full reload also refreshes the "who else worked this"
+      // list and header total, which a single-row patch wouldn't.
       await loadDetailForDate();
     } else {
       applyGerkRowUpdate(row, Array.isArray(data) ? data[0] : data);
