@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.04';
+const APP_VERSION = 'v2.05';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2405,16 +2405,26 @@ function parseKmlSegments(kmlText) {
   if (!segments.length) throw new Error('V datoteki ni najdenih con (poligonov).');
 
   // The GERK id isn't a proper labeled field anywhere in this export —
-  // it's only ever seen baked into the Schema/Folder name as a numeric
-  // prefix ("1677400Petrinic"). Not reliable enough to import against
-  // (a customer name starting with a digit, or a different naming
+  // it's only ever seen baked into the Schema/Folder name, either as a
+  // plain numeric prefix ("1677400Petrinic") or, when the same parcel
+  // number covers several distinct sub-fields, a short letter+digit
+  // code right after it ("1526437CH1Puklavec", "1526437MO7Puklavec" —
+  // one file per sub-field). Not reliable enough to import against (a
+  // customer name starting with a digit, or a different naming
   // convention, would silently point at the wrong GERK) — surfaced
   // only as a mismatch warning against the GERK you're actually
   // importing onto, never as the source of truth.
   const schemaName = doc.getElementsByTagName('Schema')[0]?.getAttribute('name')
     || doc.getElementsByTagName('Folder')[0]?.getElementsByTagName('name')[0]?.textContent
     || '';
-  const detectedGerkId = (schemaName.match(/^\d+/) || [])[0] || null;
+  // Sub-field code only counts as one if it's immediately followed by
+  // what looks like a Title-case customer surname — otherwise a plain
+  // name like "Petrinic" (P + lowercase, no digit) would never match
+  // the \d{1,2} part and this whole branch naturally falls through.
+  const subFieldMatch = schemaName.match(/^(\d+)([A-Z]{1,3}\d{1,2})(?=[A-Z][a-z])/);
+  const detectedGerkId = subFieldMatch
+    ? `${subFieldMatch[1]}_${subFieldMatch[2]}`
+    : (schemaName.match(/^\d+/) || [])[0] || null;
 
   return { segments, detectedGerkId };
 }
