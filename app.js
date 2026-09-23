@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.14';
+const APP_VERSION = 'v2.15';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -414,6 +414,31 @@ exportLogsBtn.addEventListener('click', exportLogsCSV);
 function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Modal show/hide (shared by all 6 .modal-backdrop dialogs) ────
+// Must match --duration-slow in style.css — kept as a plain constant
+// here rather than read from CSS since there's no cheap way to pull a
+// computed transition-duration back into a setTimeout delay.
+const MODAL_CLOSE_MS = 300;
+
+// Sets hidden=false synchronously (some callers measure/init layout —
+// Leaflet maps, focus() — right after calling this, which needs the
+// element already unhidden) and defers adding the class that actually
+// fades/slides it in to the next paint, so the browser has a "from"
+// state (hidden's initial opacity:0/translateY) to transition from
+// instead of jumping straight to visible.
+function showModalAnimated(el) {
+  el.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('modal-backdrop--visible')));
+}
+
+// Reverse: starts the fade/slide-out immediately, then waits for it to
+// finish before setting hidden=true — an instant `hidden = true` skips
+// straight to display:none, which can't be transitioned.
+function hideModalAnimated(el) {
+  el.classList.remove('modal-backdrop--visible');
+  setTimeout(() => { el.hidden = true; }, MODAL_CLOSE_MS);
 }
 
 // ── Tractor history (localStorage) ────────────────────────────
@@ -1155,7 +1180,7 @@ async function openWorkOrderDetail(workOrder) {
 
   await loadDetailForDate();
 
-  formModal.hidden = false;
+  showModalAnimated(formModal);
   // Only now, with the modal (and #woDetailMap inside it) actually
   // visible — Leaflet computes its tile viewport from the container's
   // real layout size at init time. Calling this any earlier, while
@@ -1293,8 +1318,8 @@ async function showWoDetailMap(workOrder) {
   // those compute against Leaflet's stale cached size (usually 0×0,
   // from whenever the map was first constructed) instead of the real
   // one. Awaiting a frame here (this function is only ever called
-  // after formModal.hidden = false) is the earliest point the
-  // container has real dimensions to measure.
+  // after showModalAnimated(formModal), which unhides it synchronously)
+  // is the earliest point the container has real dimensions to measure.
   await new Promise(resolve => requestAnimationFrame(resolve));
   map.invalidateSize();
 
@@ -1732,7 +1757,7 @@ workLogDateInput.addEventListener('change', async () => {
 });
 
 function closeModal() {
-  formModal.hidden = true;
+  hideModalAnimated(formModal);
   document.body.style.overflow = '';
   stopWatchingMyLocationOnWoMap();
   // Time logged via the live Start/Stop timers writes straight to Supabase
@@ -3035,7 +3060,7 @@ async function openOperatorsModal() {
   operatorsAddWrap.hidden = !isAdminView();
   toggleAddOperatorForm(false);
   await renderOperatorsList();
-  operatorsModal.hidden = false;
+  showModalAnimated(operatorsModal);
   document.body.style.overflow = 'hidden';
 }
 
@@ -3227,7 +3252,7 @@ async function deleteOperatorRow(btn) {
 }
 
 function closeOperatorsModal() {
-  operatorsModal.hidden = true;
+  hideModalAnimated(operatorsModal);
   document.body.style.overflow = '';
 }
 
@@ -3246,13 +3271,13 @@ function openAddCustomerModal(context, prefillNaziv = '') {
   addCustomerErrorEl.hidden = true;
   addCustomerForm.reset();
   newCustomerNazivInput.value = prefillNaziv;
-  addCustomerModal.hidden = false;
+  showModalAnimated(addCustomerModal);
   document.body.style.overflow = 'hidden';
   newCustomerNazivInput.focus();
 }
 
 function closeAddCustomerModal() {
-  addCustomerModal.hidden = true;
+  hideModalAnimated(addCustomerModal);
   document.body.style.overflow = '';
 }
 
@@ -3322,7 +3347,7 @@ let mapMeWatchId = null;
 function openMapModal(lat, lng, label) {
   mapModalTitle.textContent = label || 'Lokacija';
   mapOpenExternalLink.href = `https://www.google.com/maps?q=${lat},${lng}`;
-  mapModal.hidden = false;
+  showModalAnimated(mapModal);
   document.body.style.overflow = 'hidden';
 
   requestAnimationFrame(() => {
@@ -3367,7 +3392,7 @@ function stopWatchingMyLocationOnMap() {
 }
 
 function closeMapModal() {
-  mapModal.hidden = true;
+  hideModalAnimated(mapModal);
   document.body.style.overflow = '';
   stopWatchingMyLocationOnMap();
 }
@@ -4119,12 +4144,14 @@ woGerkPasteBtn.addEventListener('click', () => {
 // ── Seznam strank modal: open/close + list view ──────────────────
 async function openDeclModal() {
   if (!customers.length) await loadCustomers();
-  declModal.hidden = false;
+  showModalAnimated(declModal);
+  document.body.style.overflow = 'hidden'; // every other modal already locks background scroll — this one just hadn't
   showDeclList();
 }
 
 function closeDeclModal() {
-  declModal.hidden = true;
+  hideModalAnimated(declModal);
+  document.body.style.overflow = '';
 }
 
 function showDeclList() {
@@ -4405,12 +4432,12 @@ async function openWorkOrderModal() {
 
   addGerkRow(woGerksListEl);
 
-  workOrderModal.hidden = false;
+  showModalAnimated(workOrderModal);
   document.body.style.overflow = 'hidden';
 }
 
 function closeWorkOrderModal() {
-  workOrderModal.hidden = true;
+  hideModalAnimated(workOrderModal);
   document.body.style.overflow = '';
 }
 

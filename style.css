@@ -31,6 +31,24 @@
   --radius-lg:  18px;
   --radius-xl:  24px;
 
+  /* Spacing — a 4px-based scale matching what the file's own padding/
+     gap/margin values already cluster around (4, 6, 8, 10, 12, 14, 16,
+     20, 24px were already the most common by far). Existing
+     declarations weren't rewritten wholesale to use these — that's a
+     visual-regression risk across ~2000 lines with no way to check the
+     result without a browser — but new/touched CSS should reach for
+     these instead of another one-off number, the same way the motion
+     tokens above are meant to be used. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
   --shadow-md: 0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
   --shadow-fab:0 4px 16px rgba(28,69,146,.40);
@@ -794,8 +812,10 @@ input, select, textarea { font-family: inherit; }
 
 .wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
 
-.wlg-select-checkbox { width: 15px; height: 15px; margin-right: 4px; vertical-align: middle; cursor: pointer; }
-
+/* rowFadeIn plays automatically on every re-render — innerHTML
+   replacement destroys and recreates these nodes each time, so a
+   plain (non-toggled) animation on the class fires fresh every time
+   without needing any JS coordination. */
 .wlg-row {
   display: flex;
   flex-direction: column;
@@ -804,6 +824,11 @@ input, select, textarea { font-family: inherit; }
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-md);
+  animation: rowFadeIn var(--duration-fast) var(--ease-standard);
+}
+
+@keyframes rowFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
 }
 
 .wlg-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
@@ -1259,6 +1284,11 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-show-deleted-btn { height: 34px; white-space: nowrap; flex-shrink: 0; }
 .wo-show-deleted-btn--active { background: var(--blue-800); color: #fff; }
 
+/* Same [hidden]-override fade as .gerk-suggestions above — JS keeps
+   using the plain `hidden` attribute, this just makes it transition
+   instead of snap. */
+.wo-status-filter-menu[hidden] { display: block; opacity: 0; visibility: hidden; pointer-events: none; }
+.wo-status-filter-menu:not([hidden]) { opacity: 1; visibility: visible; }
 .wo-status-filter-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -1269,6 +1299,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   padding: 6px;
+  transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear var(--duration-fast);
+}
+.wo-status-filter-menu:not([hidden]) {
+  transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear 0s;
 }
 .wo-status-filter-menu .wo-gerk-checklist { max-height: none; border: none; margin-bottom: 0; }
 
@@ -1392,6 +1426,13 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 /* ============================================================
    MODAL SHEET
    ============================================================ */
+/* transition-based (class toggle), not the old @keyframes animation —
+   an `animation` only ever plays once, forward, when the element
+   becomes displayed, so closing (display:none via the `hidden`
+   attribute) always just snapped instantly with no reverse. A
+   transition can play both ways: showModalAnimated()/hideModalAnimated()
+   in app.js add/remove .modal-backdrop--visible, and only set the
+   `hidden` attribute itself once the close transition has finished. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1400,10 +1441,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  animation: fadeIn var(--duration-base) var(--ease-standard);
+  opacity: 0;
+  transition: opacity var(--duration-slow) var(--ease-standard);
 }
-
-@keyframes fadeIn { from { opacity: 0; } }
+.modal-backdrop--visible { opacity: 1; }
 
 .modal-sheet {
   background: var(--surface);
@@ -1413,13 +1454,11 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   max-height: 92dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  animation: slideUp var(--duration-slow) var(--ease-out);
   padding: 0 0 env(safe-area-inset-bottom);
+  transform: translateY(60px);
+  transition: transform var(--duration-slow) var(--ease-out);
 }
-
-@keyframes slideUp {
-  from { transform: translateY(60px); opacity: 0; }
-}
+.modal-backdrop--visible .modal-sheet { transform: translateY(0); }
 
 .modal-sheet-compact { max-height: auto; }
 
@@ -1580,6 +1619,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   gap: 6px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--border-light);
+  animation: rowFadeIn var(--duration-fast) var(--ease-standard);
 }
 .wlg-compact-row:last-child { border-bottom: none; }
 .wlg-compact-head {
@@ -1827,6 +1867,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   padding-top: 9px;
   padding-bottom: 9px;
   border-bottom: 1px solid var(--border-light);
+  animation: rowFadeIn var(--duration-fast) var(--ease-standard);
 }
 .log-compact:last-child { border-bottom: none; }
 .log-compact:hover { background: var(--blue-50); }
@@ -1968,6 +2009,20 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
    ============================================================ */
 .gerk-wrap { position: relative; }
 
+/* [hidden] normally means display:none, which can't be transitioned —
+   overriding it here to opacity/visibility instead (same technique as
+   .wlg-selection-bar/.fab-menu) lets JS keep doing the simple
+   `el.hidden = true/false` it already does everywhere this dropdown is
+   used (customer search, every GERK row's own code autocomplete) while
+   it fades instead of snapping. Safe since it's position:absolute —
+   doesn't affect layout either way. */
+.gerk-suggestions[hidden] {
+  display: block;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.gerk-suggestions:not([hidden]) { opacity: 1; visibility: visible; }
 .gerk-suggestions {
   position: absolute;
   top: calc(100% - 1px);
@@ -1983,6 +2038,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   margin: 0;
   padding: 4px 0;
   box-shadow: var(--shadow-md);
+  transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear var(--duration-fast);
+}
+.gerk-suggestions:not([hidden]) {
+  transition: opacity var(--duration-fast) var(--ease-standard), visibility 0s linear 0s;
 }
 
 .gerk-suggestion-item {
@@ -2050,7 +2109,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
    for role/organization — border-bottom moves to the outer .operator-block
    wrapper so :last-child still lands on the real last user once each
    user spans two rows instead of one. */
-.operator-block { border-bottom: 1px solid var(--border-light); }
+.operator-block { border-bottom: 1px solid var(--border-light); animation: rowFadeIn var(--duration-fast) var(--ease-standard); }
 .operator-block:last-child { border-bottom: none; }
 .operator-row {
   display: flex;
