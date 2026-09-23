@@ -147,14 +147,33 @@
   <div id="formModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-sheet modal-sheet-wide">
       <div class="modal-handle" aria-hidden="true"></div>
-      <div class="modal-head">
-        <h3 id="modalTitle" class="modal-title">Delovni nalog</h3>
-        <button id="modalClose" class="btn btn-icon" aria-label="Zapri">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
+      <div class="modal-head wo-modal-head">
+        <div class="wo-modal-head-top">
+          <h3 id="modalTitle" class="modal-title">Delovni nalog</h3>
+          <button id="modalClose" class="btn btn-icon" aria-label="Zapri">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="wo-header-fields">
+          <span id="workLogOrderLabel" class="wo-header-stranka"></span>
+          <input class="field-input" type="date" id="workLogDate" />
+          <!-- Admin only: change status directly — unreachable any other way. -->
+          <select class="field-input field-select" id="woStatusEdit" hidden>
+            <option value="Plan">Plan</option>
+            <option value="V delu">V delu</option>
+            <option value="Izvedeno">Izvedeno</option>
+            <option value="Izdan Račun">Izdan Račun</option>
+          </select>
+          <span id="woStatusBadge" class="wo-status-badge" hidden></span>
+        </div>
+        <!-- Everything else that used to sit up here (who worked on it,
+             total logged time, archived state) is read-only — no reason
+             to give it its own interactive slot, so it's just one
+             concatenated line — see updateOrderHeader(). -->
+        <p id="woHeaderMeta" class="wo-header-meta"></p>
       </div>
 
       <div class="wo-detail-layout">
@@ -180,33 +199,6 @@
           </div>
         </div>
         <div id="workLogForm" class="work-form wo-detail-content">
-        <div class="wo-summary-row">
-          <div class="wo-summary-cell">
-            <span class="wo-summary-label">Stranka</span>
-            <span id="workLogOrderLabel" class="wo-summary-value"></span>
-          </div>
-          <div class="wo-summary-cell">
-            <label class="wo-summary-label" for="workLogDate">Datum</label>
-            <input class="field-input" type="date" id="workLogDate" />
-          </div>
-          <div class="wo-summary-cell">
-            <span class="wo-summary-label">Status</span>
-            <!-- Admin only: change status directly — unreachable any other way. -->
-            <select class="field-input field-select" id="woStatusEdit" hidden>
-              <option value="Plan">Plan</option>
-              <option value="V delu">V delu</option>
-              <option value="Izvedeno">Izvedeno</option>
-              <option value="Izdan Račun">Izdan Račun</option>
-            </select>
-            <span id="woStatusBadge" class="wo-status-badge" hidden></span>
-          </div>
-        </div>
-
-        <button type="button" id="woReleaseBtn" class="btn btn-secondary btn-block" hidden>Sprosti nalog</button>
-
-        <span id="woDeletedBadge" class="wo-deleted-badge" hidden>🗑 Arhivirano</span>
-        <p id="woHeaderMeta" class="wo-header-meta"></p>
-
         <div class="field">
           <label class="field-label">Čas na poti</label>
           <div id="roadTimeList" class="road-time-list"></div>

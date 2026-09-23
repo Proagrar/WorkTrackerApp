@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.10';
+const APP_VERSION = 'v2.11';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -55,12 +55,10 @@ const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
 const workLogDateInput = document.getElementById('workLogDate');
-const woReleaseBtn = document.getElementById('woReleaseBtn');
 const woStatusEdit = document.getElementById('woStatusEdit');
 const woStatusBadge = document.getElementById('woStatusBadge');
 const woDeleteBtn = document.getElementById('woDeleteBtn');
 const woRestoreBtn = document.getElementById('woRestoreBtn');
-const woDeletedBadge = document.getElementById('woDeletedBadge');
 const woAddExistingGerkWrap = document.getElementById('woAddExistingGerkWrap');
 const woAddExistingGerkCode = document.getElementById('woAddExistingGerkCode');
 const woExistingGerkList = document.getElementById('woExistingGerkList');
@@ -1077,11 +1075,7 @@ function updateOrderHeader() {
   const rows = Array.from(workLogGerkRowsEl.querySelectorAll('.wlg-row'));
   const totalSec = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
   const totalMin = Math.round(totalSec / 60);
-
-  // Release: only meaningful once claimed — the current izvajalec or an
-  // admin, only while it's actually claimed.
   const isAdmin = isAdminView();
-  woReleaseBtn.hidden = !(wo.status === 'V delu' && (wo.izvajalec === currentUser.id || isAdmin));
 
   // Status: admin gets an editable dropdown (only way to change it now
   // that there's no claim button); everyone else gets a read-only badge.
@@ -1090,23 +1084,26 @@ function updateOrderHeader() {
   woStatusBadge.hidden = isAdmin;
   if (!isAdmin) {
     woStatusBadge.textContent = wo.status;
-    woStatusBadge.className = `wo-status-badge wo-summary-value wo-status--${slugStatus(wo.status)}`;
+    woStatusBadge.className = `wo-status-badge wo-status--${slugStatus(wo.status)}`;
   }
 
   woImportZonesWrap.hidden = !isAdmin;
 
   // Delete (archive) / restore — mutually exclusive on deleted_at, admin-only.
   const isDeleted = !!wo.deleted_at;
-  woDeleteBtn.hidden    = !isAdmin || isDeleted;
-  woRestoreBtn.hidden   = !isAdmin || !isDeleted;
-  woDeletedBadge.hidden = !isDeleted;
+  woDeleteBtn.hidden  = !isAdmin || isDeleted;
+  woRestoreBtn.hidden = !isAdmin || !isDeleted;
 
-  // Everyone who's actually logged a GERK on this order, not just whoever
-  // originally claimed it — a second operator picking up mid-order doesn't
+  // Everything else that used to have its own dedicated slot (who
+  // worked on it, total logged time, archived state) is read-only —
+  // one concatenated line in the header instead. Everyone who's
+  // actually logged a GERK on this order, not just whoever originally
+  // claimed it — a second operator picking up mid-order doesn't
   // replace the first in this list, both show.
   const contributors = [...new Set(currentAllGerkEntries.map(e => e.work_logs.profiles?.full_name).filter(Boolean))];
   const izvajaLabel = contributors.length ? contributors.join(', ') : wo.profiles?.full_name;
   const metaParts = [];
+  if (isDeleted) metaParts.push('🗑 Arhivirano');
   if (wo.status !== 'Plan' && izvajaLabel) metaParts.push(`Izvaja: ${izvajaLabel}`);
   if (totalMin > 0) metaParts.push(`Skupaj: ${fmtHM(totalMin)}`);
   woHeaderMeta.textContent = metaParts.join(' · ');
@@ -2803,18 +2800,9 @@ async function saveOrderMeta() {
 tractorInput.addEventListener('blur',  saveOrderMeta);
 descInput.addEventListener('blur',     saveOrderMeta);
 
-woReleaseBtn.addEventListener('click', async () => {
-  if (!confirm('Sprostim ta nalog nazaj na Plan?')) return;
-  woReleaseBtn.disabled = true;
-  const { error } = await supabase.rpc('release_work_order', { p_work_order_id: currentDetailWorkOrder.id });
-  woReleaseBtn.disabled = false;
-  if (error) return showFormError(error.message || 'Napaka pri sproščanju naloga.');
-  currentDetailWorkOrder.status    = 'Plan';
-  currentDetailWorkOrder.izvajalec = null;
-  showFormSuccess('✓ Nalog sproščen.');
-  updateOrderHeader();
-  await loadWorkOrders();
-});
+// "Sprosti nalog" (release_work_order RPC) dropped from the UI when the
+// header was redesigned — no button currently calls it. Needs a decision
+// on where it belongs before it comes back; see backlog.
 
 woStatusEdit.addEventListener('change', async () => {
   const newStatus = woStatusEdit.value;
