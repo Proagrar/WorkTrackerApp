@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.19';
+const APP_VERSION = 'v2.20';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1483,27 +1483,16 @@ function updateGerkMapLinksFromShapes() {
 
 // "Prikaži točke" gates both the numbered markers and the path
 // connecting them in point_no order (1→2→3…, which is also capture
-// order — point_no is assigned sequentially per work order). The path
-// only connects points within the same GERK (segments within a GERK
-// do connect to each other) — point_no being sequential across the
-// whole work order otherwise means switching from one GERK to the
-// next would draw a line jumping between two unrelated fields.
+// order — point_no is assigned sequentially per work order).
 function drawCapturedPointsOnMap() {
   woMapCapturedLayer.clearLayers();
   if (!woCaptureShowPoints.checked || !currentCapturedPoints.length) return;
 
   const sorted = [...currentCapturedPoints].sort((a, b) => a.point_no - b.point_no);
-  const byGerk = new Map();
-  for (const p of sorted) {
-    if (!byGerk.has(p.gerk_code)) byGerk.set(p.gerk_code, []);
-    byGerk.get(p.gerk_code).push(p);
-  }
-  for (const pts of byGerk.values()) {
-    if (pts.length > 1) {
-      L.polyline(pts.map(p => [p.lat, p.lng]), {
-        color: WO_MAP_CAPTURED_COLOR, weight: 2, dashArray: '6,4',
-      }).addTo(woMapCapturedLayer);
-    }
+  if (sorted.length > 1) {
+    L.polyline(sorted.map(p => [p.lat, p.lng]), {
+      color: WO_MAP_CAPTURED_COLOR, weight: 2, dashArray: '6,4',
+    }).addTo(woMapCapturedLayer);
   }
   for (const p of sorted) {
     L.marker([p.lat, p.lng], {
