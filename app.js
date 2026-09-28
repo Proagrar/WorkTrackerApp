@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.23';
+const APP_VERSION = 'v2.24';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -125,10 +125,10 @@ let woShowDeletedActive = false;
 // delete there that isn't already deleted).
 const woSelectionBar = document.getElementById('woSelectionBar');
 let selectedWorkOrderIds = new Set();
-// Admin-view-only map overview — one pin per GERK across the
-// currently filtered work orders (or just the checked ones, if any),
-// colored by status. Points are fetched lazily on first toggle-on,
-// not at boot — see loadWorkOrdersGerkPoints/ensureWoOverviewMap.
+// Admin-view-only map overview — one field boundary shape per GERK
+// across the currently filtered work orders (or just the checked
+// ones, if any), colored by status. Shapes are fetched lazily on
+// first toggle-on, not at boot — see loadWorkOrdersGerkShapes/ensureWoOverviewMap.
 const woMapToggleBtn   = document.getElementById('woMapToggleBtn');
 const woListLayout     = document.getElementById('woListLayout');
 const woOverviewMapWrap = document.getElementById('woOverviewMapWrap');
@@ -136,8 +136,8 @@ const woOverviewMapEl  = document.getElementById('woOverviewMap');
 let woMapOverviewActive = false;
 let woOverviewMap = null;
 let woOverviewMarkersLayer = null;
-let workOrdersGerkPoints = [];
-let workOrdersGerkPointsLoaded = false;
+let workOrdersGerkShapes = [];
+let workOrdersGerkShapesLoaded = false;
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
 const fabMenu               = document.getElementById('fabMenu');
@@ -3548,7 +3548,7 @@ async function loadWorkOrders() {
   workOrdersLoaded = true;
   // Only re-fetch if the map overview was already opened at least once
   // this session — no reason to pay for it on every load otherwise.
-  if (workOrdersGerkPointsLoaded) await loadWorkOrdersGerkPoints();
+  if (workOrdersGerkShapesLoaded) await loadWorkOrdersGerkShapes();
   renderWorkOrders();
 }
 
@@ -3743,11 +3743,11 @@ function updateWoMapToggleButton() {
   woMapToggleBtn.title = woMapOverviewActive ? 'Skrij pregled na zemljevidu' : 'Prikaži polja delovnih nalogov na zemljevidu';
 }
 
-async function loadWorkOrdersGerkPoints() {
-  const { data, error } = await supabase.rpc('get_work_orders_gerk_points');
-  if (error) { console.error('loadWorkOrdersGerkPoints', error); return; }
-  workOrdersGerkPoints = data || [];
-  workOrdersGerkPointsLoaded = true;
+async function loadWorkOrdersGerkShapes() {
+  const { data, error } = await supabase.rpc('get_work_orders_gerk_shapes');
+  if (error) { console.error('loadWorkOrdersGerkShapes', error); return; }
+  workOrdersGerkShapes = data || [];
+  workOrdersGerkShapesLoaded = true;
 }
 
 function ensureWoOverviewMap() {
@@ -3762,40 +3762,44 @@ function ensureWoOverviewMap() {
   return woOverviewMap;
 }
 
-// Colors a GERK pin by its own work order's status — Izvedeno/Izdan
+// Colors a GERK shape by its own work order's status — Izvedeno/Izdan
 // Račun (work actually done, billed or not) are green; Plan/V delu
 // (not done yet) are orange. Same status set as slugStatus/WO_STATUS_ORDER.
 function woMapOverviewColor(status) {
   return (status === 'Izvedeno' || status === 'Izdan Račun') ? '#16A34A' : '#F59E0B';
 }
 
-// Redraws the overview map's pins — scoped to whichever work orders
-// are checked (selectedWorkOrderIds), or every currently *filtered*
-// row when nothing's checked (mirrors the list itself, not the whole
-// unfiltered table). No-op while the map panel isn't open, so this is
-// safe to call unconditionally after every list re-render/selection
-// change instead of needing its own separate gating at each call site.
+// Redraws the overview map's field boundaries — scoped to whichever
+// work orders are checked (selectedWorkOrderIds), or every currently
+// *filtered* row when nothing's checked (mirrors the list itself, not
+// the whole unfiltered table). No-op while the map panel isn't open,
+// so this is safe to call unconditionally after every list re-render/
+// selection change instead of needing its own separate gating at each
+// call site. One shape per GERK, or per imported zone for GERKs with
+// no official registry boundary — see get_work_orders_gerk_shapes.
 function renderWoMapOverview() {
-  if (!woMapOverviewActive || !woOverviewMap || !workOrdersGerkPointsLoaded) return;
+  if (!woMapOverviewActive || !woOverviewMap || !workOrdersGerkShapesLoaded) return;
   woOverviewMarkersLayer.clearLayers();
 
   const scopeIds = selectedWorkOrderIds.size
     ? selectedWorkOrderIds
     : new Set(filteredWorkOrders().map(wo => wo.id));
 
-  const points = workOrdersGerkPoints.filter(p => scopeIds.has(p.delovni_nalog_id));
-  const markers = [];
-  for (const p of points) {
-    if (p.lat == null || p.lng == null) continue;
-    const marker = L.circleMarker([p.lat, p.lng], {
-      radius: 7, color: '#fff', weight: 2, fillColor: woMapOverviewColor(p.status), fillOpacity: .9,
-    }).bindTooltip(p.gerk_code || '', { direction: 'top' }).addTo(woOverviewMarkersLayer);
-    markers.push(marker);
+  const shapes = workOrdersGerkShapes.filter(s => scopeIds.has(s.delovni_nalog_id));
+  const layers = [];
+  for (const s of shapes) {
+    if (!s.geojson) continue;
+    const color = woMapOverviewColor(s.status);
+    const layer = L.geoJSON(s.geojson, {
+      style: { color: '#fff', weight: 2, fillColor: color, fillOpacity: .55 },
+    }).bindTooltip(s.gerk_code || '', { direction: 'top', sticky: true }).addTo(woOverviewMarkersLayer);
+    layers.push(layer);
   }
 
-  if (markers.length) {
-    const group = L.featureGroup(markers);
-    woOverviewMap.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 16 });
+  if (layers.length) {
+    let combined = layers[0].getBounds();
+    for (const layer of layers.slice(1)) combined = combined.extend(layer.getBounds());
+    woOverviewMap.fitBounds(combined, { padding: [30, 30], maxZoom: 16 });
   } else {
     woOverviewMap.setView([46.15, 14.99], 8); // Slovenia-wide fallback when nothing to show
   }
@@ -3810,7 +3814,7 @@ woMapToggleBtn.addEventListener('click', async () => {
 
   ensureWoOverviewMap();
   requestAnimationFrame(() => woOverviewMap.invalidateSize());
-  if (!workOrdersGerkPointsLoaded) await loadWorkOrdersGerkPoints();
+  if (!workOrdersGerkShapesLoaded) await loadWorkOrdersGerkShapes();
   renderWoMapOverview();
 });
 
