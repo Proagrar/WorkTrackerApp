@@ -1248,6 +1248,27 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-show-deleted-btn { height: 34px; white-space: nowrap; flex-shrink: 0; }
 .wo-show-deleted-btn--active { background: var(--blue-800); color: #fff; }
 
+/* Main list's admin-only map overview — stacked (map below list) by
+   default, matching the work-order detail map's own mobile-first
+   breakpoint convention; split side-by-side only at desktop width. */
+.wo-list-layout { display: flex; flex-direction: column; }
+
+.wo-list-map-wrap {
+  position: relative;
+  height: 50vh;
+  max-height: 480px;
+  margin-top: 12px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.wo-list-map { position: absolute; inset: 0; }
+
+@media (min-width: 900px) {
+  .wo-list-layout--map-active { flex-direction: row; gap: 16px; align-items: flex-start; }
+  .wo-list-layout--map-active #workOrdersList { width: 50%; }
+  .wo-list-layout--map-active .wo-list-map-wrap { width: 50%; height: 70vh; max-height: 700px; margin-top: 0; }
+}
+
 /* Same [hidden]-override fade as .gerk-suggestions above — JS keeps
    using the plain `hidden` attribute, this just makes it transition
    instead of snap. */

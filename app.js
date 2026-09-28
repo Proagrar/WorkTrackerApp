@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.21';
+const APP_VERSION = 'v2.22';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -125,6 +125,19 @@ let woShowDeletedActive = false;
 // delete there that isn't already deleted).
 const woSelectionBar = document.getElementById('woSelectionBar');
 let selectedWorkOrderIds = new Set();
+// Admin-view-only map overview — one pin per GERK across the
+// currently filtered work orders (or just the checked ones, if any),
+// colored by status. Points are fetched lazily on first toggle-on,
+// not at boot — see loadWorkOrdersGerkPoints/ensureWoOverviewMap.
+const woMapToggleBtn   = document.getElementById('woMapToggleBtn');
+const woListLayout     = document.getElementById('woListLayout');
+const woOverviewMapWrap = document.getElementById('woOverviewMapWrap');
+const woOverviewMapEl  = document.getElementById('woOverviewMap');
+let woMapOverviewActive = false;
+let woOverviewMap = null;
+let woOverviewMarkersLayer = null;
+let workOrdersGerkPoints = [];
+let workOrdersGerkPointsLoaded = false;
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
 const fabMenu               = document.getElementById('fabMenu');
@@ -3445,9 +3458,15 @@ adminViewToggle.addEventListener('change', () => {
   adminViewActive = adminViewToggle.checked;
   localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
   if (!isAdminView()) { woShowDeletedActive = false; clearWoSelection(); } // never leave the archived list or a bulk selection showing once out of Admin view
+  if (!isAdminView() && woMapOverviewActive) { // same reasoning — the map overview is an admin-only tool
+    woMapOverviewActive = false;
+    woOverviewMapWrap.hidden = true;
+    woListLayout.classList.remove('wo-list-layout--map-active');
+  }
   renderAdminViewToggle();
   updateFabVisibility();
   updateShowDeletedButton();
+  updateWoMapToggleButton();
   if (currentDetailWorkOrder) updateOrderHeader();
   if (currentTab === 'nalogi' && workOrdersLoaded) renderWorkOrders();
 });
@@ -3527,6 +3546,9 @@ async function loadWorkOrders() {
   );
   workOrders = data ?? [];
   workOrdersLoaded = true;
+  // Only re-fetch if the map overview was already opened at least once
+  // this session — no reason to pay for it on every load otherwise.
+  if (workOrdersGerkPointsLoaded) await loadWorkOrdersGerkPoints();
   renderWorkOrders();
 }
 
@@ -3625,6 +3647,7 @@ function renderWorkOrders() {
   workOrdersList.innerHTML = header + rows;
   wireWorkOrderButtons();
   updateWoSelectionBar();
+  renderWoMapOverview();
 }
 
 function wireWorkOrderButtons() {
@@ -3654,6 +3677,7 @@ function wireWorkOrderButtons() {
       if (cb.checked) selectedWorkOrderIds.add(cb.dataset.id);
       else selectedWorkOrderIds.delete(cb.dataset.id);
       updateWoSelectionBar();
+      renderWoMapOverview();
     });
   });
 }
@@ -3712,6 +3736,84 @@ woShowDeletedBtn.addEventListener('click', () => {
   renderWorkOrders();
 });
 
+function updateWoMapToggleButton() {
+  woMapToggleBtn.hidden = !isAdminView();
+  woMapToggleBtn.classList.toggle('wo-show-deleted-btn--active', woMapOverviewActive);
+  woMapToggleBtn.textContent = woMapOverviewActive ? '◀ Skrij zemljevid' : '🗺 Zemljevid';
+  woMapToggleBtn.title = woMapOverviewActive ? 'Skrij pregled na zemljevidu' : 'Prikaži polja delovnih nalogov na zemljevidu';
+}
+
+async function loadWorkOrdersGerkPoints() {
+  const { data, error } = await supabase.rpc('get_work_orders_gerk_points');
+  if (error) { console.error('loadWorkOrdersGerkPoints', error); return; }
+  workOrdersGerkPoints = data || [];
+  workOrdersGerkPointsLoaded = true;
+}
+
+function ensureWoOverviewMap() {
+  if (woOverviewMap) return woOverviewMap;
+  woOverviewMap = L.map(woOverviewMapEl);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  }).addTo(woOverviewMap);
+  woOverviewMarkersLayer = L.layerGroup().addTo(woOverviewMap);
+  new ResizeObserver(() => woOverviewMap?.invalidateSize()).observe(woOverviewMapEl.parentElement);
+  return woOverviewMap;
+}
+
+// Colors a GERK pin by its own work order's status — Izvedeno/Izdan
+// Račun (work actually done, billed or not) are green; Plan/V delu
+// (not done yet) are orange. Same status set as slugStatus/WO_STATUS_ORDER.
+function woMapOverviewColor(status) {
+  return (status === 'Izvedeno' || status === 'Izdan Račun') ? '#16A34A' : '#F59E0B';
+}
+
+// Redraws the overview map's pins — scoped to whichever work orders
+// are checked (selectedWorkOrderIds), or every currently *filtered*
+// row when nothing's checked (mirrors the list itself, not the whole
+// unfiltered table). No-op while the map panel isn't open, so this is
+// safe to call unconditionally after every list re-render/selection
+// change instead of needing its own separate gating at each call site.
+function renderWoMapOverview() {
+  if (!woMapOverviewActive || !woOverviewMap || !workOrdersGerkPointsLoaded) return;
+  woOverviewMarkersLayer.clearLayers();
+
+  const scopeIds = selectedWorkOrderIds.size
+    ? selectedWorkOrderIds
+    : new Set(filteredWorkOrders().map(wo => wo.id));
+
+  const points = workOrdersGerkPoints.filter(p => scopeIds.has(p.delovni_nalog_id));
+  const markers = [];
+  for (const p of points) {
+    if (p.lat == null || p.lng == null) continue;
+    const marker = L.circleMarker([p.lat, p.lng], {
+      radius: 7, color: '#fff', weight: 2, fillColor: woMapOverviewColor(p.status), fillOpacity: .9,
+    }).bindTooltip(p.gerk_code || '', { direction: 'top' }).addTo(woOverviewMarkersLayer);
+    markers.push(marker);
+  }
+
+  if (markers.length) {
+    const group = L.featureGroup(markers);
+    woOverviewMap.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 16 });
+  } else {
+    woOverviewMap.setView([46.15, 14.99], 8); // Slovenia-wide fallback when nothing to show
+  }
+}
+
+woMapToggleBtn.addEventListener('click', async () => {
+  woMapOverviewActive = !woMapOverviewActive;
+  updateWoMapToggleButton();
+  woOverviewMapWrap.hidden = !woMapOverviewActive;
+  woListLayout.classList.toggle('wo-list-layout--map-active', woMapOverviewActive);
+  if (!woMapOverviewActive) return;
+
+  ensureWoOverviewMap();
+  requestAnimationFrame(() => woOverviewMap.invalidateSize());
+  if (!workOrdersGerkPointsLoaded) await loadWorkOrdersGerkPoints();
+  renderWoMapOverview();
+});
+
 // ── Main list bulk-select (admin view only) — mirrors the GERK
 // selection bar's structure/CSS (.wlg-selection-bar), just with a
 // single action since "delete" is now the only thing it needs to do.
@@ -3744,6 +3846,7 @@ function clearWoSelection() {
   selectedWorkOrderIds = new Set();
   workOrdersList.querySelectorAll('.wo-select-checkbox').forEach(cb => { cb.checked = false; });
   updateWoSelectionBar();
+  renderWoMapOverview();
 }
 
 async function bulkDeleteSelectedWorkOrders(btn) {
@@ -4695,6 +4798,7 @@ async function boot() {
   renderGreeting(displayName);
   updateFabVisibility();
   updateShowDeletedButton();
+  updateWoMapToggleButton();
 
   // Delovni Nalogi is the default visible tab now — load it first so the
   // user isn't staring at a spinner; Evidenca dela loads in the background
