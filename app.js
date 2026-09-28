@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.27';
+const APP_VERSION = 'v2.28';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3845,7 +3845,16 @@ woMapToggleBtn.addEventListener('click', async () => {
   if (!woMapOverviewActive) return;
 
   ensureWoOverviewMap();
-  requestAnimationFrame(() => woOverviewMap.invalidateSize());
+  // invalidateSize() has to run — with the container actually part of
+  // the visible layout — before fitBounds() runs inside
+  // renderWoMapOverview() below, or it computes against Leaflet's
+  // stale cached size (usually 0×0, from whenever the map was first
+  // constructed while still hidden) instead of the real one. Same
+  // fix as showWoDetailMap's own identical comment — awaiting a
+  // frame here (right after woOverviewMapWrap.hidden = false above)
+  // is the earliest point the container has real dimensions.
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  woOverviewMap.invalidateSize();
   if (!workOrdersGerkShapesLoaded) await loadWorkOrdersGerkShapes();
   renderWoMapOverview();
 });
