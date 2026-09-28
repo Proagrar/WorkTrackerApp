@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.24';
+const APP_VERSION = 'v2.25';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3759,6 +3759,11 @@ function ensureWoOverviewMap() {
   }).addTo(woOverviewMap);
   woOverviewMarkersLayer = L.layerGroup().addTo(woOverviewMap);
   new ResizeObserver(() => woOverviewMap?.invalidateSize()).observe(woOverviewMapEl.parentElement);
+  // Only redraws the current shape set at whatever zoom it lands on —
+  // never calls fitBounds/setView itself, or zooming would retrigger
+  // this handler and fight the user's own zoom/pan. Only
+  // renderWoMapOverview (a fresh filter/selection) re-fits bounds.
+  woOverviewMap.on('zoomend', redrawWoOverviewLayer);
   return woOverviewMap;
 }
 
@@ -3769,36 +3774,59 @@ function woMapOverviewColor(status) {
   return (status === 'Izvedeno' || status === 'Izdan Račun') ? '#16A34A' : '#F59E0B';
 }
 
-// Redraws the overview map's field boundaries — scoped to whichever
-// work orders are checked (selectedWorkOrderIds), or every currently
+// Below this zoom, real field boundaries are too small/cluttered to
+// read (or overlap each other) — show a simple colored pin at each
+// shape's centroid instead, same as woMap's own "zoom to at least 15
+// to see a single GERK clearly" convention elsewhere in this file.
+const WO_MAP_OVERVIEW_SHAPE_ZOOM = 15;
+
+let woOverviewCurrentShapes = []; // cached by renderWoMapOverview, read by the zoom-triggered redraw
+
+// Draws whichever of the cached current shapes have geometry, as
+// either real polygons (zoomed in) or centroid pins (zoomed out) —
+// never touches the map's own view/zoom, see ensureWoOverviewMap.
+function redrawWoOverviewLayer() {
+  if (!woOverviewMap) return;
+  woOverviewMarkersLayer.clearLayers();
+  const showShapes = woOverviewMap.getZoom() >= WO_MAP_OVERVIEW_SHAPE_ZOOM;
+
+  for (const s of woOverviewCurrentShapes) {
+    const color = woMapOverviewColor(s.status);
+    if (showShapes) {
+      L.geoJSON(s.geojson, { style: { color: '#fff', weight: 2, fillColor: color, fillOpacity: .55 } })
+        .bindTooltip(s.gerk_code || '', { direction: 'top', sticky: true })
+        .addTo(woOverviewMarkersLayer);
+    } else {
+      const center = L.geoJSON(s.geojson).getBounds().getCenter();
+      L.circleMarker(center, { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: .9 })
+        .bindTooltip(s.gerk_code || '', { direction: 'top' })
+        .addTo(woOverviewMarkersLayer);
+    }
+  }
+}
+
+// Recomputes the overview map's shape set — scoped to whichever work
+// orders are checked (selectedWorkOrderIds), or every currently
 // *filtered* row when nothing's checked (mirrors the list itself, not
-// the whole unfiltered table). No-op while the map panel isn't open,
-// so this is safe to call unconditionally after every list re-render/
-// selection change instead of needing its own separate gating at each
-// call site. One shape per GERK, or per imported zone for GERKs with
-// no official registry boundary — see get_work_orders_gerk_shapes.
+// the whole unfiltered table) — then redraws and re-fits bounds. No-op
+// while the map panel isn't open, so this is safe to call
+// unconditionally after every list re-render/selection change instead
+// of needing its own separate gating at each call site. One shape per
+// GERK, or per imported zone for GERKs with no official registry
+// boundary — see get_work_orders_gerk_shapes.
 function renderWoMapOverview() {
   if (!woMapOverviewActive || !woOverviewMap || !workOrdersGerkShapesLoaded) return;
-  woOverviewMarkersLayer.clearLayers();
 
   const scopeIds = selectedWorkOrderIds.size
     ? selectedWorkOrderIds
     : new Set(filteredWorkOrders().map(wo => wo.id));
 
-  const shapes = workOrdersGerkShapes.filter(s => scopeIds.has(s.delovni_nalog_id));
-  const layers = [];
-  for (const s of shapes) {
-    if (!s.geojson) continue;
-    const color = woMapOverviewColor(s.status);
-    const layer = L.geoJSON(s.geojson, {
-      style: { color: '#fff', weight: 2, fillColor: color, fillOpacity: .55 },
-    }).bindTooltip(s.gerk_code || '', { direction: 'top', sticky: true }).addTo(woOverviewMarkersLayer);
-    layers.push(layer);
-  }
+  woOverviewCurrentShapes = workOrdersGerkShapes.filter(s => scopeIds.has(s.delovni_nalog_id) && s.geojson);
+  redrawWoOverviewLayer();
 
-  if (layers.length) {
-    let combined = layers[0].getBounds();
-    for (const layer of layers.slice(1)) combined = combined.extend(layer.getBounds());
+  if (woOverviewCurrentShapes.length) {
+    let combined = L.geoJSON(woOverviewCurrentShapes[0].geojson).getBounds();
+    for (const s of woOverviewCurrentShapes.slice(1)) combined = combined.extend(L.geoJSON(s.geojson).getBounds());
     woOverviewMap.fitBounds(combined, { padding: [30, 30], maxZoom: 16 });
   } else {
     woOverviewMap.setView([46.15, 14.99], 8); // Slovenia-wide fallback when nothing to show
