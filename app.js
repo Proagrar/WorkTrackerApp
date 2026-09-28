@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.25';
+const APP_VERSION = 'v2.26';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -125,10 +125,14 @@ let woShowDeletedActive = false;
 // delete there that isn't already deleted).
 const woSelectionBar = document.getElementById('woSelectionBar');
 let selectedWorkOrderIds = new Set();
-// Admin-view-only map overview — one field boundary shape per GERK
-// across the currently filtered work orders (or just the checked
-// ones, if any), colored by status. Shapes are fetched lazily on
-// first toggle-on, not at boot — see loadWorkOrdersGerkShapes/ensureWoOverviewMap.
+// Map overview — available to every user, not just admins. One field
+// boundary shape per GERK across the currently filtered work orders,
+// colored by status. Admins can additionally narrow it to just the
+// checked rows, since the bulk-select checkboxes themselves stay
+// admin-only (selectedWorkOrderIds is always empty for regular
+// users, so they always see the full filtered set). Shapes are
+// fetched lazily on first toggle-on, not at boot — see
+// loadWorkOrdersGerkShapes/ensureWoOverviewMap.
 const woMapToggleBtn   = document.getElementById('woMapToggleBtn');
 const woListLayout     = document.getElementById('woListLayout');
 const woOverviewMapWrap = document.getElementById('woOverviewMapWrap');
@@ -3458,11 +3462,6 @@ adminViewToggle.addEventListener('change', () => {
   adminViewActive = adminViewToggle.checked;
   localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
   if (!isAdminView()) { woShowDeletedActive = false; clearWoSelection(); } // never leave the archived list or a bulk selection showing once out of Admin view
-  if (!isAdminView() && woMapOverviewActive) { // same reasoning — the map overview is an admin-only tool
-    woMapOverviewActive = false;
-    woOverviewMapWrap.hidden = true;
-    woListLayout.classList.remove('wo-list-layout--map-active');
-  }
   renderAdminViewToggle();
   updateFabVisibility();
   updateShowDeletedButton();
@@ -3737,7 +3736,8 @@ woShowDeletedBtn.addEventListener('click', () => {
 });
 
 function updateWoMapToggleButton() {
-  woMapToggleBtn.hidden = !isAdminView();
+  // Available to every user, not just admins — unlike woShowDeletedBtn.
+  woMapToggleBtn.hidden = false;
   woMapToggleBtn.classList.toggle('wo-show-deleted-btn--active', woMapOverviewActive);
   woMapToggleBtn.textContent = woMapOverviewActive ? '◀ Skrij zemljevid' : '🗺 Zemljevid';
   woMapToggleBtn.title = woMapOverviewActive ? 'Skrij pregled na zemljevidu' : 'Prikaži polja delovnih nalogov na zemljevidu';
