@@ -1255,6 +1255,12 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 
 .wo-list-map-wrap {
   position: relative;
+  /* Own stacking context (position + z-index together) so Leaflet's
+     internal controls/attribution — z-index up to 1000 by default —
+     stay scoped inside this element instead of comparing directly
+     against .modal-backdrop's z-index:200 and floating above modals
+     opened on top of the main list (e.g. opening a work order). */
+  z-index: 1;
   height: 50vh;
   max-height: 480px;
   margin-top: 12px;
