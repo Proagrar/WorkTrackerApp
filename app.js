@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.18';
+const APP_VERSION = 'v2.19';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1395,8 +1395,19 @@ async function showWoDetailMap(workOrder) {
   for (const row of (segments || [])) {
     if (!row.segment_geojson) continue;
     const layer = L.geoJSON(row.segment_geojson, { style: WO_MAP_SEGMENT_STYLE })
-      .bindTooltip(row.segment_label || '', { permanent: true, direction: 'center', className: 'wo-map-segment-label' })
       .addTo(woMapSegmentLayer);
+    // Positioned via label_point (PostGIS ST_PointOnSurface, guaranteed
+    // inside the polygon) instead of Leaflet's bindTooltip direction:
+    // 'center', which uses the layer's BOUNDING-BOX center — for
+    // irregular/elongated zones that routinely falls outside the
+    // polygon, or inside a tightly-packed neighboring one.
+    if (row.label_point) {
+      const [lpLng, lpLat] = row.label_point.coordinates;
+      L.tooltip({ permanent: true, direction: 'center', className: 'wo-map-segment-label' })
+        .setLatLng([lpLat, lpLng])
+        .setContent(row.segment_label || '')
+        .addTo(woMapSegmentLayer);
+    }
     layer.on('mouseover', () => highlightGerkRow(row.gerk_code, true));
     layer.on('mouseout',  () => highlightGerkRow(row.gerk_code, false));
     segmentLayers.push(layer);
@@ -1472,16 +1483,27 @@ function updateGerkMapLinksFromShapes() {
 
 // "Prikaži točke" gates both the numbered markers and the path
 // connecting them in point_no order (1→2→3…, which is also capture
-// order — point_no is assigned sequentially per work order).
+// order — point_no is assigned sequentially per work order). The path
+// only connects points within the same GERK (segments within a GERK
+// do connect to each other) — point_no being sequential across the
+// whole work order otherwise means switching from one GERK to the
+// next would draw a line jumping between two unrelated fields.
 function drawCapturedPointsOnMap() {
   woMapCapturedLayer.clearLayers();
   if (!woCaptureShowPoints.checked || !currentCapturedPoints.length) return;
 
   const sorted = [...currentCapturedPoints].sort((a, b) => a.point_no - b.point_no);
-  if (sorted.length > 1) {
-    L.polyline(sorted.map(p => [p.lat, p.lng]), {
-      color: WO_MAP_CAPTURED_COLOR, weight: 2, dashArray: '6,4',
-    }).addTo(woMapCapturedLayer);
+  const byGerk = new Map();
+  for (const p of sorted) {
+    if (!byGerk.has(p.gerk_code)) byGerk.set(p.gerk_code, []);
+    byGerk.get(p.gerk_code).push(p);
+  }
+  for (const pts of byGerk.values()) {
+    if (pts.length > 1) {
+      L.polyline(pts.map(p => [p.lat, p.lng]), {
+        color: WO_MAP_CAPTURED_COLOR, weight: 2, dashArray: '6,4',
+      }).addTo(woMapCapturedLayer);
+    }
   }
   for (const p of sorted) {
     L.marker([p.lat, p.lng], {
