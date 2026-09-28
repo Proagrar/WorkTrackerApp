@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.20';
+const APP_VERSION = 'v2.21';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -136,6 +136,10 @@ const declCustomerList       = document.getElementById('declCustomerList');
 const declDetailView         = document.getElementById('declDetailView');
 const declBackBtn            = document.getElementById('declBackBtn');
 const declCustomerInfo       = document.getElementById('declCustomerInfo');
+const declShowDeletedBtn     = document.getElementById('declShowDeletedBtn');
+let declShowDeletedActive = false;
+const declDeleteCustomerBtn  = document.getElementById('declDeleteCustomerBtn');
+const declRestoreCustomerBtn = document.getElementById('declRestoreCustomerBtn');
 const declGenerateBtn        = document.getElementById('declGenerateBtn');
 const declLinkResult         = document.getElementById('declLinkResult');
 const declLinksList          = document.getElementById('declLinksList');
@@ -466,6 +470,7 @@ async function loadFields() {
     const { data: page } = await supabase
       .from('fields')
       .select('cadastre_id, name, area_ha, centroid_lat, centroid_lng, customers(naziv, company_name)')
+      .is('deleted_at', null)
       .order('name')
       .range(from, from + pageSize - 1);
     if (!page?.length) break;
@@ -3771,13 +3776,14 @@ woSearchSuggestions.addEventListener('mousedown', e => {
 async function loadCustomers() {
   const { data } = await supabase
     .from('customers')
-    .select('id, naziv, company_name, contact_name, email')
+    .select('id, naziv, company_name, contact_name, email, deleted_at')
     .order('naziv');
   customers = (data ?? []).map(c => ({
     id: c.id,
     name: c.naziv || c.company_name || '—',
     contactName: c.contact_name || null,
     email: c.email || null,
+    deletedAt: c.deleted_at || null,
   }));
 }
 
@@ -3795,7 +3801,7 @@ async function loadOperatorsList() {
 function filterCustomers(query) {
   if (!query) return [];
   const q = query.toLowerCase();
-  return customers.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+  return customers.filter(c => !c.deletedAt && c.name.toLowerCase().includes(q)).slice(0, 8);
 }
 
 function showCustomerSuggestions(matches, query) {
@@ -4169,10 +4175,11 @@ function showDeclList() {
 
 function renderDeclCustomerList() {
   const q = declListSearch.value.trim().toLowerCase();
-  const matches = q ? customers.filter(c => c.name.toLowerCase().includes(q)) : customers;
+  const scope = customers.filter(c => declShowDeletedActive ? c.deletedAt : !c.deletedAt);
+  const matches = q ? scope.filter(c => c.name.toLowerCase().includes(q)) : scope;
 
   if (!matches.length) {
-    declCustomerList.innerHTML = `<div class="state-empty"><p>Ni strank.</p></div>`;
+    declCustomerList.innerHTML = `<div class="state-empty"><p>${declShowDeletedActive ? 'Ni izbrisanih strank.' : 'Ni strank.'}</p></div>`;
     return;
   }
 
@@ -4187,6 +4194,20 @@ function renderDeclCustomerList() {
 
 declListSearch.addEventListener('input', renderDeclCustomerList);
 declBackBtn.addEventListener('click', showDeclList);
+
+// Switches the "Seznam strank" list to archived (soft-deleted)
+// customers instead of the normal list — mirrors woShowDeletedBtn.
+function updateDeclShowDeletedButton() {
+  declShowDeletedBtn.classList.toggle('wo-show-deleted-btn--active', declShowDeletedActive);
+  declShowDeletedBtn.textContent = declShowDeletedActive ? '◀ Nazaj' : '🗑 Izbrisane';
+  declShowDeletedBtn.title = declShowDeletedActive ? 'Nazaj na običajen seznam' : 'Prikaži arhivirane (izbrisane) stranke';
+}
+
+declShowDeletedBtn.addEventListener('click', () => {
+  declShowDeletedActive = !declShowDeletedActive;
+  updateDeclShowDeletedButton();
+  renderDeclCustomerList();
+});
 
 // ── Seznam strank modal: one customer's detail view ──────────────
 function openDeclDetail(customerId) {
@@ -4203,9 +4224,38 @@ function openDeclDetail(customerId) {
     <p class="wo-order-label">${escHtml(customer.name)}</p>
     ${sub ? `<p class="decl-link-sub">${escHtml(sub)}</p>` : ''}`;
 
+  declDeleteCustomerBtn.hidden  = !!customer.deletedAt;
+  declRestoreCustomerBtn.hidden = !customer.deletedAt;
+
   loadDeclCustomerLinks();
   loadDeclCustomerTable();
 }
+
+// "Izbriši stranko" = archive (deleted_at), cascading to the
+// customer's fields and work orders too (soft_delete_customer RPC) —
+// same reversible pattern as softDeleteWorkOrders, just also touching
+// fields/delovni_nalogi in one step since customers/fields have no
+// write RLS policy of their own (see migration_soft_delete_customer.sql).
+declDeleteCustomerBtn.addEventListener('click', async () => {
+  if (!declCustomerId) return;
+  if (!confirm('Izbrišem to stranko? Skupaj z njo se arhivirajo tudi njena polja in delovni nalogi — vse skupaj ne bo več vidno, dokler stranke ne obnovite.')) return;
+  declDeleteCustomerBtn.disabled = true;
+  const { error } = await supabase.rpc('soft_delete_customer', { p_customer_id: declCustomerId });
+  declDeleteCustomerBtn.disabled = false;
+  if (error) { alert('Napaka pri brisanju stranke: ' + error.message); return; }
+  await Promise.all([loadCustomers(), loadFields(), loadWorkOrders()]);
+  showDeclList();
+});
+
+declRestoreCustomerBtn.addEventListener('click', async () => {
+  if (!declCustomerId) return;
+  declRestoreCustomerBtn.disabled = true;
+  const { error } = await supabase.rpc('restore_customer', { p_customer_id: declCustomerId });
+  declRestoreCustomerBtn.disabled = false;
+  if (error) { alert('Napaka pri obnavljanju stranke: ' + error.message); return; }
+  await Promise.all([loadCustomers(), loadFields(), loadWorkOrders()]);
+  showDeclList();
+});
 
 // ── Seznam strank modal: generate a customer link ────────────────
 declGenerateBtn.addEventListener('click', async () => {

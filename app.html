@@ -476,6 +476,9 @@
       <div id="declListView">
         <div class="decl-list-toolbar">
           <input class="field-input" type="text" id="declListSearch" placeholder="Išči stranko..." autocomplete="off" />
+          <!-- Switches the list to archived (soft-deleted) customers —
+               see declShowDeletedActive in app.js, mirrors woShowDeletedBtn. -->
+          <button type="button" id="declShowDeletedBtn" class="btn btn-secondary btn-sm wo-show-deleted-btn">🗑 Izbrisane</button>
           <button type="button" id="declAddCustomerBtn" class="btn btn-secondary btn-sm">+ Nova stranka</button>
         </div>
         <div id="declCustomerList" class="logs-list logs-list--compact"></div>
@@ -486,6 +489,11 @@
         <button type="button" id="declBackBtn" class="btn btn-secondary btn-sm">← Nazaj na seznam</button>
 
         <div id="declCustomerInfo" class="decl-customer-info"></div>
+        <!-- "Izbriši" = archive (deleted_at), cascades to the customer's
+             fields/work orders too, reversible via "Obnovi" — see
+             soft_delete_customer/restore_customer RPCs. -->
+        <button type="button" id="declDeleteCustomerBtn" class="btn btn-secondary btn-block">🗑 Izbriši stranko</button>
+        <button type="button" id="declRestoreCustomerBtn" class="btn btn-secondary btn-block" hidden>↺ Obnovi stranko</button>
 
         <button type="button" id="declGenerateBtn" class="btn btn-secondary btn-block">Ustvari povezavo</button>
         <div id="declLinkResult" hidden></div>
