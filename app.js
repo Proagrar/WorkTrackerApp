@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.26';
+const APP_VERSION = 'v2.27';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -899,10 +899,14 @@ function renderSampleDepthCell(s) {
   return `<select class="sample-field-input wlg-globina-select" data-sample-id="${escHtml(s.id)}">${opts}</select>`;
 }
 
-// Free-text, admin-editable like renderSampleNoCell — short note about
-// this specific segment (e.g. why it was skipped, a field observation).
+// Free-text, editable by every user (unlike the other sample-field
+// cells, e.g. renderSampleNoCell, which stay admin-only) — short note
+// about this specific segment (e.g. why it was skipped, a field
+// observation). Written via the update_sample_comment RPC rather than
+// a direct .update(), since regular users have no RLS UPDATE policy
+// on delovni_nalogi_vzorci at all otherwise — see
+// migration_update_sample_comment_rpc.sql.
 function renderSampleCommentCell(s) {
-  if (!isAdminView()) return s.comment ? escHtml(s.comment) : '—';
   return `<input type="text" class="sample-field-input wlg-comment-input" data-sample-id="${escHtml(s.id)}" value="${escHtml(s.comment || '')}" maxlength="200">`;
 }
 
@@ -2402,7 +2406,7 @@ async function updateSampleComment(inputEl) {
 
   inputEl.disabled = true;
   try {
-    const { error } = await supabase.from('delovni_nalogi_vzorci').update({ comment: value || null }).eq('id', sampleId);
+    const { error } = await supabase.rpc('update_sample_comment', { p_sample_id: sampleId, p_comment: value || null });
     if (error) throw error;
     if (sample) sample.comment = value || null;
   } catch (e) {
