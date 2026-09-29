@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.28';
+const APP_VERSION = 'v2.29';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1247,7 +1247,7 @@ function highlightGerkOnWoMap(code) {
 
   if (woMapHighlightedCode && woMapHighlightedCode !== code) {
     const prev = woMapLayersByCode.get(woMapHighlightedCode);
-    if (prev?.shape) prev.shape.setStyle(WO_MAP_SHAPE_STYLE);
+    if (prev?.shapes) prev.shapes.forEach(l => l.setStyle(WO_MAP_SHAPE_STYLE));
     if (prev?.zoneLayers) prev.zoneLayers.forEach(l => l.setStyle(WO_MAP_SEGMENT_STYLE));
   }
   if (woMapHighlightRing) { woMapHighlightRing.remove(); woMapHighlightRing = null; }
@@ -1266,12 +1266,19 @@ function highlightGerkOnWoMap(code) {
 
   if (!entry) return; // no marker/shape/zone for this GERK — nothing to show
 
-  if (entry.shape) {
-    entry.shape.setStyle(WO_MAP_SHAPE_HIGHLIGHT_STYLE);
-    entry.shape.bringToFront();
-    woMap.fitBounds(entry.shape.getBounds(), { padding: [40, 40], maxZoom: 17 });
+  if (entry.shapes?.length) {
+    // A compound "A+B+C" GERK code (see get_work_order_gerk_shapes)
+    // means multiple real shapes share one entry — highlight/fit all
+    // of them together, not just the first.
+    let combined = entry.shapes[0].getBounds();
+    for (const l of entry.shapes) {
+      l.setStyle(WO_MAP_SHAPE_HIGHLIGHT_STYLE);
+      l.bringToFront();
+      combined = combined.extend(l.getBounds());
+    }
+    woMap.fitBounds(combined, { padding: [40, 40], maxZoom: 17 });
   } else if (entry.zoneLayers?.length) {
-    // A text-named GERK (no official registry entry) has no .shape —
+    // A text-named GERK (no official registry entry) has no .shapes —
     // its imported zones are the only real geometry, so focus on their
     // combined extent instead.
     let combined = entry.zoneLayers[0].getBounds();
@@ -1413,7 +1420,12 @@ async function showWoDetailMap(workOrder) {
     layer.on('mouseover', () => highlightGerkRow(row.gerk_code, true));
     layer.on('mouseout',  () => highlightGerkRow(row.gerk_code, false));
     const entry = woMapLayersByCode.get(row.gerk_code) || { marker: null, latlng: null };
-    entry.shape = layer;
+    // A compound "A+B+C" code (see get_work_order_gerk_shapes) returns
+    // one row per real GERK sharing this same gerk_code — accumulate
+    // every shape instead of overwriting, so highlight/bounds/centroid
+    // logic can combine all of them.
+    entry.shapes = entry.shapes || [];
+    entry.shapes.push(layer);
     woMapLayersByCode.set(row.gerk_code, entry);
     shapeLayers.push(layer);
   }
@@ -1441,7 +1453,7 @@ async function showWoDetailMap(workOrder) {
     // at all (see highlightGerkOnWoMap) — its imported zones are the
     // only real geometry there is to click-to-focus on, so they need
     // to be registered here too, not just drawn.
-    const entry = woMapLayersByCode.get(row.gerk_code) || { marker: null, shape: null, latlng: null };
+    const entry = woMapLayersByCode.get(row.gerk_code) || { marker: null, latlng: null };
     entry.zoneLayers = entry.zoneLayers || [];
     entry.zoneLayers.push(layer);
     woMapLayersByCode.set(row.gerk_code, entry);
@@ -1487,14 +1499,18 @@ function updateGerkMapLinksFromShapes() {
     const code = slot.dataset.code;
     const entry = woMapLayersByCode.get(code);
     // Prefer the official boundary's centroid; a text-named GERK (no
-    // registry match at all) has no .shape, so fall back to its
+    // registry match at all) has no .shapes, so fall back to its
     // imported zones' combined centroid — same fallback chain already
     // used by highlightGerkOnWoMap/exportSelectedGerksToKml. Only
     // when neither exists does the fields.centroid_* link (set at
-    // render time, possibly null) stay as-is.
+    // render time, possibly null) stay as-is. A compound "A+B+C" code
+    // combines all of its shapes' bounds first (see
+    // get_work_order_gerk_shapes).
     let center = null;
-    if (entry?.shape) {
-      center = entry.shape.getBounds().getCenter();
+    if (entry?.shapes?.length) {
+      let combined = entry.shapes[0].getBounds();
+      for (const l of entry.shapes.slice(1)) combined = combined.extend(l.getBounds());
+      center = combined.getCenter();
     } else if (entry?.zoneLayers?.length) {
       let combined = entry.zoneLayers[0].getBounds();
       for (const l of entry.zoneLayers.slice(1)) combined = combined.extend(l.getBounds());
@@ -2343,10 +2359,18 @@ function exportSelectedGerksToKml(btn) {
   const skipped = [];
   for (const code of codes) {
     const entry = woMapLayersByCode.get(code);
-    if (entry?.shape) {
-      const geojson = layerGeometry(entry.shape);
-      if (geojson) features.push({ name: code, geojson });
-      else skipped.push(code);
+    if (entry?.shapes?.length) {
+      // A compound "A+B+C" code (see get_work_order_gerk_shapes) has
+      // one shape per real GERK sharing this entry — export each as
+      // its own placemark, same as the zoneLayers branch below.
+      let any = false;
+      entry.shapes.forEach((layer, i) => {
+        const geojson = layerGeometry(layer);
+        if (!geojson) return;
+        any = true;
+        features.push({ name: entry.shapes.length > 1 ? `${code} (${i + 1})` : code, geojson });
+      });
+      if (!any) skipped.push(code);
     } else if (entry?.zoneLayers?.length) {
       for (const layer of entry.zoneLayers) {
         const geojson = layerGeometry(layer);
