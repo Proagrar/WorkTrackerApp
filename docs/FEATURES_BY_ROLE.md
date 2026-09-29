@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v2.29** (2026-09-29)
+Stanje: **v2.30** (2026-09-29)
 
 ## Vloge
 
@@ -27,7 +27,7 @@ Poleg tega obstaja še **stranka brez računa**, ki prek povezave izpolni deklar
 - Vidi samo naloge, ki so dodeljeni njemu, ter še nedodeljene naloge
 - Iskanje po stranki (s predlogi) in filter po statusu (več statusov hkrati)
 - Za vsak nalog: datum vnosa, stranka, število GERK-ov, skupni ha, status
-- Pregledni zemljevid nalogov — oznake ob oddaljenem pogledu, oblike parcel ob približanju
+- Pregledni zemljevid nalogov — oznake ob oddaljenem pogledu, oblike parcel ob približanju; ob prehodu miške prikaže stranko in GERK, klik na GERK/segment prikaže samo tisti nalog v seznamu za odpiranje
 
 **Podrobnosti naloga**
 - Glava s stranko, datumom in statusom (samo za branje), kdo je delal na nalogu in skupni čas
