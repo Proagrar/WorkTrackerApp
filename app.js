@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.31';
+const APP_VERSION = 'v2.32';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3343,7 +3343,8 @@ operatorsAddConfirmBtn.addEventListener('click', createOperatorFromForm);
 // ── Add customer modal ────────────────────────────────────────
 // context: 'decl' (from "Seznam strank") refreshes that list after
 // saving; 'wo' (from the work-order form's customer search) selects
-// the new customer straight into the order being created.
+// the new customer straight into the order being created; 'wo-assign'
+// (from an existing order's "+ Dodaj stranko") assigns it to that order.
 function openAddCustomerModal(context, prefillNaziv = '') {
   addCustomerContext = context;
   addCustomerErrorEl.hidden = true;
@@ -3395,6 +3396,8 @@ addCustomerForm.addEventListener('submit', async (e) => {
       woStrankaInput.value = newCustomer.name;
       woStrankaIdInput.value = newCustomer.id;
       loadCustomerGerkChecklist(newCustomer.id);
+    } else if (addCustomerContext === 'wo-assign') {
+      assignCustomerToWorkOrder(newCustomer);
     } else if (addCustomerContext === 'decl') {
       renderDeclCustomerList();
     }
@@ -4045,25 +4048,26 @@ function filterCustomers(query) {
   return customers.filter(c => !c.deletedAt && c.name.toLowerCase().includes(q)).slice(0, 8);
 }
 
-function showCustomerSuggestions(matches, query) {
-  // Only admins can reach this form (the FAB's "+ Nov delovni nalog" is
-  // admin-gated) and only admins can insert into customers (see the
-  // "Admins can insert customers" RLS policy) — so this is always safe
-  // to offer here, not just when matches come up empty.
-  const addNewItem = isAdminView() && query
+function showCustomerSuggestions(listEl, matches, query, addNewContext) {
+  // Only admins can reach these forms (the FAB's "+ Nov delovni nalog" and
+  // the work-order detail's "+ Dodaj stranko" are both admin-gated) and
+  // only admins can insert into customers (see the "Admins can insert
+  // customers" RLS policy) — so this is always safe to offer here, not
+  // just when matches come up empty.
+  const addNewItem = isAdminView() && query && addNewContext
     ? `<li class="gerk-suggestion-item gerk-suggestion-item--add" data-action="add-new"><span class="gerk-suggestion-code">+ Dodaj novo stranko: "${escHtml(query)}"</span></li>`
     : '';
-  if (!matches.length && !addNewItem) { woStrankaSuggestions.hidden = true; return; }
-  woStrankaSuggestions.innerHTML = matches.map(c =>
+  if (!matches.length && !addNewItem) { listEl.hidden = true; return; }
+  listEl.innerHTML = matches.map(c =>
     `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
   ).join('') + addNewItem;
-  woStrankaSuggestions.hidden = false;
+  listEl.hidden = false;
 }
 
 woStrankaInput.addEventListener('input', () => {
   woStrankaIdInput.value = '';
   const q = woStrankaInput.value.trim();
-  showCustomerSuggestions(filterCustomers(q), q);
+  showCustomerSuggestions(woStrankaSuggestions, filterCustomers(q), q, 'wo');
 });
 woStrankaInput.addEventListener('blur', () => {
   setTimeout(() => { woStrankaSuggestions.hidden = true; }, 150);
@@ -4094,12 +4098,8 @@ woAssignCustomerBtn.addEventListener('click', () => {
 });
 
 woAssignCustomerInput.addEventListener('input', () => {
-  const matches = filterCustomers(woAssignCustomerInput.value.trim());
-  if (!matches.length) { woAssignCustomerSuggestions.hidden = true; return; }
-  woAssignCustomerSuggestions.innerHTML = matches.map(c =>
-    `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
-  ).join('');
-  woAssignCustomerSuggestions.hidden = false;
+  const q = woAssignCustomerInput.value.trim();
+  showCustomerSuggestions(woAssignCustomerSuggestions, filterCustomers(q), q, 'wo-assign');
 });
 
 woAssignCustomerInput.addEventListener('blur', () => {
@@ -4107,6 +4107,11 @@ woAssignCustomerInput.addEventListener('blur', () => {
 });
 
 woAssignCustomerSuggestions.addEventListener('mousedown', e => {
+  if (e.target.closest('[data-action="add-new"]')) {
+    woAssignCustomerSuggestions.hidden = true;
+    openAddCustomerModal('wo-assign', woAssignCustomerInput.value.trim());
+    return;
+  }
   const item = e.target.closest('.gerk-suggestion-item');
   if (!item) return;
   const c = customers.find(c => c.id === item.dataset.id);
