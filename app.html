@@ -110,6 +110,9 @@
                 </div>
               </div>
             </div>
+            <!-- Shown only while a GERK/segment click on the map overview
+                 is narrowing the list — see woMapClickFilterId in app.js. -->
+            <button type="button" id="woMapFilterClearBtn" class="btn btn-secondary btn-sm" hidden>✕ Prekliči filter</button>
             <!-- Admin view only: switches the list to archived (soft-
                  deleted) orders — see woShowDeletedActive in app.js. -->
             <button type="button" id="woShowDeletedBtn" class="btn btn-secondary btn-sm wo-show-deleted-btn" hidden>🗑 Izbrisani</button>
@@ -123,10 +126,10 @@
           </div>
         </div>
         <!-- Shown when a GERK/segment was clicked on the map overview —
-             see woMapClickFilterId in app.js. -->
+             see woMapClickFilterId in app.js. The clear button itself now
+             lives in the toolbar above, next to "Vsi statusi". -->
         <div id="woMapFilterBanner" class="alert alert-info wo-map-filter-banner" hidden>
           <span>Prikazan samo izbran nalog z zemljevida</span>
-          <button type="button" id="woMapFilterClearBtn" class="btn btn-secondary btn-sm">✕ Prekliči filter</button>
         </div>
         <div id="woListLayout" class="wo-list-layout">
           <div id="workOrdersList" class="logs-list" role="list">
