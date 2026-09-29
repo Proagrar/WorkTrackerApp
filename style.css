@@ -331,6 +331,15 @@ input, select, textarea { font-family: inherit; }
 
 .alert-error   { background: var(--error-bg);   color: var(--error);   border: 1px solid #FECACA; }
 .alert-success { background: var(--success-bg); color: var(--success); border: 1px solid #BBF7D0; }
+.alert-info    { background: var(--blue-50);     color: var(--blue-800); border: 1px solid var(--blue-100); }
+
+.wo-map-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 
 
 /* ============================================================
@@ -1268,6 +1277,11 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   overflow: hidden;
 }
 .wo-list-map { position: absolute; inset: 0; }
+
+/* Two-line customer/GERK tooltip on overview pins/shapes — each line
+   its own row, centered, see redrawWoOverviewLayer. */
+.wo-overview-tooltip { text-align: center; }
+.wo-overview-tooltip > div:first-child { font-weight: 600; }
 
 @media (min-width: 900px) {
   .wo-list-layout--map-active { flex-direction: row; gap: 16px; align-items: flex-start; }

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.29';
+const APP_VERSION = 'v2.30';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -142,6 +142,12 @@ let woOverviewMap = null;
 let woOverviewMarkersLayer = null;
 let workOrdersGerkShapes = [];
 let workOrdersGerkShapesLoaded = false;
+// Set by clicking a GERK/segment on the overview map — narrows the
+// list on the left to just that one work order, so it can be opened.
+// Cleared by woMapFilterClearBtn or by closing the map overview.
+const woMapFilterBanner   = document.getElementById('woMapFilterBanner');
+const woMapFilterClearBtn = document.getElementById('woMapFilterClearBtn');
+let woMapClickFilterId = null;
 
 // ── Seznam strank / Deklaracije modal refs (admin only) ──────────
 const fabMenu               = document.getElementById('fabMenu');
@@ -3580,6 +3586,11 @@ async function loadWorkOrders() {
 }
 
 function filteredWorkOrders() {
+  // A map click takes over completely — one specific work order, no
+  // other filter applies (matches what you clicked, not what's typed
+  // in search/status at the time).
+  if (woMapClickFilterId) return workOrders.filter(wo => wo.id === woMapClickFilterId);
+
   const q = woSearchStranka.value.trim().toLowerCase();
   const showDeleted = isAdminView() && woShowDeletedActive;
   return workOrders.filter(wo => {
@@ -3813,6 +3824,28 @@ let woOverviewCurrentShapes = []; // cached by renderWoMapOverview, read by the 
 // Draws whichever of the cached current shapes have geometry, as
 // either real polygons (zoomed in) or centroid pins (zoomed out) —
 // never touches the map's own view/zoom, see ensureWoOverviewMap.
+// Stranka name for a shape's work order — looked up from the already-
+// loaded main list (workOrders), not a new fetch; get_work_orders_gerk_shapes
+// doesn't need to carry it too.
+function woMapOverviewCustomerName(delovniNalogId) {
+  const wo = workOrders.find(w => w.id === delovniNalogId);
+  return wo?.customers?.naziv || wo?.customers?.company_name || '—';
+}
+
+function woMapOverviewTooltipHtml(s) {
+  return `<div>${escHtml(woMapOverviewCustomerName(s.delovni_nalog_id))}</div><div>${escHtml(s.gerk_code || '')}</div>`;
+}
+
+// Clicking a shape/pin narrows the work-order list on the left to
+// just that one order (filteredWorkOrders honors woMapClickFilterId),
+// so it can be found and opened — same target work order for every
+// sub-shape of a compound "A+B+C" GERK.
+function woMapOverviewLayerClick(s) {
+  woMapClickFilterId = s.delovni_nalog_id;
+  updateWoMapFilterBanner();
+  renderWorkOrders();
+}
+
 function redrawWoOverviewLayer() {
   if (!woOverviewMap) return;
   woOverviewMarkersLayer.clearLayers();
@@ -3820,16 +3853,19 @@ function redrawWoOverviewLayer() {
 
   for (const s of woOverviewCurrentShapes) {
     const color = woMapOverviewColor(s.status);
+    const tooltipHtml = woMapOverviewTooltipHtml(s);
+    let layer;
     if (showShapes) {
-      L.geoJSON(s.geojson, { style: { color: '#fff', weight: 2, fillColor: color, fillOpacity: .55 } })
-        .bindTooltip(s.gerk_code || '', { direction: 'top', sticky: true })
+      layer = L.geoJSON(s.geojson, { style: { color: '#fff', weight: 2, fillColor: color, fillOpacity: .55 } })
+        .bindTooltip(tooltipHtml, { direction: 'top', sticky: true, className: 'wo-overview-tooltip' })
         .addTo(woOverviewMarkersLayer);
     } else {
       const center = L.geoJSON(s.geojson).getBounds().getCenter();
-      L.circleMarker(center, { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: .9 })
-        .bindTooltip(s.gerk_code || '', { direction: 'top' })
+      layer = L.circleMarker(center, { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: .9 })
+        .bindTooltip(tooltipHtml, { direction: 'top', className: 'wo-overview-tooltip' })
         .addTo(woOverviewMarkersLayer);
     }
+    layer.on('click', () => woMapOverviewLayerClick(s));
   }
 }
 
@@ -3861,10 +3897,27 @@ function renderWoMapOverview() {
   }
 }
 
+function updateWoMapFilterBanner() {
+  woMapFilterBanner.hidden = !woMapClickFilterId;
+}
+
+woMapFilterClearBtn.addEventListener('click', () => {
+  woMapClickFilterId = null;
+  updateWoMapFilterBanner();
+  renderWorkOrders();
+});
+
 woMapToggleBtn.addEventListener('click', async () => {
   woMapOverviewActive = !woMapOverviewActive;
   updateWoMapToggleButton();
   woOverviewMapWrap.hidden = !woMapOverviewActive;
+  // Closing the map overview also drops any map-click filter — the
+  // banner explaining it would otherwise be orphaned with the map gone.
+  if (!woMapOverviewActive && woMapClickFilterId) {
+    woMapClickFilterId = null;
+    updateWoMapFilterBanner();
+    renderWorkOrders();
+  }
   woListLayout.classList.toggle('wo-list-layout--map-active', woMapOverviewActive);
   if (!woMapOverviewActive) return;
 

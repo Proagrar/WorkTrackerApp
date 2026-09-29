@@ -122,6 +122,12 @@
             </div>
           </div>
         </div>
+        <!-- Shown when a GERK/segment was clicked on the map overview —
+             see woMapClickFilterId in app.js. -->
+        <div id="woMapFilterBanner" class="alert alert-info wo-map-filter-banner" hidden>
+          <span>Prikazan samo izbran nalog z zemljevida</span>
+          <button type="button" id="woMapFilterClearBtn" class="btn btn-secondary btn-sm">✕ Prekliči filter</button>
+        </div>
         <div id="woListLayout" class="wo-list-layout">
           <div id="workOrdersList" class="logs-list" role="list">
             <div class="state-loading">
