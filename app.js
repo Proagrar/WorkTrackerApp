@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.32';
+const APP_VERSION = 'v2.33';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -4090,10 +4090,14 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
 });
 
 // ── Work order detail: assign a customer to an order that has none ──
-woAssignCustomerBtn.addEventListener('click', () => {
+woAssignCustomerBtn.addEventListener('click', async () => {
   woAssignCustomerBtn.hidden = true;
   woAssignCustomerWrap.hidden = false;
   woAssignCustomerInput.value = '';
+  // Unlike the new-work-order form, this button can be the first thing
+  // clicked in a session (e.g. straight from the main list into an
+  // existing order's detail) — `customers` may still be empty here.
+  if (!customers.length) await loadCustomers();
   woAssignCustomerInput.focus();
 });
 
