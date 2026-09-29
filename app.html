@@ -173,6 +173,14 @@
         </div>
         <div class="wo-header-fields">
           <span id="workLogOrderLabel" class="wo-header-stranka"></span>
+          <!-- Admin only, shown instead of workLogOrderLabel when the
+               order has no customer at all yet — see updateOrderHeader()/
+               assignCustomerToWorkOrder() in app.js. -->
+          <button type="button" id="woAssignCustomerBtn" class="btn btn-secondary btn-sm" hidden>+ Dodaj stranko</button>
+          <div id="woAssignCustomerWrap" class="wo-assign-customer-wrap" hidden>
+            <input type="text" id="woAssignCustomerInput" class="field-input" placeholder="Išči stranko..." autocomplete="off">
+            <ul id="woAssignCustomerSuggestions" class="gerk-suggestions" hidden></ul>
+          </div>
           <input class="field-input" type="date" id="workLogDate" />
           <!-- Admin only: change status directly — unreachable any other way. -->
           <select class="field-input field-select" id="woStatusEdit" hidden>

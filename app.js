@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.30';
+const APP_VERSION = 'v2.31';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -54,6 +54,13 @@ const modalTitle  = document.getElementById('modalTitle');
 const modalClose  = document.getElementById('modalClose');
 const workLogForm = document.getElementById('workLogForm');
 const workLogOrderLabel = document.getElementById('workLogOrderLabel');
+// Admin-only "assign a customer" control shown instead of
+// workLogOrderLabel when the open order has no stranka_id at all —
+// see updateOrderHeader()/assignCustomerToWorkOrder().
+const woAssignCustomerBtn         = document.getElementById('woAssignCustomerBtn');
+const woAssignCustomerWrap        = document.getElementById('woAssignCustomerWrap');
+const woAssignCustomerInput       = document.getElementById('woAssignCustomerInput');
+const woAssignCustomerSuggestions = document.getElementById('woAssignCustomerSuggestions');
 const workLogDateInput = document.getElementById('workLogDate');
 const woStatusEdit = document.getElementById('woStatusEdit');
 const woStatusBadge = document.getElementById('woStatusBadge');
@@ -1145,6 +1152,15 @@ function updateOrderHeader() {
   const totalSec = rows.reduce((s, r) => s + (parseInt(r.dataset.duration, 10) || 0), 0);
   const totalMin = Math.round(totalSec / 60);
   const isAdmin = isAdminView();
+
+  // Customer: normally just the read-only label — but a handful of
+  // orders (e.g. #84) somehow have no stranka_id at all, and until now
+  // there was no way to fix that short of editing the DB directly.
+  // Admin-only "+ Dodaj stranko" replaces the label in that case.
+  const showAssignCustomer = !wo.stranka_id && isAdmin;
+  workLogOrderLabel.hidden = showAssignCustomer;
+  woAssignCustomerBtn.hidden = !showAssignCustomer;
+  if (wo.stranka_id) woAssignCustomerWrap.hidden = true;
 
   // Status: admin gets an editable dropdown (only way to change it now
   // that there's no claim button); everyone else gets a read-only badge.
@@ -4068,6 +4084,53 @@ woStrankaSuggestions.addEventListener('mousedown', e => {
   }
   woStrankaSuggestions.hidden = true;
 });
+
+// ── Work order detail: assign a customer to an order that has none ──
+woAssignCustomerBtn.addEventListener('click', () => {
+  woAssignCustomerBtn.hidden = true;
+  woAssignCustomerWrap.hidden = false;
+  woAssignCustomerInput.value = '';
+  woAssignCustomerInput.focus();
+});
+
+woAssignCustomerInput.addEventListener('input', () => {
+  const matches = filterCustomers(woAssignCustomerInput.value.trim());
+  if (!matches.length) { woAssignCustomerSuggestions.hidden = true; return; }
+  woAssignCustomerSuggestions.innerHTML = matches.map(c =>
+    `<li class="gerk-suggestion-item" data-id="${c.id}"><span class="gerk-suggestion-code">${escHtml(c.name)}</span></li>`
+  ).join('');
+  woAssignCustomerSuggestions.hidden = false;
+});
+
+woAssignCustomerInput.addEventListener('blur', () => {
+  setTimeout(() => { woAssignCustomerSuggestions.hidden = true; }, 150);
+});
+
+woAssignCustomerSuggestions.addEventListener('mousedown', e => {
+  const item = e.target.closest('.gerk-suggestion-item');
+  if (!item) return;
+  const c = customers.find(c => c.id === item.dataset.id);
+  woAssignCustomerSuggestions.hidden = true;
+  if (c) assignCustomerToWorkOrder(c);
+});
+
+async function assignCustomerToWorkOrder(customer) {
+  if (!currentDetailWorkOrder) return;
+  woAssignCustomerInput.disabled = true;
+  try {
+    const { error } = await supabase.from('delovni_nalogi').update({ stranka_id: customer.id }).eq('id', currentDetailWorkOrder.id);
+    if (error) throw error;
+    currentDetailWorkOrder.stranka_id = customer.id;
+    currentDetailWorkOrder.customers = { naziv: customer.name };
+    workLogOrderLabel.textContent = customer.name;
+    updateOrderHeader();
+    await loadWorkOrders(); // keeps the main list's stranka column/search in sync
+  } catch (e) {
+    showFormError(e.message || 'Napaka pri dodajanju stranke.');
+  } finally {
+    woAssignCustomerInput.disabled = false;
+  }
+}
 
 // ── GERK checklist: the selected customer's own fields, checked ──
 // instead of typed/searched one at a time. Checking/unchecking stays

@@ -1252,6 +1252,8 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 
 .wo-status-filter-wrap { position: relative; flex-shrink: 0; }
 
+.wo-assign-customer-wrap { position: relative; flex-shrink: 0; width: 180px; }
+
 .wo-status-filter-btn { height: 34px; white-space: nowrap; }
 
 .wo-show-deleted-btn { height: 34px; white-space: nowrap; flex-shrink: 0; }
