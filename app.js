@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.47';
+const APP_VERSION = 'v3.48';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -88,6 +88,7 @@ const woImportZonesError = document.getElementById('woImportZonesError');
 const woDetailMap = document.getElementById('woDetailMap');
 const woMapGerkLabel = document.getElementById('woMapGerkLabel');
 const woMapExpandBtn = document.getElementById('woMapExpandBtn');
+const woMapLayersBtn = document.getElementById('woMapLayersBtn');
 const wlgCompactList = document.getElementById('wlgCompactList');
 const woDetailLayoutEl = document.querySelector('.wo-detail-layout');
 const woDetailMapWrapEl = document.querySelector('.wo-detail-map-wrap');
@@ -150,8 +151,10 @@ const woMapToggleBtn   = document.getElementById('woMapToggleBtn');
 const woListLayout     = document.getElementById('woListLayout');
 const woOverviewMapWrap = document.getElementById('woOverviewMapWrap');
 const woOverviewMapEl  = document.getElementById('woOverviewMap');
+const woOverviewMapLayersBtn = document.getElementById('woOverviewMapLayersBtn');
 let woMapOverviewActive = false;
 let woOverviewMap = null;
+let woOverviewLabelsLayer = null; // roads/borders/place-names overlay — off by default, see ensureWoOverviewMap
 let woOverviewMarkersLayer = null;
 let workOrdersGerkShapes = [];
 let workOrdersGerkShapesLoaded = false;
@@ -1107,6 +1110,13 @@ woMapExpandBtn.addEventListener('click', () => {
   updateMapExpandState();
 });
 
+woMapLayersBtn.addEventListener('click', () => {
+  if (!woMap || !woMapLabelsLayer) return;
+  const active = woMap.hasLayer(woMapLabelsLayer);
+  if (active) woMap.removeLayer(woMapLabelsLayer); else woMapLabelsLayer.addTo(woMap);
+  woMapLayersBtn.setAttribute('aria-pressed', String(!active));
+});
+
 // Admins can always see + add segments (even zero today — that's the
 // point of the + button), everyone else only sees the panel when
 // there's actually something to show.
@@ -1323,6 +1333,7 @@ async function loadIzvajalecEditOptions() {
 // long as the order is open, rather than being opened on demand for
 // one point.
 let woMap           = null;
+let woMapLabelsLayer = null; // roads/borders/place-names overlay — off by default, see ensureWoMap
 let woMapGerkLayer  = null;
 let woMapSegmentLayer = null; // imported KML zones (gerk_segment) + their sample points — separate layer, drawn on top
 let woMapCapturedLayer = null; // operator-captured points (gerk_captured_point) — own layer, own color
@@ -1412,6 +1423,12 @@ function ensureWoMap() {
     maxZoom: 19,
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   }).addTo(woMap);
+  // Roads/borders/place-name overlay — created but not added (off by
+  // default, per the comment above), toggled on/off via woMapLayersBtn.
+  woMapLabelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri',
+  });
   woMapGerkLayer = L.layerGroup().addTo(woMap);
   woMapSegmentLayer = L.layerGroup().addTo(woMap);
   woMapCapturedLayer = L.layerGroup().addTo(woMap);
@@ -3990,6 +4007,12 @@ function ensureWoOverviewMap() {
     maxZoom: 19,
     attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
   }).addTo(woOverviewMap);
+  // Roads/borders/place-name overlay — created but not added (off by
+  // default), toggled on/off via woOverviewMapLayersBtn.
+  woOverviewLabelsLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri',
+  });
   woOverviewMarkersLayer = L.layerGroup().addTo(woOverviewMap);
   new ResizeObserver(() => woOverviewMap?.invalidateSize()).observe(woOverviewMapEl.parentElement);
   // Only redraws the current shape set at whatever zoom it lands on —
@@ -4130,6 +4153,13 @@ woMapToggleBtn.addEventListener('click', async () => {
   woOverviewMap.invalidateSize();
   if (!workOrdersGerkShapesLoaded) await loadWorkOrdersGerkShapes();
   renderWoMapOverview();
+});
+
+woOverviewMapLayersBtn.addEventListener('click', () => {
+  if (!woOverviewMap || !woOverviewLabelsLayer) return;
+  const active = woOverviewMap.hasLayer(woOverviewLabelsLayer);
+  if (active) woOverviewMap.removeLayer(woOverviewLabelsLayer); else woOverviewLabelsLayer.addTo(woOverviewMap);
+  woOverviewMapLayersBtn.setAttribute('aria-pressed', String(!active));
 });
 
 // ── Main list bulk-select (admin view only) — mirrors the GERK
