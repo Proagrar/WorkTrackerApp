@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.35';
+const APP_VERSION = 'v2.36';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -92,6 +92,7 @@ let woMapExpanded = false;
 const woCapturePanel = document.getElementById('woCapturePanel');
 const woCaptureBtn  = document.getElementById('woCaptureBtn');
 const woCaptureError = document.getElementById('woCaptureError');
+const woCaptureToast = document.getElementById('woCaptureToast');
 const woCaptureShowPoints = document.getElementById('woCaptureShowPoints');
 const woCaptureList = document.getElementById('woCaptureList');
 const woHeaderMeta = document.getElementById('woHeaderMeta');
@@ -1637,6 +1638,18 @@ function showCaptureError(msg) {
   woCaptureError.hidden = false;
 }
 
+// Success confirmation for a captured point — fades out on its own
+// instead of needing to be dismissed, unlike showCaptureError above.
+let captureToastTimer = null;
+function showCaptureToast(msg) {
+  woCaptureToast.textContent = msg;
+  clearTimeout(captureToastTimer);
+  woCaptureToast.classList.add('wo-capture-toast--visible');
+  captureToastTimer = setTimeout(() => {
+    woCaptureToast.classList.remove('wo-capture-toast--visible');
+  }, 2500);
+}
+
 // High-accuracy GPS can take a long time to get a fix (or never manage
 // it, e.g. weak signal indoors) and was timing out often at 15s. Try it
 // first since it's the better reading when it works, but fall back to
@@ -1676,6 +1689,7 @@ async function captureGerkPoint() {
     currentCapturedPoints.push(result);
     renderCapturedPointsList();
     drawCapturedPointsOnMap();
+    showCaptureToast(`✓ Točka ${result.point_no} zajeta`);
   } catch (e) {
     showCaptureError(geolocationErrorMessage(e));
   } finally {

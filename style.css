@@ -1583,6 +1583,35 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
   pointer-events: none;
 }
 
+/* Confirms a captured GPS point, fading out on its own — opacity +
+   visibility (not `hidden`) so it can transition, same pattern as
+   .wlg-selection-bar; pointer-events: none since it's purely
+   informational and shouldn't block the map underneath. */
+.wo-capture-toast {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 7px 16px;
+  background: var(--success);
+  color: #fff;
+  font-size: .8125rem;
+  font-weight: 600;
+  border-radius: 20px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--duration-base) var(--ease-standard), visibility 0s linear var(--duration-base);
+}
+.wo-capture-toast--visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--duration-base) var(--ease-standard), visibility 0s linear 0s;
+}
+
 .wo-map-expand-btn {
   position: absolute;
   top: 8px;
