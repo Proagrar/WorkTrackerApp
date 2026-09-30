@@ -82,23 +82,17 @@ function formatArea(area) {
 // The plannable unit is a delovni_nalogi_gerki *line* (its own id), not a
 // fields row — a compound "A+B+C" GERK code is one line/one checkbox, same
 // as everywhere else in the app (get_work_order_gerk_shapes etc.).
-function normalizeGerkLine(link, lastnostById, dictByKey) {
-  const field = link.fields || null;
-  const lastnost = field?.gerk_lastnost_id != null ? lastnostById.get(field.gerk_lastnost_id) : null;
-  const rabaId = lastnost?.lastnost?.RABA_ID ?? null;
-  const country = String(lastnost?.drzava || '').toUpperCase();
-  const type = rabaId != null ? (dictByKey.get(`${country}:${rabaId}`) ?? 'Ni podatka') : 'Ni podatka';
+function normalizeGerkLine(link) {
   return {
     id: link.id,
     code: link.gerk_code,
     // kolicina_ha, not fields.area_ha — same source the main Delovni
     // Nalogi list uses (loadWorkOrders() in app.js), so totals match.
     area: link.kolicina_ha ?? null,
-    type,
   };
 }
 
-function normalizeOrder(row, lastnostById, dictByKey, operatorNames, segmentCountById) {
+function normalizeOrder(row, operatorNames, segmentCountById) {
   const izvajalecId = row.izvajalec || null;
   const izvajalecKey = izvajalecId || 'none';
   const izvajalecName = izvajalecId ? (operatorNames.get(izvajalecId) ?? 'Neznan izvajalec') : 'Ni izvajalca';
@@ -109,7 +103,7 @@ function normalizeOrder(row, lastnostById, dictByKey, operatorNames, segmentCoun
     izvajalecKey,
     izvajalecName,
     segmentCount: segmentCountById.get(row.id) ?? 0,
-    gerkLines: (row.delovni_nalogi_gerki ?? []).map(link => normalizeGerkLine(link, lastnostById, dictByKey)),
+    gerkLines: (row.delovni_nalogi_gerki ?? []).map(normalizeGerkLine),
   };
 }
 
@@ -151,7 +145,7 @@ async function loadPlanningData() {
   const [ordersRes, profilesRes, segmentCountsRes] = await Promise.all([
     supabase
       .from('delovni_nalogi')
-      .select('id, stevilka, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, field_id, fields(id, gerk_lastnost_id))')
+      .select('id, stevilka, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha)')
       .is('deleted_at', null),
     supabase.from('profiles').select('id, full_name, eligible_izvajalec'),
     supabase.rpc('get_work_orders_segment_counts'),
@@ -173,40 +167,35 @@ async function loadPlanningData() {
 
   const segmentCountById = new Map((segmentCountsRes.data ?? []).map(r => [r.delovni_nalog_id, Number(r.segment_count)]));
 
-  const lastnostIds = [...new Set(rows.flatMap(row =>
-    (row.delovni_nalogi_gerki ?? [])
-      .map(link => link.fields?.gerk_lastnost_id)
-      .filter(id => id != null)
-  ))];
+  orders = rows.map(row => normalizeOrder(row, operatorNames, segmentCountById));
 
-  const { data: lastnosti, error: lastnostError } = lastnostIds.length
-    ? await supabase.from('gerk_lastnost').select('gerk_id, drzava, lastnost').in('gerk_id', lastnostIds)
-    : { data: [], error: null };
-  if (lastnostError) els.hint.textContent = `Tabele gerk_lastnost ni mogoče prebrati: ${lastnostError.message}`;
-  const lastnostById = new Map((lastnosti ?? []).map(l => [l.gerk_id, l]));
+  await loadPlanEntries();
 
-  const { data: dictionary, error: dictionaryError } = await supabase
-    .from('gerk_raba_id_slovar')
-    .select('country, raba_id, slovenski_naziv');
-  if (dictionaryError) els.hint.textContent = `Šifranta gerk_raba_id_slovar ni mogoče prebrati: ${dictionaryError.message}`;
-  const dictByKey = new Map((dictionary ?? []).map(d => [`${String(d.country ?? '').toUpperCase()}:${d.raba_id}`, d.slovenski_naziv]));
+  els.hint.textContent = orders.length ? 'Povlecite nalog na dan v koledarju.' : 'Ni odprtih delovnih nalogov.';
+  renderAll();
+}
 
-  orders = rows.map(row => normalizeOrder(row, lastnostById, dictByKey, operatorNames, segmentCountById));
-
-  const { data: plans, error: planError } = await supabase
+async function loadPlanEntries() {
+  const { data: plans, error } = await supabase
     .from('delovni_nalogi_planiranje')
     .select('id, delovni_nalog_id, plan_date, delovni_nalogi_planiranje_gerki(delovni_nalog_gerk_id)');
 
-  planEntries = planError ? [] : (plans ?? []).map(plan => ({
+  planEntries = error ? [] : (plans ?? []).map(plan => ({
     id: plan.id,
     orderId: plan.delovni_nalog_id,
     date: plan.plan_date,
     gerkLineIds: new Set((plan.delovni_nalogi_planiranje_gerki ?? []).map(item => item.delovni_nalog_gerk_id)),
   }));
-
-  els.hint.textContent = orders.length ? 'Povlecite nalog na dan v koledarju.' : 'Ni odprtih delovnih nalogov.';
-  renderAll();
 }
+
+// Bridge for app.js — editing the "Planirano" date directly in the work-
+// order detail popup (opened via window.openWorkOrderDetailById) writes to
+// delovni_nalogi_planiranje from over there; this re-syncs our own cached
+// planEntries afterward so the calendar reflects it without a full reload.
+window.refreshPlanningEntries = async function () {
+  await loadPlanEntries();
+  renderAll();
+};
 
 function entriesForOrder(order) { return planEntries.filter(entry => String(entry.orderId) === String(order.id)); }
 function plannedGerkLineIds(order) {
@@ -220,15 +209,6 @@ function gerkLinesForEntry(order, entry) {
   const selected = entry?.gerkLineIds ?? new Set();
   return order.gerkLines.filter(line => selected.has(line.id));
 }
-function groupedAreasForLines(lines) {
-  const groups = new Map();
-  for (const line of lines) {
-    const current = groups.get(line.type) ?? 0;
-    groups.set(line.type, current + (Number(line.area) || 0));
-  }
-  return [...groups.entries()];
-}
-
 function operatorOptionsHtml(selectedKey) {
   const options = [['none', 'Ni izvajalca'], ...eligibleOperators.map(op => [op.id, op.name])];
   return options.map(([key, name]) =>
@@ -309,19 +289,12 @@ function renderCalendar() {
       const order = getOrder(entry.orderId);
       return entry.date === iso && entry.gerkLineIds.size > 0 && order && matchesOperator(order);
     });
-    const dayAreas = groupedAreasForLines(dayEntries.flatMap(entry => {
-      const order = getOrder(entry.orderId);
-      return order ? gerkLinesForEntry(order, entry) : [];
-    }))
-      .map(([type, area]) => `<span class="calendar-day-area">${esc(type)} ${formatArea(area)}</span>`)
-      .join('');
     const classes = ['calendar-day'];
     if (date.getMonth() !== month) classes.push('is-outside');
     if (iso === today) classes.push('is-today');
     if (!inRange) classes.push('is-out-of-range');
     html += `<div class="${classes.join(' ')}" data-date="${iso}" role="gridcell">
       <span class="calendar-day-number">${date.getDate()}</span>
-      <div class="calendar-day-areas">${dayAreas}</div>
       <div class="calendar-day-orders">${dayEntries.map(renderCalendarOrder).join('')}</div>
     </div>`;
   }
@@ -339,7 +312,7 @@ function renderCalendar() {
   });
   els.grid.querySelectorAll('.calendar-order').forEach(card => {
     card.addEventListener('click', () => selectCalendarOrder(card));
-    card.addEventListener('dblclick', () => window.openWorkOrderDetailById(card.dataset.orderId));
+    card.addEventListener('dblclick', () => window.openWorkOrderDetailById(card.dataset.orderId, card.dataset.planId));
     card.addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', `plan:${card.dataset.planId}`));
   });
   els.grid.querySelectorAll('.calendar-order-remove').forEach(btn => {

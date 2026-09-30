@@ -228,6 +228,14 @@
             <ul id="woAssignCustomerSuggestions" class="gerk-suggestions" hidden></ul>
           </div>
           <input class="field-input" type="date" id="workLogDate" />
+          <!-- Admin only, shown when this order has a scheduled date
+               (delovni_nalogi_planiranje.plan_date) — see
+               openWorkOrderDetail()/updateOrderHeader() in app.js and the
+               window.openWorkOrderDetailById bridge planning.js calls. -->
+          <label class="wo-plan-date-wrap" id="woPlanDateWrap" hidden>
+            <span class="wo-plan-date-label">Planirano</span>
+            <input class="field-input" type="date" id="woPlanDate" />
+          </label>
           <!-- Admin only: change status directly — unreachable any other way. -->
           <select class="field-input field-select" id="woStatusEdit" hidden>
             <option value="Plan">Plan</option>

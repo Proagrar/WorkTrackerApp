@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.3';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -62,6 +62,8 @@ const woAssignCustomerWrap        = document.getElementById('woAssignCustomerWra
 const woAssignCustomerInput       = document.getElementById('woAssignCustomerInput');
 const woAssignCustomerSuggestions = document.getElementById('woAssignCustomerSuggestions');
 const workLogDateInput = document.getElementById('workLogDate');
+const woPlanDateWrap = document.getElementById('woPlanDateWrap');
+const woPlanDateInput = document.getElementById('woPlanDate');
 const woStatusEdit = document.getElementById('woStatusEdit');
 const woStatusBadge = document.getElementById('woStatusBadge');
 const woDeleteBtn = document.getElementById('woDeleteBtn');
@@ -1165,6 +1167,12 @@ function updateOrderHeader() {
   woAssignCustomerBtn.hidden = !showAssignCustomer;
   if (wo.stranka_id) woAssignCustomerWrap.hidden = true;
 
+  // "Planirano" — the Planiranje-scheduled date, if loadPlanDateForDetail()
+  // found exactly one to show. Resolved asynchronously (separate query),
+  // so this can run again after openWorkOrderDetail()'s own render pass.
+  woPlanDateWrap.hidden = !isAdmin || !currentDetailPlanId;
+  if (currentDetailPlanId) woPlanDateInput.value = currentDetailPlanDate;
+
   // Status: admin gets an editable dropdown (only way to change it now
   // that there's no claim button); everyone else gets a read-only badge.
   woStatusEdit.hidden = !isAdmin;
@@ -1206,11 +1214,15 @@ let currentAllGerkEntries  = []; // every operator's work_log_gerks for this wor
 let currentCapturedPoints  = []; // gerk_captured_point rows for this work order — the right-side map capture panel
 let currentGerkSegments    = []; // get_work_order_gerk_segments rows — one per imported zone, powers the per-GERK badge + map layer
 let selectedGerkCodes      = new Set(); // admin-only multi-select on the GERK list, powers the contextual selection bar
+let currentDetailPlanId    = null; // delovni_nalogi_planiranje.id backing the "Planirano" field, if any — see loadPlanDateForDetail()
+let currentDetailPlanDate  = null;
 
-async function openWorkOrderDetail(workOrder) {
+async function openWorkOrderDetail(workOrder, planId = null) {
   currentDetailWorkOrder  = workOrder;
   currentDetailDate       = todayISO();
   selectedGerkCodes       = new Set();
+  currentDetailPlanId     = null;
+  currentDetailPlanDate   = null;
 
   modalTitle.textContent = workOrder.stevilka || 'Delovni nalog';
   hideFormFeedback();
@@ -1223,6 +1235,7 @@ async function openWorkOrderDetail(workOrder) {
 
   woAddExistingGerkCode.value = '';
   if (isAdminView()) loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
+  if (isAdminView()) loadPlanDateForDetail(workOrder.id, planId); // fire-and-forget, re-renders the header itself once resolved
 
   await loadDetailForDate();
 
@@ -1241,12 +1254,30 @@ async function openWorkOrderDetail(workOrder) {
 // and no access to this file's internals — to open the SAME work-order
 // detail popup the main list uses, instead of a second, redundant one.
 // Guards on workOrdersLoaded since Planiranje can be the first tab visited
-// in a session, before loadWorkOrders() would otherwise have run.
-window.openWorkOrderDetailById = async function (id) {
+// in a session, before loadWorkOrders() would otherwise have run. planId
+// (a delovni_nalogi_planiranje.id), when known — i.e. opened from a specific
+// calendar entry — pins the "Planirano" field to that exact plan row.
+window.openWorkOrderDetailById = async function (id, planId = null) {
   if (!workOrdersLoaded) await loadWorkOrders();
   const wo = workOrders.find(w => w.id === id);
-  if (wo) await openWorkOrderDetail(wo);
+  if (wo) await openWorkOrderDetail(wo, planId);
 };
+
+// Admin-only "Planirano" field in the detail header — the scheduled date
+// from Planiranje (delovni_nalogi_planiranje.plan_date), editable right
+// here instead of only from the calendar. If planId isn't given (opened
+// from the main list, not a specific calendar entry) and the order has
+// exactly one plan row, that one is used; with zero or multiple plan rows
+// there's no single unambiguous date, so the field just stays hidden.
+async function loadPlanDateForDetail(workOrderId, planId) {
+  const { data } = await supabase.from('delovni_nalogi_planiranje').select('id, plan_date').eq('delovni_nalog_id', workOrderId);
+  if (currentDetailWorkOrder?.id !== workOrderId) return; // modal moved on to a different order already
+  const rows = data ?? [];
+  const row = planId ? rows.find(r => String(r.id) === String(planId)) : (rows.length === 1 ? rows[0] : null);
+  currentDetailPlanId = row?.id ?? null;
+  currentDetailPlanDate = row?.plan_date ?? null;
+  updateOrderHeader();
+}
 
 // ── Work order detail: persistent split-view map ─────────────────
 // Separate Leaflet instance from the popup map modal (openMapModal) —
@@ -1851,6 +1882,26 @@ workLogDateInput.addEventListener('change', async () => {
 
   currentDetailDate = newDate;
   loadDetailForDate();
+});
+
+// Editing the scheduled date right here instead of only via drag-and-drop
+// on the Planiranje calendar. Writes straight to delovni_nalogi_planiranje
+// (this file's own Supabase client — same table planning.js's own client
+// writes to, just from the other side), then tells planning.js to re-sync
+// its cached calendar state if it's been loaded this session.
+woPlanDateInput.addEventListener('change', async () => {
+  if (!currentDetailPlanId) return;
+  const newDate = woPlanDateInput.value;
+  if (!newDate) { woPlanDateInput.value = currentDetailPlanDate; return; }
+  const oldDate = currentDetailPlanDate;
+  const { error } = await supabase.from('delovni_nalogi_planiranje').update({ plan_date: newDate }).eq('id', currentDetailPlanId);
+  if (error) {
+    woPlanDateInput.value = oldDate;
+    showFormError('Napaka pri spreminjanju datuma planiranja: ' + error.message);
+    return;
+  }
+  currentDetailPlanDate = newDate;
+  window.refreshPlanningEntries?.();
 });
 
 function closeModal() {

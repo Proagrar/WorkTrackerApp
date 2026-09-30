@@ -706,6 +706,10 @@ input, select, textarea { font-family: inherit; }
   display: inline-flex;
   align-items: center;
 }
+/* Spans the full row (not one of the 3 grid columns) since it only shows
+   up sometimes — cramming it into a single 1.3fr column looked cramped. */
+.wo-plan-date-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.wo-plan-date-label { color: var(--text-secondary); font-size: .75rem; font-weight: 700; white-space: nowrap; }
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
 
@@ -2372,13 +2376,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .calendar-day--blank { background: var(--background); }
 .calendar-day.is-outside { background: #fafbfe; }
 .calendar-day.is-out-of-range { background: #f1f2f5; opacity: .45; }
-.calendar-day.is-out-of-range .calendar-day-areas,
 .calendar-day.is-out-of-range .calendar-day-orders { visibility: hidden; }
 .calendar-day.is-today .calendar-day-number { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--blue-800); color: white; }
 .calendar-day.is-drop-target { background: var(--blue-50); box-shadow: inset 0 0 0 2px var(--blue-700); }
 .calendar-day-number { color: var(--text-secondary); font-size: .75rem; font-weight: 700; }
-.calendar-day-areas { display: block; width: 100%; margin-top: 5px; padding: 4px 5px; border-radius: 4px; background: var(--blue-50); color: var(--blue-800); font-size: .625rem; font-weight: 700; line-height: 1.35; }
-.calendar-day-area { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-day-orders { display: grid; gap: 4px; margin-top: 6px; }
 /* A div, not a button — hosts its own inner .calendar-order-remove button,
    which a <button> couldn't (no nested buttons). position:relative so the
