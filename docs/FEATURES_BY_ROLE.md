@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v3.32** (2026-09-30)
+Stanje: **v3.4** (2026-09-30)
 
 ## Vloge
 
@@ -76,6 +76,7 @@ Vse zgoraj, in dodatno:
 - Dodajanje GERK-a obstoječemu nalogu, odstranjevanje GERK-a, odstranjevanje segmentacije con
 - Sestavljen vnos GERK-a (npr. "688697+6492082+6492080"), kadar eno dejansko polje sestavlja več uradnih GERK-ov — zemljevid prikaže in izračuna vse združene meje kot en vnos
 - Dodajanje stranke nalogu, ki je (izjemoma) nima — "+ Dodaj stranko" v glavi naloga; enako kot pri ustvarjanju naloga je mogoče tudi ustvariti povsem novo stranko na mestu ("+ Dodaj novo stranko")
+- Sprememba izvajalca neposredno v glavi naloga (spustni seznam) — enaka dodelitev kot s kartice v Planiranju
 - Izbira več GERK-ov → **izvoz v KML** ali skupno brisanje
 - Dodajanje, urejanje in brisanje segmentov / vzorcev (št. vzorca, vzorčenje, globina) ter tip LAB analize (basic / micro elements)
 - Urejanje vpisanih časov kateregakoli operaterja
