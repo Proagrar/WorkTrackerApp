@@ -1,0 +1,8 @@
+-- SUPERSEDED — do not run.
+--
+-- Turned out "Luka Boltiš" and "Boltiš L" are two different legal entities
+-- (one Slovenian, one Croatian), not one customer with a wrong country.
+-- The Slovenian "Luka Boltiš" record's country was already correct — see
+-- fix_luka_boltis_split_entities.sql instead, which renames both entities
+-- for clarity and moves the 5 genuinely-Croatian GERK lines off order #99
+-- onto a new order under the Croatian entity.
