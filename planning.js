@@ -13,6 +13,10 @@ const MODAL_CLOSE_MS = 300; // matches app.js's own modal fade timing
 let orders = [];
 let planningLoaded = false;
 let planEntries = [];
+// The full "eligible izvajalec" roster (same list Izvajalci/order-creation
+// use), not just operators who happen to have an open order right now —
+// so the filter still lets you pick someone with zero current orders.
+let eligibleOperators = [];
 let selectedOrderId = null;
 let selectedPlanId = null;
 let selectedOperators = new Set();
@@ -124,9 +128,17 @@ function matchesOperator(order) {
 }
 
 function renderOperatorFilter() {
-  const options = new Map(orders.map(order => [order.izvajalecKey, order.izvajalecName]));
-  const entries = [...options.entries()].sort((left, right) => left[1].localeCompare(right[1], 'sl'));
-  selectedOperators = new Set([...selectedOperators].filter(key => options.has(key)));
+  // Same roster as everywhere else in the app (profiles.eligible_izvajalec),
+  // not just whoever happens to have an open order right now — plus "Ni
+  // izvajalca" for unassigned orders, which are a normal, common case.
+  const entries = [
+    ['none', 'Ni izvajalca'],
+    ...eligibleOperators
+      .map(op => [op.id, op.name])
+      .sort((left, right) => left[1].localeCompare(right[1], 'sl')),
+  ];
+  const validKeys = new Set(entries.map(([key]) => key));
+  selectedOperators = new Set([...selectedOperators].filter(key => validKeys.has(key)));
   els.operatorFilterMenu.innerHTML = entries.map(([key, name]) => `<label class="operator-filter-option">
     <input type="checkbox" value="${esc(key)}" ${selectedOperators.has(key) ? 'checked' : ''} />
     <span>${esc(name)}</span>
@@ -139,13 +151,17 @@ async function loadPlanningData() {
   planningLoaded = true;
   els.hint.textContent = 'Nalaganje delovnih nalogov ...';
 
+  // Same scope as the main Delovni Nalogi list's default view: every
+  // non-archived order, any status (that list has no server-side status
+  // filter either — see loadWorkOrders()/filteredWorkOrders() in app.js).
+  // Orders with nothing left to schedule simply won't produce a card, via
+  // the unplannedGerkLines() check in renderCards() below.
   const [ordersRes, profilesRes] = await Promise.all([
     supabase
       .from('delovni_nalogi')
       .select('id, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, field_id, fields(id, area_ha, gerk_lastnost_id))')
-      .is('deleted_at', null)
-      .in('status', ['Plan', 'V delu']),
-    supabase.from('profiles').select('id, full_name'),
+      .is('deleted_at', null),
+    supabase.from('profiles').select('id, full_name, eligible_izvajalec'),
   ]);
 
   if (ordersRes.error) {
@@ -155,7 +171,12 @@ async function loadPlanningData() {
   }
 
   const rows = ordersRes.data ?? [];
-  const operatorNames = new Map((profilesRes.data ?? []).map(p => [p.id, p.full_name || 'Brez imena']));
+  const profiles = profilesRes.data ?? [];
+  const operatorNames = new Map(profiles.map(p => [p.id, p.full_name || 'Brez imena']));
+  eligibleOperators = profiles
+    .filter(p => p.eligible_izvajalec)
+    .map(p => ({ id: p.id, name: p.full_name || 'Brez imena' }));
+  renderOperatorFilter();
 
   const lastnostIds = [...new Set(rows.flatMap(row =>
     (row.delovni_nalogi_gerki ?? [])
@@ -176,7 +197,6 @@ async function loadPlanningData() {
   const dictByKey = new Map((dictionary ?? []).map(d => [`${String(d.country ?? '').toUpperCase()}:${d.raba_id}`, d.slovenski_naziv]));
 
   orders = rows.map(row => normalizeOrder(row, lastnostById, dictByKey, operatorNames));
-  renderOperatorFilter();
 
   const { data: plans, error: planError } = await supabase
     .from('delovni_nalogi_planiranje')
