@@ -8,25 +8,29 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const MONTHS = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
 const WEEKDAYS = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
-// Deterministic per-operator color for the calendar dot — hashed from the
-// operator id so it's stable across reloads without needing to store a map.
-const OPERATOR_PALETTE = ['#E63946', '#2A9D8F', '#E9C46A', '#457B9D', '#F4A261', '#9B5DE5', '#00B4D8', '#FF6B6B', '#6A994E', '#C77DFF'];
-// Same order/index as OPERATOR_PALETTE — pastel tint of each hue, used as the
-// calendar tile's full background so it stays readable with dark text
-// (the solid palette above is too saturated to put body text on directly).
-const OPERATOR_PALETTE_BG = ['#fbdadd', '#d3ece8', '#faecc9', '#d7e4ec', '#fbe3cd', '#e8dbf9', '#cceef5', '#ffdcdc', '#dfead4', '#f1ddff'];
-function operatorHashIndex(key) {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return hash % OPERATOR_PALETTE.length;
+// Per-operator color for the calendar. A fixed palette hashed by operator id
+// (the old approach) can put two different operators in the same bucket —
+// with only ~10 buckets that's a near-certain collision once there are more
+// than a handful of operators, which is exactly what happened (Janez, Blaž
+// and a third operator all landed on the same slot). Guarantee distinctness
+// instead: give every *eligible* operator its own evenly-spaced hue around
+// the color wheel (360° / operator count), assigned once the roster is
+// loaded — so as long as two operators have different ids, they get
+// different hues, no collision possible regardless of headcount.
+let operatorHueById = new Map();
+function assignOperatorColors() {
+  operatorHueById = new Map();
+  const sorted = [...eligibleOperators].sort((a, b) => a.id.localeCompare(b.id)); // stable order across reloads, independent of name
+  const total = sorted.length;
+  sorted.forEach((op, index) => operatorHueById.set(op.id, Math.round((index * 360) / Math.max(total, 1))));
 }
 function operatorColor(key) {
-  if (key === 'none') return '#9AA3B2';
-  return OPERATOR_PALETTE[operatorHashIndex(key)];
+  if (key === 'none' || !operatorHueById.has(key)) return '#9AA3B2';
+  return `hsl(${operatorHueById.get(key)}, 65%, 45%)`;
 }
 function operatorBackground(key) {
-  if (key === 'none') return '#eef0f4';
-  return OPERATOR_PALETTE_BG[operatorHashIndex(key)];
+  if (key === 'none' || !operatorHueById.has(key)) return '#eef0f4';
+  return `hsl(${operatorHueById.get(key)}, 65%, 88%)`;
 }
 
 let orders = [];
@@ -174,6 +178,7 @@ async function loadPlanningData() {
   eligibleOperators = profiles
     .filter(p => p.eligible_izvajalec)
     .map(p => ({ id: p.id, name: p.full_name || 'Brez imena' }));
+  assignOperatorColors();
   renderOperatorFilter();
 
   const segmentCountById = new Map((segmentCountsRes.data ?? []).map(r => [r.delovni_nalog_id, Number(r.segment_count)]));
