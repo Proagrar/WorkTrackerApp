@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.46';
+const APP_VERSION = 'v3.47';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -4009,9 +4009,10 @@ function woMapOverviewColor(status) {
 
 // Below this zoom, real field boundaries are too small/cluttered to
 // read (or overlap each other) — show a simple colored pin at each
-// shape's centroid instead, same as woMap's own "zoom to at least 15
-// to see a single GERK clearly" convention elsewhere in this file.
-const WO_MAP_OVERVIEW_SHAPE_ZOOM = 15;
+// shape's centroid instead. Lowered from 15 (was too late — shapes only
+// appeared once basically fully zoomed in) so they show up a couple of
+// zoom steps sooner instead.
+const WO_MAP_OVERVIEW_SHAPE_ZOOM = 13;
 
 let woOverviewCurrentShapes = []; // cached by renderWoMapOverview, read by the zoom-triggered redraw
 
