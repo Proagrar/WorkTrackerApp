@@ -228,6 +228,12 @@
             <ul id="woAssignCustomerSuggestions" class="gerk-suggestions" hidden></ul>
           </div>
           <input class="field-input" type="date" id="workLogDate" />
+          <!-- Admin only: assign/change izvajalec directly — same write
+               reassignOperator() in planning.js does from a Planiranje
+               card, just reachable from the main detail view too. Options
+               populated from operatorsList (loadOperatorsList() in app.js),
+               same roster the "+ Nov delovni nalog" form's own select uses. -->
+          <select class="field-input field-select" id="woIzvajalecEdit" hidden></select>
           <!-- Admin only, shown when this order has a scheduled date
                (delovni_nalogi_planiranje.plan_date) — see
                openWorkOrderDetail()/updateOrderHeader() in app.js and the

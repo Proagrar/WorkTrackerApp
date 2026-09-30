@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.32';
+const APP_VERSION = 'v3.4';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -62,6 +62,7 @@ const woAssignCustomerWrap        = document.getElementById('woAssignCustomerWra
 const woAssignCustomerInput       = document.getElementById('woAssignCustomerInput');
 const woAssignCustomerSuggestions = document.getElementById('woAssignCustomerSuggestions');
 const workLogDateInput = document.getElementById('workLogDate');
+const woIzvajalecEdit = document.getElementById('woIzvajalecEdit');
 const woPlanDateWrap = document.getElementById('woPlanDateWrap');
 const woPlanDateInput = document.getElementById('woPlanDate');
 const woStatusEdit = document.getElementById('woStatusEdit');
@@ -1167,6 +1168,12 @@ function updateOrderHeader() {
   woAssignCustomerBtn.hidden = !showAssignCustomer;
   if (wo.stranka_id) woAssignCustomerWrap.hidden = true;
 
+  // Izvajalec — admin-only reassignment dropdown. Options are loaded
+  // asynchronously (loadIzvajalecEditOptions(), fire-and-forget from
+  // openWorkOrderDetail()), so this can run again once they exist too.
+  woIzvajalecEdit.hidden = !isAdmin;
+  if (isAdmin && woIzvajalecEdit.options.length) woIzvajalecEdit.value = wo.izvajalec || '';
+
   // "Planirano" — only its own row when there's an unambiguous plan date
   // but we're NOT in header-date mode (opened without pinning to a specific
   // calendar entry); in header-date mode the date field itself already
@@ -1250,6 +1257,7 @@ async function openWorkOrderDetail(workOrder, planId = null) {
   woAddExistingGerkCode.value = '';
   if (isAdminView()) loadCustomerGerkDatalist(workOrder.stranka_id); // fire-and-forget
   if (isAdminView()) loadPlanDateForDetail(workOrder.id, planId); // fire-and-forget, re-renders the header itself once resolved
+  if (isAdminView()) loadIzvajalecEditOptions(); // fire-and-forget, same — see below
 
   await loadDetailForDate();
 
@@ -1291,6 +1299,17 @@ async function loadPlanDateForDetail(workOrderId, planId) {
   currentDetailPlanId = row?.id ?? null;
   currentDetailPlanDate = row?.plan_date ?? null;
   if (currentDetailPlanIsHeaderDate && currentDetailPlanDate) workLogDateInput.value = currentDetailPlanDate;
+  updateOrderHeader();
+}
+
+// Populates the header's admin-only izvajalec dropdown — reuses
+// operatorsList/loadOperatorsList(), the same roster the "+ Nov delovni
+// nalog" form's own select already loads, instead of a second query.
+async function loadIzvajalecEditOptions() {
+  if (!operatorsList.length) await loadOperatorsList();
+  if (!currentDetailWorkOrder) return; // modal closed while this was loading
+  woIzvajalecEdit.innerHTML = '<option value="">— brez —</option>' +
+    operatorsList.map(p => `<option value="${p.id}">${escHtml(p.full_name || '—')}</option>`).join('');
   updateOrderHeader();
 }
 
@@ -1935,6 +1954,28 @@ woPlanDateInput.addEventListener('change', async () => {
     return;
   }
   currentDetailPlanDate = newDate;
+  window.refreshPlanningEntries?.();
+});
+
+// Same write reassignOperator() in planning.js does from a Planiranje
+// card — reachable here too now, so it doesn't only work from that screen.
+woIzvajalecEdit.addEventListener('change', async () => {
+  const newIzvajalec = woIzvajalecEdit.value || null;
+  const previousIzvajalec = currentDetailWorkOrder.izvajalec;
+  woIzvajalecEdit.disabled = true;
+  const { error } = await supabase.from('delovni_nalogi').update({ izvajalec: newIzvajalec }).eq('id', currentDetailWorkOrder.id);
+  woIzvajalecEdit.disabled = false;
+  if (error) {
+    woIzvajalecEdit.value = previousIzvajalec || '';
+    showFormError('Napaka pri spreminjanju izvajalca: ' + error.message);
+    return;
+  }
+  currentDetailWorkOrder.izvajalec = newIzvajalec;
+  currentDetailWorkOrder.profiles = newIzvajalec
+    ? { full_name: operatorsList.find(p => p.id === newIzvajalec)?.full_name ?? null }
+    : null;
+  updateOrderHeader();
+  await loadWorkOrders(); // keeps the main list's izvajalec sort/column in sync — same pattern as assignCustomerToWorkOrder
   window.refreshPlanningEntries?.();
 });
 
