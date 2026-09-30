@@ -363,14 +363,15 @@ function renderCalendar() {
   });
 }
 
-// Just the operator and the GERK code(s) actually scheduled for this entry
-// — no customer name/order number clutter (still available via the title
-// tooltip on hover). The whole tile's background is the operator's pastel
-// color (operatorBackground) so whose work is whose reads at a glance
-// without opening anything; the dot repeats it in the solid palette shade
-// for a sharper swatch. Scheduling progress (complete/partial) moved to a
-// left accent stripe (is-complete/is-partial in style.css) since the fill
-// is now taken by the operator color.
+// Just the operator and the order number/customer name for this entry. The
+// whole tile's background is the operator's pastel color (operatorBackground)
+// so whose work is whose reads at a glance without opening anything; the dot
+// repeats it in the solid palette shade for a sharper swatch. Scheduling
+// progress (complete/partial) moved to a left accent stripe (is-complete/
+// is-partial in style.css) since the fill is now taken by the operator
+// color. The hover tooltip mirrors the same two lines shown on the tile
+// (not GERK codes — those aren't shown here anymore, so the tooltip
+// shouldn't show them either) in case the tile is too narrow to read in full.
 function renderCalendarOrder(entry) {
   const sourceOrder = getOrder(entry.orderId);
   const lines = sourceOrder ? gerkLinesForEntry(sourceOrder, entry) : [];
@@ -378,11 +379,12 @@ function renderCalendarOrder(entry) {
   const izvajalecKey = sourceOrder?.izvajalecKey ?? 'none';
   const color = operatorColor(izvajalecKey);
   const bg = operatorBackground(izvajalecKey);
+  const izvajalecName = sourceOrder?.izvajalecName ?? 'Ni izvajalca';
   const orderLabel = sourceOrder ? `${sourceOrder.stevilka} – ${sourceOrder.customerName}` : 'Delovni nalog';
-  const gerkCodes = lines.map(l => l.code).join(', ') || '—'; // moved to the tooltip — see below
-  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" style="background:${bg}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(gerkCodes)}">
+  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" style="background:${bg}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(izvajalecName)}
+${esc(orderLabel)}">
     <button class="calendar-order-remove" type="button" aria-label="Odstrani z datuma" title="Odstrani z datuma">✕</button>
-    <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${esc(sourceOrder?.izvajalecName ?? 'Ni izvajalca')}</span>
+    <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${esc(izvajalecName)}</span>
     <span class="calendar-order-sub">${esc(orderLabel)}</span>
   </div>`;
 }
