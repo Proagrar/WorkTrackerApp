@@ -9,6 +9,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const MONTHS = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
 const WEEKDAYS = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
 const MODAL_CLOSE_MS = 300; // matches app.js's own modal fade timing
+// Deterministic per-operator color for the calendar dot — hashed from the
+// operator id so it's stable across reloads without needing to store a map.
+const OPERATOR_PALETTE = ['#E63946', '#2A9D8F', '#E9C46A', '#457B9D', '#F4A261', '#9B5DE5', '#00B4D8', '#FF6B6B', '#6A994E', '#C77DFF'];
+function operatorColor(key) {
+  if (key === 'none') return '#9AA3B2';
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return OPERATOR_PALETTE[hash % OPERATOR_PALETTE.length];
+}
 
 let orders = [];
 let planningLoaded = false;
@@ -108,15 +117,17 @@ function normalizeGerkLine(link, lastnostById, dictByKey) {
   };
 }
 
-function normalizeOrder(row, lastnostById, dictByKey, operatorNames) {
+function normalizeOrder(row, lastnostById, dictByKey, operatorNames, segmentCountById) {
   const izvajalecId = row.izvajalec || null;
   const izvajalecKey = izvajalecId || 'none';
   const izvajalecName = izvajalecId ? (operatorNames.get(izvajalecId) ?? 'Neznan izvajalec') : 'Ni izvajalca';
   return {
     id: row.id,
+    stevilka: row.stevilka || '—',
     customerName: row.customers?.naziv || row.customers?.company_name || 'Brez stranke',
     izvajalecKey,
     izvajalecName,
+    segmentCount: segmentCountById.get(row.id) ?? 0,
     gerkLines: (row.delovni_nalogi_gerki ?? []).map(link => normalizeGerkLine(link, lastnostById, dictByKey)),
   };
 }
@@ -156,12 +167,13 @@ async function loadPlanningData() {
   // filter either — see loadWorkOrders()/filteredWorkOrders() in app.js).
   // Orders with nothing left to schedule simply won't produce a card, via
   // the unplannedGerkLines() check in renderCards() below.
-  const [ordersRes, profilesRes] = await Promise.all([
+  const [ordersRes, profilesRes, segmentCountsRes] = await Promise.all([
     supabase
       .from('delovni_nalogi')
-      .select('id, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, field_id, fields(id, area_ha, gerk_lastnost_id))')
+      .select('id, stevilka, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, field_id, fields(id, area_ha, gerk_lastnost_id))')
       .is('deleted_at', null),
     supabase.from('profiles').select('id, full_name, eligible_izvajalec'),
+    supabase.rpc('get_work_orders_segment_counts'),
   ]);
 
   if (ordersRes.error) {
@@ -177,6 +189,8 @@ async function loadPlanningData() {
     .filter(p => p.eligible_izvajalec)
     .map(p => ({ id: p.id, name: p.full_name || 'Brez imena' }));
   renderOperatorFilter();
+
+  const segmentCountById = new Map((segmentCountsRes.data ?? []).map(r => [r.delovni_nalog_id, Number(r.segment_count)]));
 
   const lastnostIds = [...new Set(rows.flatMap(row =>
     (row.delovni_nalogi_gerki ?? [])
@@ -196,7 +210,7 @@ async function loadPlanningData() {
   if (dictionaryError) els.hint.textContent = `Šifranta gerk_raba_id_slovar ni mogoče prebrati: ${dictionaryError.message}`;
   const dictByKey = new Map((dictionary ?? []).map(d => [`${String(d.country ?? '').toUpperCase()}:${d.raba_id}`, d.slovenski_naziv]));
 
-  orders = rows.map(row => normalizeOrder(row, lastnostById, dictByKey, operatorNames));
+  orders = rows.map(row => normalizeOrder(row, lastnostById, dictByKey, operatorNames, segmentCountById));
 
   const { data: plans, error: planError } = await supabase
     .from('delovni_nalogi_planiranje')
@@ -238,14 +252,32 @@ function groupedAreas(order) {
   return groupedAreasForLines(unplannedGerkLines(order));
 }
 
+function operatorOptionsHtml(selectedKey) {
+  const options = [['none', 'Ni izvajalca'], ...eligibleOperators.map(op => [op.id, op.name])];
+  return options.map(([key, name]) =>
+    `<option value="${esc(key)}" ${key === selectedKey ? 'selected' : ''}>${esc(name)}</option>`
+  ).join('');
+}
+
 function renderCards() {
-  const available = orders.filter(order => matchesOperator(order) && unplannedGerkLines(order).length > 0);
+  const available = orders
+    .filter(order => matchesOperator(order) && unplannedGerkLines(order).length > 0)
+    .sort((left, right) => (Number(right.stevilka) || 0) - (Number(left.stevilka) || 0));
   els.count.textContent = String(available.length);
   els.cards.innerHTML = available.map(order => {
-    const areas = groupedAreas(order).map(([type, area]) => `<span class="area-chip"><b>${esc(type)}</b> ${formatArea(area)}</span>`).join('');
+    const lines = unplannedGerkLines(order);
+    const totalHa = lines.reduce((sum, line) => sum + (Number(line.area) || 0), 0);
+    const areas = groupedAreasForLines(lines).map(([type, area]) => `<span class="area-chip"><b>${esc(type)}</b> ${formatArea(area)}</span>`).join('');
     return `<article class="work-order-card" draggable="true" data-order-id="${esc(order.id)}" role="listitem" tabindex="0">
-      <div class="work-order-card-head"><h3>${esc(order.customerName)}</h3><span class="order-gerk-count">${unplannedGerkLines(order).length} GERK</span></div>
-      <div class="area-chips">${areas || '<span class="planning-hint">Brez podatka o površini</span>'}</div>
+      <div class="work-order-card-head">
+        <h3>${esc(order.stevilka)} – ${esc(order.customerName)}</h3>
+        <span class="order-gerk-count">${lines.length} GERK · ${order.segmentCount} segm.</span>
+      </div>
+      <select class="card-operator-select" draggable="false" data-order-id="${esc(order.id)}">${operatorOptionsHtml(order.izvajalecKey)}</select>
+      <div class="area-chips">
+        <span class="area-chip area-chip--total"><b>Skupaj</b> ${formatArea(totalHa)}</span>
+        ${areas}
+      </div>
     </article>`;
   }).join('');
 
@@ -253,9 +285,33 @@ function renderCards() {
     card.addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', `order:${card.dataset.orderId}`));
     card.addEventListener('dblclick', () => openOrderModal(card.dataset.orderId));
     card.addEventListener('keydown', event => {
+      if (event.target !== card) return; // let the operator <select> handle its own keys
       if (event.key === 'Enter' || event.key === ' ') openOrderModal(card.dataset.orderId);
     });
   });
+  els.cards.querySelectorAll('.card-operator-select').forEach(select => {
+    // Stop the card's own drag/dblclick from hijacking normal <select> use.
+    select.addEventListener('mousedown', event => event.stopPropagation());
+    select.addEventListener('click', event => event.stopPropagation());
+    select.addEventListener('change', () => reassignOperator(select.dataset.orderId, select.value));
+  });
+}
+
+async function reassignOperator(orderId, izvajalecKey) {
+  const order = getOrder(orderId);
+  if (!order) return;
+  const izvajalecId = izvajalecKey === 'none' ? null : izvajalecKey;
+  const { error } = await supabase.from('delovni_nalogi').update({ izvajalec: izvajalecId }).eq('id', orderId);
+  if (error) {
+    els.hint.textContent = `Sprememba izvajalca ni uspela: ${error.message}`;
+    return;
+  }
+  order.izvajalecKey = izvajalecKey;
+  order.izvajalecName = izvajalecId
+    ? (eligibleOperators.find(op => op.id === izvajalecId)?.name ?? 'Neznan izvajalec')
+    : 'Ni izvajalca';
+  renderOperatorFilter();
+  renderAll();
 }
 
 function renderCalendar() {
@@ -320,8 +376,13 @@ function renderCalendar() {
 function renderCalendarOrder(entry) {
   const sourceOrder = getOrder(entry.orderId);
   const complete = sourceOrder ? gerkLinesForEntry(sourceOrder, entry).length === sourceOrder.gerkLines.length : false;
-  return `<button class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" type="button">
-    <span class="calendar-order-name"><span class="calendar-order-dot"></span>${esc(sourceOrder?.customerName ?? 'Delovni nalog')}</span>
+  // Green/yellow (is-complete/is-partial) still shows scheduling progress;
+  // the dot's color is per-operator, so you can tell whose work is whose
+  // at a glance without opening anything.
+  const color = operatorColor(sourceOrder?.izvajalecKey ?? 'none');
+  const stevilka = sourceOrder ? `${esc(sourceOrder.stevilka)} – ` : '';
+  return `<button class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" type="button" title="${esc(sourceOrder?.izvajalecName ?? '')}">
+    <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${stevilka}${esc(sourceOrder?.customerName ?? 'Delovni nalog')}</span>
   </button>`;
 }
 

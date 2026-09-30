@@ -2355,8 +2355,10 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .work-order-card h3 { font-size: .875rem; line-height: 1.25; }
 .order-gerk-count { color: var(--text-muted); font-size: .6875rem; white-space: nowrap; }
 .work-order-country { margin-top: 8px; color: var(--text-secondary); font-size: .75rem; }
+.card-operator-select { width: 100%; height: 30px; margin-top: 8px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-primary); font: inherit; font-size: .75rem; }
 .area-chips { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 10px; }
 .area-chip { width: fit-content; padding: 4px 6px; border-radius: 4px; background: var(--blue-50); color: var(--blue-800); font-size: .6875rem; }
+.area-chip--total { background: var(--blue-800); color: #fff; }
 .work-order-card-foot { margin-top: 10px; color: var(--text-muted); font-size: .6875rem; }
 .planning-error { padding: 12px; border-radius: var(--radius-sm); background: var(--error-bg); color: var(--error); font-size: .75rem; overflow-wrap: anywhere; }
 
