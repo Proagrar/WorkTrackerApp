@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v3.4** (2026-09-30)
+Stanje: **v3.46** (2026-09-30)
 
 ## Vloge
 
