@@ -11,11 +11,22 @@ const WEEKDAYS = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
 // Deterministic per-operator color for the calendar dot — hashed from the
 // operator id so it's stable across reloads without needing to store a map.
 const OPERATOR_PALETTE = ['#E63946', '#2A9D8F', '#E9C46A', '#457B9D', '#F4A261', '#9B5DE5', '#00B4D8', '#FF6B6B', '#6A994E', '#C77DFF'];
-function operatorColor(key) {
-  if (key === 'none') return '#9AA3B2';
+// Same order/index as OPERATOR_PALETTE — pastel tint of each hue, used as the
+// calendar tile's full background so it stays readable with dark text
+// (the solid palette above is too saturated to put body text on directly).
+const OPERATOR_PALETTE_BG = ['#fbdadd', '#d3ece8', '#faecc9', '#d7e4ec', '#fbe3cd', '#e8dbf9', '#cceef5', '#ffdcdc', '#dfead4', '#f1ddff'];
+function operatorHashIndex(key) {
   let hash = 0;
   for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return OPERATOR_PALETTE[hash % OPERATOR_PALETTE.length];
+  return hash % OPERATOR_PALETTE.length;
+}
+function operatorColor(key) {
+  if (key === 'none') return '#9AA3B2';
+  return OPERATOR_PALETTE[operatorHashIndex(key)];
+}
+function operatorBackground(key) {
+  if (key === 'none') return '#eef0f4';
+  return OPERATOR_PALETTE_BG[operatorHashIndex(key)];
 }
 
 let orders = [];
@@ -197,6 +208,25 @@ window.refreshPlanningEntries = async function () {
   renderAll();
 };
 
+// Bridge for app.js — reassigning the izvajalec from the work-order detail
+// popup's own dropdown (woIzvajalecEdit) writes straight to delovni_nalogi
+// from over there, bypassing our cached `orders` array entirely. Without
+// this, the calendar/cards kept showing the old operator's name and color
+// until a full page reload (loadPlanningData() only ever runs once per
+// session — see `planningLoaded`). Mirrors what reassignOperator() already
+// does to its own local cache after its own write, just triggered from the
+// other module instead of our own <select>.
+window.refreshPlanningOrderOperator = function (orderId, izvajalecId) {
+  const order = getOrder(orderId);
+  if (!order) return;
+  order.izvajalecKey = izvajalecId || 'none';
+  order.izvajalecName = izvajalecId
+    ? (eligibleOperators.find(op => op.id === izvajalecId)?.name ?? 'Neznan izvajalec')
+    : 'Ni izvajalca';
+  renderOperatorFilter();
+  renderAll();
+};
+
 function entriesForOrder(order) { return planEntries.filter(entry => String(entry.orderId) === String(order.id)); }
 function plannedGerkLineIds(order) {
   return new Set(entriesForOrder(order).flatMap(entry => [...entry.gerkLineIds]));
@@ -327,17 +357,22 @@ function renderCalendar() {
 
 // Just the operator and the GERK code(s) actually scheduled for this entry
 // — no customer name/order number clutter (still available via the title
-// tooltip on hover). Green/yellow (is-complete/is-partial) shows scheduling
-// progress; the dot's color is per-operator, so whose work is whose is
-// visible at a glance without opening anything.
+// tooltip on hover). The whole tile's background is the operator's pastel
+// color (operatorBackground) so whose work is whose reads at a glance
+// without opening anything; the dot repeats it in the solid palette shade
+// for a sharper swatch. Scheduling progress (complete/partial) moved to a
+// left accent stripe (is-complete/is-partial in style.css) since the fill
+// is now taken by the operator color.
 function renderCalendarOrder(entry) {
   const sourceOrder = getOrder(entry.orderId);
   const lines = sourceOrder ? gerkLinesForEntry(sourceOrder, entry) : [];
   const complete = sourceOrder ? lines.length === sourceOrder.gerkLines.length : false;
-  const color = operatorColor(sourceOrder?.izvajalecKey ?? 'none');
+  const izvajalecKey = sourceOrder?.izvajalecKey ?? 'none';
+  const color = operatorColor(izvajalecKey);
+  const bg = operatorBackground(izvajalecKey);
   const orderLabel = sourceOrder ? `${sourceOrder.stevilka} – ${sourceOrder.customerName}` : 'Delovni nalog';
   const gerkCodes = lines.map(l => l.code).join(', ') || '—'; // moved to the tooltip — see below
-  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(gerkCodes)}">
+  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" style="background:${bg}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(gerkCodes)}">
     <button class="calendar-order-remove" type="button" aria-label="Odstrani z datuma" title="Odstrani z datuma">✕</button>
     <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${esc(sourceOrder?.izvajalecName ?? 'Ni izvajalca')}</span>
     <span class="calendar-order-sub">${esc(orderLabel)}</span>

@@ -2391,11 +2391,14 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 /* A div, not a button — hosts its own inner .calendar-order-remove button,
    which a <button> couldn't (no nested buttons). position:relative so the
    remove button can sit in the top-right corner without pushing content. */
-.calendar-order { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-width: 0; padding: 5px 20px 5px 6px; border-radius: 4px; color: #17331f; font-size: .6875rem; font-weight: 700; text-align: left; cursor: grab; }
+.calendar-order { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-width: 0; padding: 5px 20px 5px 6px; border-radius: 4px; color: #1f2430; font-size: .6875rem; font-weight: 700; text-align: left; cursor: grab; }
 .calendar-order-name { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calendar-order-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; opacity: .8; }
-.calendar-order.is-complete { background: #ccebd2; }
-.calendar-order.is-partial { background: #f8e5a8; color: #5b4500; }
+/* Background is now the per-operator color (inline style, see
+   renderCalendarOrder in planning.js) — completeness is a left accent
+   stripe instead of the fill so both are visible at once. */
+.calendar-order.is-complete { box-shadow: inset 3px 0 0 #2f9e44; }
+.calendar-order.is-partial { box-shadow: inset 3px 0 0 #b8860b; }
 .calendar-order.is-selected { outline: 2px solid var(--blue-800); outline-offset: 1px; }
 .calendar-order-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; }
 .calendar-order-remove { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: .625rem; line-height: 1; opacity: .55; }
