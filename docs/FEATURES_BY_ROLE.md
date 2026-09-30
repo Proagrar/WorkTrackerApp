@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v2.32** (2026-09-29)
+Stanje: **v3.11** (2026-09-30)
 
 ## Vloge
 
@@ -81,6 +81,13 @@ Vse zgoraj, in dodatno:
 - Urejanje vpisanih časov kateregakoli operaterja
 - Arhiviranje in obnova nalogov, skupno arhiviranje več nalogov, pregled arhiva
 - Vidi vso evidenco dela, brez omejitve na organizacijo
+
+**Planiranje** — nov zavihek, viden samo v načinu Admin
+- Koledar za razporejanje odprtih delovnih nalogov: povleci nalog na dan koledarja
+- Kartice odprtih nalogov: številka pred imenom stranke (razvrščeno padajoče po njej), skupno število GERK-ov, segmentov in ha (enako kot na glavnem seznamu Delovni nalogi)
+- Filter po izvajalcu (celoten seznam upravičenih izvajalcev, ne le tistih z odprtim nalogom)
+- Ob dvokliku na nalog: izbira, katere GERK-e vključiš v ta datum, s predogledom na zemljevidu
+- Dodelitev izvajalca neposredno s kartice; barvna oznaka izvajalca na koledarju (poleg zeleno/rumeno za dokončano/delno razporejeno)
 
 **Seznam strank**
 - Seznam strank z iskanjem in podrobnosti stranke
