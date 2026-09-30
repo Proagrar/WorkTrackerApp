@@ -112,7 +112,9 @@ function normalizeGerkLine(link, lastnostById, dictByKey) {
   return {
     id: link.id,
     code: link.gerk_code,
-    area: field?.area_ha ?? null,
+    // kolicina_ha, not fields.area_ha — same source the main Delovni
+    // Nalogi list uses (loadWorkOrders() in app.js), so totals match.
+    area: link.kolicina_ha ?? null,
     type,
   };
 }
@@ -170,7 +172,7 @@ async function loadPlanningData() {
   const [ordersRes, profilesRes, segmentCountsRes] = await Promise.all([
     supabase
       .from('delovni_nalogi')
-      .select('id, stevilka, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, field_id, fields(id, area_ha, gerk_lastnost_id))')
+      .select('id, stevilka, izvajalec, customers(naziv, company_name), delovni_nalogi_gerki(id, gerk_code, kolicina_ha, field_id, fields(id, gerk_lastnost_id))')
       .is('deleted_at', null),
     supabase.from('profiles').select('id, full_name, eligible_izvajalec'),
     supabase.rpc('get_work_orders_segment_counts'),
@@ -248,10 +250,6 @@ function groupedAreasForLines(lines) {
   return [...groups.entries()];
 }
 
-function groupedAreas(order) {
-  return groupedAreasForLines(unplannedGerkLines(order));
-}
-
 function operatorOptionsHtml(selectedKey) {
   const options = [['none', 'Ni izvajalca'], ...eligibleOperators.map(op => [op.id, op.name])];
   return options.map(([key, name]) =>
@@ -265,19 +263,17 @@ function renderCards() {
     .sort((left, right) => (Number(right.stevilka) || 0) - (Number(left.stevilka) || 0));
   els.count.textContent = String(available.length);
   els.cards.innerHTML = available.map(order => {
-    const lines = unplannedGerkLines(order);
-    const totalHa = lines.reduce((sum, line) => sum + (Number(line.area) || 0), 0);
-    const areas = groupedAreasForLines(lines).map(([type, area]) => `<span class="area-chip"><b>${esc(type)}</b> ${formatArea(area)}</span>`).join('');
+    // Same numbers as the main Delovni Nalogi list (loadWorkOrders() in
+    // app.js) — the WHOLE order's GERK count/total ha, not just what's
+    // still unplanned, so a card's stats match what's shown everywhere else.
+    const totalHa = order.gerkLines.reduce((sum, line) => sum + (Number(line.area) || 0), 0);
+    const haStr = totalHa > 0 ? formatArea(totalHa) : '—'; // same > 0 ? … : '—' convention as loadWorkOrders() in app.js
     return `<article class="work-order-card" draggable="true" data-order-id="${esc(order.id)}" role="listitem" tabindex="0">
       <div class="work-order-card-head">
         <h3>${esc(order.stevilka)} – ${esc(order.customerName)}</h3>
-        <span class="order-gerk-count">${lines.length} GERK · ${order.segmentCount} segm.</span>
       </div>
+      <div class="work-order-card-meta">${order.gerkLines.length} GERK · ${order.segmentCount} segm. · ${haStr}</div>
       <select class="card-operator-select" draggable="false" data-order-id="${esc(order.id)}">${operatorOptionsHtml(order.izvajalecKey)}</select>
-      <div class="area-chips">
-        <span class="area-chip area-chip--total"><b>Skupaj</b> ${formatArea(totalHa)}</span>
-        ${areas}
-      </div>
     </article>`;
   }).join('');
 
