@@ -262,7 +262,10 @@ function renderCards() {
     // still unplanned, so a card's stats match what's shown everywhere else.
     const totalHa = order.gerkLines.reduce((sum, line) => sum + (Number(line.area) || 0), 0);
     const haStr = totalHa > 0 ? formatArea(totalHa) : '—'; // same > 0 ? … : '—' convention as loadWorkOrders() in app.js
-    return `<article class="work-order-card" draggable="true" data-order-id="${esc(order.id)}" role="listitem" tabindex="0">
+    // Left border uses the same per-operator color as the calendar tiles
+    // (operatorColor) instead of a fixed blue, so a card reads whose order
+    // it is at a glance — same identity cue in both places.
+    return `<article class="work-order-card" style="border-left-color:${operatorColor(order.izvajalecKey)}" draggable="true" data-order-id="${esc(order.id)}" role="listitem" tabindex="0">
       <div class="work-order-card-head">
         <h3>${esc(order.stevilka)} – ${esc(order.customerName)}</h3>
       </div>
