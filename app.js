@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.45';
+const APP_VERSION = 'v3.46';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -943,7 +943,11 @@ function renderWorkLogGerkRows(rows) {
   }
   workLogGerkRowsEl.innerHTML = rows.map(r => {
     const f = fields.find(f => f.code === r.code);
-    const name = f?.name || '';
+    // fields.name is sometimes just a copy of its own code (a placeholder
+    // from whatever external process created the row — this app never
+    // writes fields.name itself) — showing it next to the code then would
+    // just duplicate it, e.g. "2715429 2715429".
+    const name = (f?.name && f.name !== r.code) ? f.name : '';
     const ha   = r.hectares != null ? `${Number(r.hectares).toFixed(2)} ha` : (f?.area ? `${f.area} ha` : '');
     const meta = [ha, r.lokacija].filter(Boolean).join(' · ');
     const completed = !!r.completed;
