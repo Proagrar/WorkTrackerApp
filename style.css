@@ -674,13 +674,20 @@ input, select, textarea { font-family: inherit; }
 .modal-head.wo-modal-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .wo-modal-head-top { display: flex; align-items: center; justify-content: space-between; }
 
+/* Flex, not a fixed-column grid — the exact set of visible fields varies
+   (Stranka vs "+ Dodaj stranko", Planirano shows only sometimes, Status
+   is an edit vs a badge), so items just flow and share space instead of
+   needing to match a predetermined column count. Wraps on genuinely
+   narrow screens; fits in one row at the modal's normal width. */
 .wo-header-fields {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .wo-header-stranka {
+  flex: 1.3 1 140px;
   align-self: center;
   font-size: .875rem;
   font-weight: 600;
@@ -696,19 +703,19 @@ input, select, textarea { font-family: inherit; }
    <select> was silently inheriting the global 46px .field-input
    height instead of matching Datum's. */
 .wo-header-fields .field-input {
+  flex: 1 1 110px;
   height: 36px;
   padding: 0 10px;
   font-size: .8125rem;
 }
 .wo-header-fields .wo-status-badge {
+  flex: 1 1 110px;
   align-self: center;
   height: 36px;
   display: inline-flex;
   align-items: center;
 }
-/* Spans the full row (not one of the 3 grid columns) since it only shows
-   up sometimes — cramming it into a single 1.3fr column looked cramped. */
-.wo-plan-date-wrap { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.wo-plan-date-wrap { display: flex; align-items: center; gap: 6px; flex: 1.6 1 180px; }
 .wo-plan-date-label { color: var(--text-secondary); font-size: .75rem; font-weight: 700; white-space: nowrap; }
 
 .wlg-table { display: flex; flex-direction: column; gap: 8px; }
@@ -2386,7 +2393,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
    remove button can sit in the top-right corner without pushing content. */
 .calendar-order { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-width: 0; padding: 5px 20px 5px 6px; border-radius: 4px; color: #17331f; font-size: .6875rem; font-weight: 700; text-align: left; cursor: grab; }
 .calendar-order-name { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.calendar-order-gerk { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; opacity: .8; }
+.calendar-order-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; opacity: .8; }
 .calendar-order.is-complete { background: #ccebd2; }
 .calendar-order.is-partial { background: #f8e5a8; color: #5b4500; }
 .calendar-order.is-selected { outline: 2px solid var(--blue-800); outline-offset: 1px; }

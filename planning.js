@@ -335,12 +335,12 @@ function renderCalendarOrder(entry) {
   const lines = sourceOrder ? gerkLinesForEntry(sourceOrder, entry) : [];
   const complete = sourceOrder ? lines.length === sourceOrder.gerkLines.length : false;
   const color = operatorColor(sourceOrder?.izvajalecKey ?? 'none');
-  const gerkCodes = lines.map(l => l.code).join(', ') || '—';
-  const tooltip = sourceOrder ? `${sourceOrder.stevilka} – ${sourceOrder.customerName}` : '';
-  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(tooltip)}">
+  const orderLabel = sourceOrder ? `${sourceOrder.stevilka} – ${sourceOrder.customerName}` : 'Delovni nalog';
+  const gerkCodes = lines.map(l => l.code).join(', ') || '—'; // moved to the tooltip — see below
+  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(gerkCodes)}">
     <button class="calendar-order-remove" type="button" aria-label="Odstrani z datuma" title="Odstrani z datuma">✕</button>
     <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${esc(sourceOrder?.izvajalecName ?? 'Ni izvajalca')}</span>
-    <span class="calendar-order-gerk">${esc(gerkCodes)}</span>
+    <span class="calendar-order-sub">${esc(orderLabel)}</span>
   </div>`;
 }
 
