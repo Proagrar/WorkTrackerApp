@@ -8,7 +8,6 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const MONTHS = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
 const WEEKDAYS = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
-const MODAL_CLOSE_MS = 300; // matches app.js's own modal fade timing
 // Deterministic per-operator color for the calendar dot — hashed from the
 // operator id so it's stable across reloads without needing to store a map.
 const OPERATOR_PALETTE = ['#E63946', '#2A9D8F', '#E9C46A', '#457B9D', '#F4A261', '#9B5DE5', '#00B4D8', '#FF6B6B', '#6A994E', '#C77DFF'];
@@ -26,11 +25,9 @@ let planEntries = [];
 // use), not just operators who happen to have an open order right now —
 // so the filter still lets you pick someone with zero current orders.
 let eligibleOperators = [];
-let selectedOrderId = null;
 let selectedPlanId = null;
 let selectedOperators = new Set();
 let calendarDate = new Date();
-let map = null;
 
 const els = {
   tab: document.getElementById('tabPlaniranje'),
@@ -46,15 +43,6 @@ const els = {
   to: document.getElementById('calendarTo'),
   operatorFilterButton: document.getElementById('operatorFilterButton'),
   operatorFilterMenu: document.getElementById('operatorFilterMenu'),
-  modal: document.getElementById('planGerkModal'),
-  modalTitle: document.getElementById('workOrderModalTitle'),
-  modalClose: document.getElementById('workOrderModalClose'),
-  list: document.getElementById('gerkSelectionList'),
-  summary: document.getElementById('gerkSelectionSummary'),
-  selectAll: document.getElementById('selectAllGerks'),
-  save: document.getElementById('saveGerkSelection'),
-  map: document.getElementById('gerkMap'),
-  mapHint: document.getElementById('mapHint'),
 };
 
 function esc(value) {
@@ -89,15 +77,6 @@ function formatArea(area) {
   const number = Number(area);
   if (!Number.isFinite(number)) return '—';
   return `${new Intl.NumberFormat('sl-SI', { maximumFractionDigits: 2 }).format(number)} ha`;
-}
-
-function showModal(el) {
-  el.hidden = false;
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('modal-backdrop--visible')));
-}
-function hideModal(el) {
-  el.classList.remove('modal-backdrop--visible');
-  setTimeout(() => { el.hidden = true; }, MODAL_CLOSE_MS);
 }
 
 // The plannable unit is a delovni_nalogi_gerki *line* (its own id), not a
@@ -279,10 +258,10 @@ function renderCards() {
 
   els.cards.querySelectorAll('.work-order-card').forEach(card => {
     card.addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', `order:${card.dataset.orderId}`));
-    card.addEventListener('dblclick', () => openOrderModal(card.dataset.orderId));
+    card.addEventListener('dblclick', () => window.openWorkOrderDetailById(card.dataset.orderId));
     card.addEventListener('keydown', event => {
       if (event.target !== card) return; // let the operator <select> handle its own keys
-      if (event.key === 'Enter' || event.key === ' ') openOrderModal(card.dataset.orderId);
+      if (event.key === 'Enter' || event.key === ' ') window.openWorkOrderDetailById(card.dataset.orderId);
     });
   });
   els.cards.querySelectorAll('.card-operator-select').forEach(select => {
@@ -360,32 +339,41 @@ function renderCalendar() {
   });
   els.grid.querySelectorAll('.calendar-order').forEach(card => {
     card.addEventListener('click', () => selectCalendarOrder(card));
-    card.addEventListener('dblclick', () => openOrderModal(card.dataset.orderId, card.dataset.planId));
-    card.addEventListener('contextmenu', event => {
-      event.preventDefault();
-      removeOrderFromCalendar(card.dataset.planId);
-    });
+    card.addEventListener('dblclick', () => window.openWorkOrderDetailById(card.dataset.orderId));
     card.addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', `plan:${card.dataset.planId}`));
+  });
+  els.grid.querySelectorAll('.calendar-order-remove').forEach(btn => {
+    // Explicit, visible unschedule action — not just right-click/Delete,
+    // which aren't discoverable (and right-click doesn't exist on mobile).
+    btn.addEventListener('click', event => {
+      event.stopPropagation();
+      removeOrderFromCalendar(btn.closest('.calendar-order').dataset.planId);
+    });
   });
 }
 
+// Just the operator and the GERK code(s) actually scheduled for this entry
+// — no customer name/order number clutter (still available via the title
+// tooltip on hover). Green/yellow (is-complete/is-partial) shows scheduling
+// progress; the dot's color is per-operator, so whose work is whose is
+// visible at a glance without opening anything.
 function renderCalendarOrder(entry) {
   const sourceOrder = getOrder(entry.orderId);
-  const complete = sourceOrder ? gerkLinesForEntry(sourceOrder, entry).length === sourceOrder.gerkLines.length : false;
-  // Green/yellow (is-complete/is-partial) still shows scheduling progress;
-  // the dot's color is per-operator, so you can tell whose work is whose
-  // at a glance without opening anything.
+  const lines = sourceOrder ? gerkLinesForEntry(sourceOrder, entry) : [];
+  const complete = sourceOrder ? lines.length === sourceOrder.gerkLines.length : false;
   const color = operatorColor(sourceOrder?.izvajalecKey ?? 'none');
-  const stevilka = sourceOrder ? `${esc(sourceOrder.stevilka)} – ` : '';
-  return `<button class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" type="button" title="${esc(sourceOrder?.izvajalecName ?? '')}">
-    <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${stevilka}${esc(sourceOrder?.customerName ?? 'Delovni nalog')}</span>
-  </button>`;
+  const gerkCodes = lines.map(l => l.code).join(', ') || '—';
+  const tooltip = sourceOrder ? `${sourceOrder.stevilka} – ${sourceOrder.customerName}` : '';
+  return `<div class="calendar-order ${complete ? 'is-complete' : 'is-partial'}" draggable="true" data-order-id="${esc(entry.orderId)}" data-plan-id="${esc(entry.id)}" title="${esc(tooltip)}">
+    <button class="calendar-order-remove" type="button" aria-label="Odstrani z datuma" title="Odstrani z datuma">✕</button>
+    <span class="calendar-order-name"><span class="calendar-order-dot" style="background:${color}"></span>${esc(sourceOrder?.izvajalecName ?? 'Ni izvajalca')}</span>
+    <span class="calendar-order-gerk">${esc(gerkCodes)}</span>
+  </div>`;
 }
 
 function selectCalendarOrder(card) {
   els.grid.querySelectorAll('.calendar-order.is-selected').forEach(item => item.classList.remove('is-selected'));
   card.classList.add('is-selected');
-  selectedOrderId = card.dataset.orderId;
   selectedPlanId = card.dataset.planId;
 }
 
@@ -441,118 +429,6 @@ async function removeOrderFromCalendar(planId) {
   renderAll();
 }
 
-function openOrderModal(orderId, planId = null) {
-  const order = getOrder(orderId);
-  if (!order) return;
-  selectedOrderId = order.id;
-  selectedPlanId = planId;
-  const entry = planEntries.find(item => String(item.id) === String(planId));
-  const selectedIds = entry?.gerkLineIds ?? new Set();
-  els.modalTitle.textContent = order.customerName;
-  const sortedLines = [...order.gerkLines].sort((left, right) => Number(selectedIds.has(left.id)) - Number(selectedIds.has(right.id)));
-  els.list.innerHTML = sortedLines.map(line => {
-    const selected = selectedIds.has(line.id);
-    return `<label class="gerk-selection-row ${selected ? 'is-planned' : ''}">
-    <input type="checkbox" data-gerk-line-id="${esc(line.id)}" ${selected ? 'checked' : ''} />
-    <span class="gerk-selection-code">${esc(line.code)}</span>
-    <span class="gerk-selection-meta">${esc(line.type)} · ${formatArea(line.area)}</span>
-  </label>`;
-  }).join('');
-  showModal(els.modal);
-  document.body.style.overflow = 'hidden';
-  syncSelectionSummary();
-  renderMap(order);
-}
-
-function closeOrderModal() {
-  hideModal(els.modal);
-  document.body.style.overflow = '';
-  if (map) { map.remove(); map = null; }
-}
-
-function syncSelectionSummary() {
-  const order = getOrder(selectedOrderId);
-  if (!order) return;
-  const checked = [...els.list.querySelectorAll('input:checked')].length;
-  els.summary.textContent = `${checked} od ${order.gerkLines.length} GERK-ov izbranih`;
-  els.selectAll.checked = checked > 0 && checked === order.gerkLines.length;
-  els.selectAll.indeterminate = checked > 0 && checked < order.gerkLines.length;
-}
-
-async function saveSelection() {
-  const order = getOrder(selectedOrderId);
-  if (!order) return;
-  const selectedIds = new Set([...els.list.querySelectorAll('input:checked')].map(input => input.dataset.gerkLineId));
-  if (selectedPlanId) {
-    const entry = planEntries.find(item => String(item.id) === String(selectedPlanId));
-    if (entry) {
-      if (selectedIds.size === 0) {
-        await removeOrderFromCalendar(entry.id);
-      } else {
-        const { error } = await supabase
-          .from('delovni_nalogi_planiranje_gerki')
-          .delete()
-          .eq('plan_id', entry.id);
-        if (!error) {
-          const selected = [...selectedIds].map(id => ({ plan_id: entry.id, delovni_nalog_gerk_id: id }));
-          const insertResult = await supabase.from('delovni_nalogi_planiranje_gerki').insert(selected);
-          if (!insertResult.error) entry.gerkLineIds = selectedIds;
-        }
-        renderAll();
-      }
-    }
-  } else if (selectedIds.size) {
-    // Opened straight from a card (dblclick), not an existing calendar entry
-    // — this saves it as a new plan on today's date.
-    await savePlan({ orderId: order.id, date: localDate(), gerkLineIds: selectedIds });
-    renderAll();
-  }
-  closeOrderModal();
-}
-
-// Renders both registry-resolved shapes (get_work_order_gerk_shapes) and
-// segmentation-zone shapes (get_work_order_gerk_segments) — same pair
-// showWoDetailMap() in app.js calls, so this stays compound-GERK-code-aware
-// and visually consistent with the rest of the app's maps, instead of the
-// older gerk_lastnost/gerk_polygon join this branch originally used.
-async function renderMap(order) {
-  els.mapHint.textContent = '';
-  if (!window.L) {
-    els.mapHint.textContent = 'Zemljevid ni na voljo, ker knjižnice Leaflet ni mogoče naložiti.';
-    return;
-  }
-  map = window.L.map(els.map, { zoomControl: true }).setView([46.15, 14.995], 8);
-  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-  const bounds = [];
-
-  const [shapesRes, segmentsRes] = await Promise.all([
-    supabase.rpc('get_work_order_gerk_shapes', { p_work_order_id: order.id }),
-    supabase.rpc('get_work_order_gerk_segments', { p_work_order_id: order.id }),
-  ]);
-  const shapeRows = [
-    ...(shapesRes.data ?? []).map(r => ({ code: r.gerk_code, geojson: r.geojson })),
-    ...(segmentsRes.data ?? []).map(r => ({ code: r.gerk_code, geojson: r.segment_geojson })),
-  ];
-
-  for (const row of shapeRows) {
-    if (!row.geojson) continue;
-    try {
-      const layer = window.L.geoJSON(row.geojson, { style: { color: '#1c4592', weight: 2, fillOpacity: .25 } }).addTo(map);
-      layer.bindTooltip(String(row.code));
-      const layerBounds = layer.getBounds();
-      if (layerBounds.isValid()) bounds.push(layerBounds);
-    } catch { /* Ignore malformed geometry and keep the list usable. */ }
-  }
-  if (bounds.length) {
-    const combined = bounds.reduce((result, bound) => result.extend(bound), window.L.latLngBounds([]));
-    map.invalidateSize();
-    map.fitBounds(combined, { padding: [32, 32], maxZoom: 16 });
-  } else {
-    els.mapHint.textContent = 'Za te GERK-e ni najdena geometrija.';
-  }
-  setTimeout(() => map?.invalidateSize(), 50);
-}
-
 function renderAll() {
   renderCards();
   renderCalendar();
@@ -594,15 +470,8 @@ document.addEventListener('click', event => {
     els.operatorFilterButton.setAttribute('aria-expanded', 'false');
   }
 });
-els.modalClose.addEventListener('click', closeOrderModal);
-els.modal.addEventListener('click', event => { if (event.target === els.modal) closeOrderModal(); });
-els.list.addEventListener('change', event => { if (event.target.matches('input')) syncSelectionSummary(); });
-els.selectAll.addEventListener('change', () => {
-  els.list.querySelectorAll('input').forEach(input => { input.checked = els.selectAll.checked; });
-  syncSelectionSummary();
-});
-els.save.addEventListener('click', saveSelection);
 document.addEventListener('keydown', event => {
-  if (event.key === 'Delete' && selectedPlanId && els.modal.hidden) removeOrderFromCalendar(selectedPlanId);
-  if (event.key === 'Escape' && !els.modal.hidden) closeOrderModal();
+  if (event.key !== 'Delete' || !selectedPlanId) return;
+  if (event.target.matches('input, select, textarea')) return; // don't hijack Delete while editing a field (e.g. the Od/Do date inputs)
+  removeOrderFromCalendar(selectedPlanId);
 });

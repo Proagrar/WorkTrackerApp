@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.11';
+const APP_VERSION = 'v3.2';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1236,6 +1236,17 @@ async function openWorkOrderDetail(workOrder) {
   showWoDetailMap(workOrder); // fire-and-forget, don't block modal open on a geometry query
   document.body.style.overflow = 'hidden';
 }
+
+// Bridge for planning.js — a separate module with its own Supabase client
+// and no access to this file's internals — to open the SAME work-order
+// detail popup the main list uses, instead of a second, redundant one.
+// Guards on workOrdersLoaded since Planiranje can be the first tab visited
+// in a session, before loadWorkOrders() would otherwise have run.
+window.openWorkOrderDetailById = async function (id) {
+  if (!workOrdersLoaded) await loadWorkOrders();
+  const wo = workOrders.find(w => w.id === id);
+  if (wo) await openWorkOrderDetail(wo);
+};
 
 // ── Work order detail: persistent split-view map ─────────────────
 // Separate Leaflet instance from the popup map modal (openMapModal) —
