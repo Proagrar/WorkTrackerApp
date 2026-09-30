@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.3';
+const APP_VERSION = 'v3.31';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -1167,11 +1167,14 @@ function updateOrderHeader() {
   woAssignCustomerBtn.hidden = !showAssignCustomer;
   if (wo.stranka_id) woAssignCustomerWrap.hidden = true;
 
-  // "Planirano" — the Planiranje-scheduled date, if loadPlanDateForDetail()
-  // found exactly one to show. Resolved asynchronously (separate query),
-  // so this can run again after openWorkOrderDetail()'s own render pass.
-  woPlanDateWrap.hidden = !isAdmin || !currentDetailPlanId;
-  if (currentDetailPlanId) woPlanDateInput.value = currentDetailPlanDate;
+  // "Planirano" — only its own row when there's an unambiguous plan date
+  // but we're NOT in header-date mode (opened without pinning to a specific
+  // calendar entry); in header-date mode the date field itself already
+  // shows/edits it, so a second row would just duplicate it. Resolved
+  // asynchronously (separate query) by loadPlanDateForDetail(), so this can
+  // run again after openWorkOrderDetail()'s own render pass.
+  woPlanDateWrap.hidden = !isAdmin || !currentDetailPlanId || currentDetailPlanIsHeaderDate;
+  if (currentDetailPlanId && !currentDetailPlanIsHeaderDate) woPlanDateInput.value = currentDetailPlanDate;
 
   // Status: admin gets an editable dropdown (only way to change it now
   // that there's no claim button); everyone else gets a read-only badge.
@@ -1216,6 +1219,11 @@ let currentGerkSegments    = []; // get_work_order_gerk_segments rows — one pe
 let selectedGerkCodes      = new Set(); // admin-only multi-select on the GERK list, powers the contextual selection bar
 let currentDetailPlanId    = null; // delovni_nalogi_planiranje.id backing the "Planirano" field, if any — see loadPlanDateForDetail()
 let currentDetailPlanDate  = null;
+// True when opened from a specific Planiranje calendar entry (a planId was
+// given) — in that case the header's date field IS the plan date (not
+// "which day's work-log am I viewing"), and the separate "Planirano" row
+// is redundant. Everywhere else workLogDateInput keeps its normal meaning.
+let currentDetailPlanIsHeaderDate = false;
 
 async function openWorkOrderDetail(workOrder, planId = null) {
   currentDetailWorkOrder  = workOrder;
@@ -1223,6 +1231,7 @@ async function openWorkOrderDetail(workOrder, planId = null) {
   selectedGerkCodes       = new Set();
   currentDetailPlanId     = null;
   currentDetailPlanDate   = null;
+  currentDetailPlanIsHeaderDate = !!planId;
 
   modalTitle.textContent = workOrder.stevilka || 'Delovni nalog';
   hideFormFeedback();
@@ -1230,7 +1239,12 @@ async function openWorkOrderDetail(workOrder, planId = null) {
 
   workLogOrderLabel.textContent = workOrder.customers?.naziv || workOrder.customers?.company_name || '—';
 
-  workLogDateInput.max   = todayISO();
+  // A plan date can be in the future (it's a schedule) — no upper cap in
+  // that mode, unlike the normal "log hours, never for a future day" case.
+  // title: the visible "Planirano" label is gone in this mode (the field
+  // itself now doubles as that editor), so a hover tooltip fills the gap.
+  workLogDateInput.max   = currentDetailPlanIsHeaderDate ? '' : todayISO();
+  workLogDateInput.title = currentDetailPlanIsHeaderDate ? 'Planirano (datum iz koledarja Planiranje)' : '';
   workLogDateInput.value = currentDetailDate;
 
   woAddExistingGerkCode.value = '';
@@ -1276,6 +1290,7 @@ async function loadPlanDateForDetail(workOrderId, planId) {
   const row = planId ? rows.find(r => String(r.id) === String(planId)) : (rows.length === 1 ? rows[0] : null);
   currentDetailPlanId = row?.id ?? null;
   currentDetailPlanDate = row?.plan_date ?? null;
+  if (currentDetailPlanIsHeaderDate && currentDetailPlanDate) workLogDateInput.value = currentDetailPlanDate;
   updateOrderHeader();
 }
 
@@ -1862,6 +1877,25 @@ async function loadDetailForDate() {
 // (merging into that day's log if one already exists there), so
 // entering hours and picking the date can happen in either order.
 workLogDateInput.addEventListener('change', async () => {
+  // Header-date mode (opened from a specific Planiranje calendar entry):
+  // this field edits delovni_nalogi_planiranje.plan_date, not which day's
+  // work-log to view — a completely different write, so branch off first.
+  if (currentDetailPlanIsHeaderDate) {
+    if (!currentDetailPlanId) { workLogDateInput.value = currentDetailPlanDate || ''; return; } // plan row vanished (e.g. removed) since opening
+    const newPlanDate = workLogDateInput.value;
+    if (!newPlanDate) { workLogDateInput.value = currentDetailPlanDate; return; }
+    const oldPlanDate = currentDetailPlanDate;
+    const { error } = await supabase.from('delovni_nalogi_planiranje').update({ plan_date: newPlanDate }).eq('id', currentDetailPlanId);
+    if (error) {
+      workLogDateInput.value = oldPlanDate;
+      showFormError('Napaka pri spreminjanju datuma planiranja: ' + error.message);
+      return;
+    }
+    currentDetailPlanDate = newPlanDate;
+    window.refreshPlanningEntries?.();
+    return;
+  }
+
   const oldDate = currentDetailDate;
   const oldLogId = currentDetailLogId;
   const newDate = workLogDateInput.value || todayISO();
