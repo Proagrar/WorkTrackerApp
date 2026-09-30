@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v2.36';
+const APP_VERSION = 'v3.0';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -111,10 +111,12 @@ const formSuccess = document.getElementById('formSuccess');
 const cancelBtn   = document.getElementById('cancelBtn');
 
 // ── Tabs ───────────────────────────────────────────────────────
-const tabEvidenca   = document.getElementById('tabEvidenca');
-const tabNalogi     = document.getElementById('tabNalogi');
-const panelEvidenca = document.getElementById('panelEvidenca');
-const panelNalogi   = document.getElementById('panelNalogi');
+const tabEvidenca     = document.getElementById('tabEvidenca');
+const tabNalogi       = document.getElementById('tabNalogi');
+const tabPlaniranje   = document.getElementById('tabPlaniranje');
+const panelEvidenca   = document.getElementById('panelEvidenca');
+const panelNalogi     = document.getElementById('panelNalogi');
+const panelPlaniranje = document.getElementById('panelPlaniranje');
 const workOrdersList = document.getElementById('workOrdersList');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
@@ -3500,14 +3502,22 @@ function switchTab(tab) {
   currentTab = tab;
   tabEvidenca.classList.toggle('tab-btn--active', tab === 'evidenca');
   tabNalogi.classList.toggle('tab-btn--active', tab === 'nalogi');
-  panelEvidenca.hidden = tab !== 'evidenca';
-  panelNalogi.hidden   = tab !== 'nalogi';
+  tabPlaniranje.classList.toggle('tab-btn--active', tab === 'planiranje');
+  panelEvidenca.hidden   = tab !== 'evidenca';
+  panelNalogi.hidden     = tab !== 'nalogi';
+  panelPlaniranje.hidden = tab !== 'planiranje';
   updateFabVisibility();
   if (tab === 'nalogi' && !workOrdersLoaded) loadWorkOrders();
 }
 
+// Also re-applies the Planiranje tab's admin-only visibility — same
+// enforcement pattern as every other admin-only control (RLS is the real
+// gate; this just keeps the UI matching it), called from the same two spots
+// (switchTab, the admin-view-toggle handler) so it's correct on load and on
+// toggle. See feedback_ask_admin_only memory.
 function updateFabVisibility() {
   addBtn.hidden = !isAdminView();
+  tabPlaniranje.hidden = !isAdminView();
 }
 
 // Renders the header's Admin/Regular view switch (admin-only) and
@@ -3529,6 +3539,7 @@ adminViewToggle.addEventListener('change', () => {
   adminViewActive = adminViewToggle.checked;
   localStorage.setItem('adminViewActive', adminViewActive ? '1' : '0');
   if (!isAdminView()) { woShowDeletedActive = false; clearWoSelection(); } // never leave the archived list or a bulk selection showing once out of Admin view
+  if (!isAdminView() && currentTab === 'planiranje') switchTab('nalogi'); // its tab button is about to hide — don't strand them on it
   renderAdminViewToggle();
   updateFabVisibility();
   updateShowDeletedButton();
@@ -3537,8 +3548,9 @@ adminViewToggle.addEventListener('change', () => {
   if (currentTab === 'nalogi' && workOrdersLoaded) renderWorkOrders();
 });
 
-tabEvidenca.addEventListener('click', () => switchTab('evidenca'));
-tabNalogi.addEventListener('click',   () => switchTab('nalogi'));
+tabEvidenca.addEventListener('click',   () => switchTab('evidenca'));
+tabNalogi.addEventListener('click',     () => switchTab('nalogi'));
+tabPlaniranje.addEventListener('click', () => switchTab('planiranje'));
 
 // ── Work orders: load + render ───────────────────────────────────
 function slugStatus(status) {

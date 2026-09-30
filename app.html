@@ -48,6 +48,8 @@
     <nav class="tab-bar" aria-label="Zavihki">
       <button id="tabNalogi" class="tab-btn tab-btn--active" data-tab="nalogi">Delovni Nalogi</button>
       <button id="tabEvidenca" class="tab-btn" data-tab="evidenca">Evidenca dela</button>
+      <!-- Admin-only, like the FAB — see updateFabVisibility() in app.js. -->
+      <button id="tabPlaniranje" class="tab-btn" data-tab="planiranje" hidden>Planiranje</button>
     </nav>
 
     <!-- ── Tab: Evidenca dela (original view) ────────────────── -->
@@ -142,6 +144,47 @@
             <div id="woOverviewMap" class="wo-list-map"></div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <!-- ── Tab: Planiranje (drag-and-drop scheduling calendar, admin-only) ── -->
+    <div id="panelPlaniranje" class="tab-panel" hidden>
+      <section class="planning-shell" aria-label="Planiranje nalogov">
+        <aside class="planning-sidebar">
+          <div class="operator-filter">
+            <label id="operatorFilterLabel">Izvajalec</label>
+            <button id="operatorFilterButton" class="operator-filter-button" type="button" aria-expanded="false" aria-controls="operatorFilterMenu">Vsi izvajalci</button>
+            <div id="operatorFilterMenu" class="operator-filter-menu" hidden></div>
+          </div>
+          <div class="planning-sidebar-head">
+            <div>
+              <p class="eyebrow">Odprti nalogi</p>
+              <h1 class="planning-title">Planiranje nalogov</h1>
+            </div>
+            <span id="planningCount" class="planning-count">0</span>
+          </div>
+          <p id="planningHint" class="planning-hint">Nalaganje delovnih nalogov ...</p>
+          <div id="workOrderCards" class="work-order-cards" role="list"></div>
+        </aside>
+
+        <section class="calendar-panel" aria-label="Koledar">
+          <div class="calendar-head">
+            <div>
+              <p class="eyebrow">Razpored dela</p>
+              <h2 id="calendarTitle" class="calendar-title"></h2>
+            </div>
+            <div class="calendar-range" aria-label="Obdobje prikaza">
+              <label>Od <input id="calendarFrom" type="date" /></label>
+              <label>Do <input id="calendarTo" type="date" /></label>
+            </div>
+            <div class="calendar-actions">
+              <button id="calendarToday" class="btn btn-secondary btn-sm" type="button">Danes</button>
+              <button id="calendarPrev" class="calendar-nav" type="button" aria-label="Prejšnji mesec">‹</button>
+              <button id="calendarNext" class="calendar-nav" type="button" aria-label="Naslednji mesec">›</button>
+            </div>
+          </div>
+          <div id="calendarGrid" class="calendar-grid" role="grid"></div>
+        </section>
       </section>
     </div>
 
@@ -639,9 +682,49 @@
     </div>
   </div>
 
+  <!-- ── Planiranje: assign a subset of an order's GERK lines to the
+       dragged-onto calendar date, with a map preview — see planning.js. ── -->
+  <div id="planGerkModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="workOrderModalTitle">
+    <div class="modal-sheet modal-sheet-wide">
+      <div class="modal-handle" aria-hidden="true"></div>
+      <div class="planning-modal-head">
+        <div>
+          <p class="eyebrow">Delovni nalog</p>
+          <h2 id="workOrderModalTitle" class="planning-modal-title"></h2>
+        </div>
+        <button id="workOrderModalClose" class="btn btn-icon" type="button" aria-label="Zapri">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <line x1="3" y1="3" x2="17" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="17" y1="3" x2="3" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="planning-modal-body">
+        <section class="gerk-selection-panel">
+          <div class="gerk-selection-head">
+            <div>
+              <p class="eyebrow">GERKI v nalogu</p>
+              <p id="gerkSelectionSummary" class="planning-hint"></p>
+            </div>
+            <label class="select-all-label"><input id="selectAllGerks" type="checkbox" /> Izberi vse</label>
+          </div>
+          <div id="gerkSelectionList" class="gerk-selection-list"></div>
+          <div class="planning-modal-actions">
+            <button id="saveGerkSelection" class="btn btn-primary" type="button">Shrani izbor</button>
+          </div>
+        </section>
+        <section class="planning-map-panel">
+          <div id="gerkMap" class="gerk-map" aria-label="Zemljevid GERK-ov"></div>
+          <p id="mapHint" class="planning-hint"></p>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script type="module" src="app.js"></script>
+  <script type="module" src="planning.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').then(reg => reg.update());
