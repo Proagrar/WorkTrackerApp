@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v3.11** (2026-09-30)
+Stanje: **v3.32** (2026-09-30)
 
 ## Vloge
 
@@ -83,11 +83,12 @@ Vse zgoraj, in dodatno:
 - Vidi vso evidenco dela, brez omejitve na organizacijo
 
 **Planiranje** — nov zavihek, viden samo v načinu Admin
-- Koledar za razporejanje odprtih delovnih nalogov: povleci nalog na dan koledarja
+- Koledar za razporejanje odprtih delovnih nalogov: povleci nalog na dan koledarja (razporedi vse še nerazporejene GERK-e naenkrat)
 - Kartice odprtih nalogov: številka pred imenom stranke (razvrščeno padajoče po njej), skupno število GERK-ov, segmentov in ha (enako kot na glavnem seznamu Delovni nalogi)
 - Filter po izvajalcu (celoten seznam upravičenih izvajalcev, ne le tistih z odprtim nalogom)
-- Ob dvokliku na nalog: izbira, katere GERK-e vključiš v ta datum, s predogledom na zemljevidu
-- Dodelitev izvajalca neposredno s kartice; barvna oznaka izvajalca na koledarju (poleg zeleno/rumeno za dokončano/delno razporejeno)
+- Dodelitev izvajalca neposredno s kartice; barvna oznaka izvajalca na koledarju (poleg zeleno/rumeno za dokončano/delno razporejeno), koledarski vnos prikaže izvajalca in številko/stranko naloga
+- Gumb ✕ na koledarskem vnosu odstrani nalog s tega datuma (sprosti ga nazaj med kartice)
+- Dvoklik (na kartico ali koledarski vnos) odpre isto pojavno okno kot na glavnem seznamu Delovni nalogi — brez posebnega ločenega okna; ob odprtju iz koledarja glavno datumsko polje v glavi prikaže in ureja planirani datum tega vnosa neposredno (brez omejitve na pretekle datume)
 
 **Seznam strank**
 - Seznam strank z iskanjem in podrobnosti stranke
