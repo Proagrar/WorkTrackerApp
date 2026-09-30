@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.44';
+const APP_VERSION = 'v3.45';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -2751,16 +2751,24 @@ function parseKmlSegments(kmlText) {
   }
 
   for (const pm of placemarks) {
-    const polygonEl  = pm.getElementsByTagName('Polygon')[0];
+    // getElementsByTagName searches all descendants, so this also picks up
+    // every <Polygon> nested inside a <MultiGeometry> (a zone split into
+    // several disconnected pieces, e.g. by a road) — not just a single
+    // top-level one. Using only the first (the old behavior) silently
+    // dropped every polygon after it, which could leave a multi-piece
+    // zone reduced to a tiny sliver instead of its real shape.
+    const polygonEls = Array.from(pm.getElementsByTagName('Polygon'));
     const pointEl    = pm.getElementsByTagName('Point')[0];
     const segmentId  = simpleData(pm, 'segment_id');
     if (!segmentId) continue;
 
-    if (polygonEl) {
-      const coordsText = findCoordinatesText(polygonEl);
-      if (!coordsText) continue;
+    if (polygonEls.length) {
+      const rings = polygonEls.map(findCoordinatesText).filter(Boolean).map(parseCoordText);
+      if (!rings.length) continue;
       const existing = segmentsByLabel.get(segmentId) || { label: segmentId, geojson: null, points: [] };
-      existing.geojson = { type: 'Polygon', coordinates: [parseCoordText(coordsText)] };
+      existing.geojson = rings.length > 1
+        ? { type: 'MultiPolygon', coordinates: rings.map(ring => [ring]) }
+        : { type: 'Polygon', coordinates: [rings[0]] };
       segmentsByLabel.set(segmentId, existing);
     } else if (pointEl) {
       const coordsEl = pointEl.getElementsByTagName('coordinates')[0];
