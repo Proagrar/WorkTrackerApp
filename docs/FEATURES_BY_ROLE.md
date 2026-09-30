@@ -1,6 +1,6 @@
 # Funkcionalnosti po vlogah
 
-Stanje: **v3.46** (2026-09-30)
+Stanje: **v3.48** (2026-09-30)
 
 ## Vloge
 
@@ -28,6 +28,7 @@ Poleg tega obstaja še **stranka brez računa**, ki prek povezave izpolni deklar
 - Iskanje po stranki (s predlogi) in filter po statusu (več statusov hkrati)
 - Za vsak nalog: datum vnosa, stranka, število GERK-ov, skupni ha, status
 - Pregledni zemljevid nalogov — oznake ob oddaljenem pogledu, oblike parcel ob približanju; ob prehodu miške prikaže stranko in GERK, klik na GERK/segment prikaže samo tisti nalog v seznamu za odpiranje
+- Na zemljevidih (pregledni in pri posameznem nalogu) preklop za prikaz cest in imen krajev nad satelitskim posnetkom — privzeto izklopljen
 
 **Podrobnosti naloga**
 - Glava s stranko, datumom in statusom (samo za branje), kdo je delal na nalogu in skupni čas
