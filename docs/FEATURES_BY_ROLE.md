@@ -104,11 +104,3 @@ Vse zgoraj, in dodatno:
 - Izbira, kdo je lahko izbran kot izvajalec naloga (kljukica)
 
 > Orodja za ustvarjanje in upravljanje (vključno s Seznamom strank in Izvajalci) so dostopna samo prek plavajočega gumba **+**, ki je viden samo v načinu Admin.
-
----
-
-## Stranka (brez računa)
-
-- Prek prejete povezave odpre `deklaracija.html` brez prijave
-- Izpolni deklaracijo posevkov za svoje parcele v slovenščini ali hrvaščini
-- Do izteka povezave se lahko vrne in odgovore popravi
