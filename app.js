@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.52';
+const APP_VERSION = 'v3.53';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -125,6 +125,7 @@ const workOrdersList = document.getElementById('workOrdersList');
 const woHaChipTotal = document.getElementById('woHaChipTotal');
 const woHaChipIzvedeno = document.getElementById('woHaChipIzvedeno');
 const woHaChipPlan = document.getElementById('woHaChipPlan');
+const woHaChipTime = document.getElementById('woHaChipTime');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
 const woStatusFilterMenu = document.getElementById('woStatusFilterMenu');
@@ -3827,27 +3828,37 @@ function workOrderTotalHa(wo) {
   return (wo.delovni_nalogi_gerki || []).reduce((s, g) => s + (g.kolicina_ha || 0), 0);
 }
 
-// Sum of ha split by status, over whatever's currently relevant: the
-// selected rows if any are checked (bulk-select, admin only), else
-// every currently filtered/visible row — same totalHa source as the
-// list's own HA column (kolicina_ha), so this always agrees with what's
-// shown row by row. Self-contained (reads selectedWorkOrderIds/
-// filteredWorkOrders() itself) so it can be called from anywhere
-// selection or filtering changes, not just a full list re-render.
+// Zero-padded hh:mm, distinct from fmtHM's "Xh Ym" (used in the list's
+// own ČAS column) — this chip reads as a clock-style total instead.
+function fmtHHMM(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// Sum of ha (split by status) and logged time, over whatever's currently
+// relevant: the selected rows if any are checked (bulk-select, admin
+// only), else every currently filtered/visible row — same totalHa/
+// workOrderDurations sources as the list's own HA/ČAS columns, so this
+// always agrees with what's shown row by row. Self-contained (reads
+// selectedWorkOrderIds/filteredWorkOrders() itself) so it can be called
+// from anywhere selection or filtering changes, not just a full list
+// re-render.
 function updateWoHaSummary() {
   const source = selectedWorkOrderIds.size
     ? workOrders.filter(wo => selectedWorkOrderIds.has(wo.id))
     : filteredWorkOrders();
-  let total = 0, izvedeno = 0, plan = 0;
+  let total = 0, izvedeno = 0, plan = 0, minutes = 0;
   for (const wo of source) {
     const ha = workOrderTotalHa(wo);
     total += ha;
     if (wo.status === 'Izvedeno') izvedeno += ha;
     else if (wo.status === 'Plan') plan += ha;
+    minutes += workOrderDurations[wo.id] || 0;
   }
   woHaChipTotal.textContent = `${selectedWorkOrderIds.size ? 'Izbrano' : 'Skupaj'}: ${total.toFixed(2)} ha`;
   woHaChipIzvedeno.textContent = `Izvedeno: ${izvedeno.toFixed(2)} ha`;
   woHaChipPlan.textContent = `Plan: ${plan.toFixed(2)} ha`;
+  woHaChipTime.textContent = `Čas: ${fmtHHMM(minutes)}`;
 }
 
 function renderWorkOrders() {

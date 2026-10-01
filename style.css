@@ -1292,6 +1292,7 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-ha-chip--total    { background: var(--blue-100);   color: var(--blue-800); }
 .wo-ha-chip--izvedeno { background: var(--success-bg); color: var(--success); }
 .wo-ha-chip--plan     { background: #FEF3C7;            color: #92400E; }
+.wo-ha-chip--time     { background: #EDE9FE;            color: #6D28D9; }
 
 .wo-assign-customer-wrap { position: relative; flex-shrink: 0; width: 360px; }
 
