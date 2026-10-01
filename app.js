@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.53';
+const APP_VERSION = 'v3.54';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3828,13 +3828,6 @@ function workOrderTotalHa(wo) {
   return (wo.delovni_nalogi_gerki || []).reduce((s, g) => s + (g.kolicina_ha || 0), 0);
 }
 
-// Zero-padded hh:mm, distinct from fmtHM's "Xh Ym" (used in the list's
-// own ČAS column) — this chip reads as a clock-style total instead.
-function fmtHHMM(mins) {
-  const h = Math.floor(mins / 60), m = mins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 // Sum of ha (split by status) and logged time, over whatever's currently
 // relevant: the selected rows if any are checked (bulk-select, admin
 // only), else every currently filtered/visible row — same totalHa/
@@ -3858,7 +3851,7 @@ function updateWoHaSummary() {
   woHaChipTotal.textContent = `${selectedWorkOrderIds.size ? 'Izbrano' : 'Skupaj'}: ${total.toFixed(2)} ha`;
   woHaChipIzvedeno.textContent = `Izvedeno: ${izvedeno.toFixed(2)} ha`;
   woHaChipPlan.textContent = `Plan: ${plan.toFixed(2)} ha`;
-  woHaChipTime.textContent = `Čas: ${fmtHHMM(minutes)}`;
+  woHaChipTime.textContent = `Čas: ${fmtHM(minutes)}`;
 }
 
 function renderWorkOrders() {
