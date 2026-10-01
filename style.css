@@ -1249,6 +1249,11 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .evidenca-table tr:first-child td { border-top: none; }
 
 .wo-toolbar {
+  /* Now the only child of .section-header (the "Delovni Nalogi" title
+     was removed — redundant with the tab above it) — flex:1 so it still
+     spans the full row, keeping the ha chips flush left and the filter
+     buttons flush right exactly as before. */
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
