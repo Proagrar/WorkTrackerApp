@@ -1264,16 +1264,29 @@ button.wlg-segmentation-icon:hover { background: var(--error-bg); }
 .wo-status-filter-wrap { position: relative; flex-shrink: 0; }
 
 /* Pushed flush left within the toolbar (auto margin eats the remaining
-   space on its line), so it reads as "Skupaj: … · Izvedeno: … · Plan: …"
-   right next to the filter controls that change it, with the actual
-   buttons staying right-aligned as before. */
+   space on its line), so the three chips sit right next to the filter
+   controls that change them, with the actual buttons staying
+   right-aligned as before. */
 .wo-ha-summary {
   margin-right: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Same pill shape as .wo-status-badge; colors match that badge's own
+   Izvedeno green and the overview map's amber for "not done yet" (Plan),
+   so this reads consistently with the status coding used everywhere else. */
+.wo-ha-chip {
   font-size: .75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 5px 10px;
   white-space: nowrap;
 }
+.wo-ha-chip--total    { background: var(--blue-100);   color: var(--blue-800); }
+.wo-ha-chip--izvedeno { background: var(--success-bg); color: var(--success); }
+.wo-ha-chip--plan     { background: #FEF3C7;            color: #92400E; }
 
 .wo-assign-customer-wrap { position: relative; flex-shrink: 0; width: 360px; }
 

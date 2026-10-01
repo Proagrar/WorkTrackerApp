@@ -93,7 +93,11 @@
                  status — recomputed by renderWorkOrders() on every filter
                  change (status checkboxes, search, map-click, archived
                  toggle), see updateWoHaSummary() in app.js. -->
-            <div id="woHaSummary" class="wo-ha-summary"></div>
+            <div id="woHaSummary" class="wo-ha-summary">
+              <span class="wo-ha-chip wo-ha-chip--total" id="woHaChipTotal"></span>
+              <span class="wo-ha-chip wo-ha-chip--izvedeno" id="woHaChipIzvedeno"></span>
+              <span class="wo-ha-chip wo-ha-chip--plan" id="woHaChipPlan"></span>
+            </div>
             <div class="wo-status-filter-wrap">
               <button type="button" id="woStatusFilterBtn" class="btn btn-secondary btn-sm wo-status-filter-btn">Vsi statusi</button>
               <div id="woStatusFilterMenu" class="wo-status-filter-menu" hidden>

@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.50';
+const APP_VERSION = 'v3.51';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -122,7 +122,9 @@ const panelEvidenca   = document.getElementById('panelEvidenca');
 const panelNalogi     = document.getElementById('panelNalogi');
 const panelPlaniranje = document.getElementById('panelPlaniranje');
 const workOrdersList = document.getElementById('workOrdersList');
-const woHaSummary = document.getElementById('woHaSummary');
+const woHaChipTotal = document.getElementById('woHaChipTotal');
+const woHaChipIzvedeno = document.getElementById('woHaChipIzvedeno');
+const woHaChipPlan = document.getElementById('woHaChipPlan');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
 const woStatusFilterMenu = document.getElementById('woStatusFilterMenu');
@@ -3821,17 +3823,31 @@ function filteredWorkOrders() {
   });
 }
 
-// Sum of ha across whatever's currently filtered/visible, split by
-// status — same totalHa source as the list's own HA column
-// (kolicina_ha), so this always agrees with what's shown row by row.
-function updateWoHaSummary(rowData) {
+function workOrderTotalHa(wo) {
+  return (wo.delovni_nalogi_gerki || []).reduce((s, g) => s + (g.kolicina_ha || 0), 0);
+}
+
+// Sum of ha split by status, over whatever's currently relevant: the
+// selected rows if any are checked (bulk-select, admin only), else
+// every currently filtered/visible row — same totalHa source as the
+// list's own HA column (kolicina_ha), so this always agrees with what's
+// shown row by row. Self-contained (reads selectedWorkOrderIds/
+// filteredWorkOrders() itself) so it can be called from anywhere
+// selection or filtering changes, not just a full list re-render.
+function updateWoHaSummary() {
+  const source = selectedWorkOrderIds.size
+    ? workOrders.filter(wo => selectedWorkOrderIds.has(wo.id))
+    : filteredWorkOrders();
   let total = 0, izvedeno = 0, plan = 0;
-  for (const r of rowData) {
-    total += r.totalHa;
-    if (r.status === 'Izvedeno') izvedeno += r.totalHa;
-    else if (r.status === 'Plan') plan += r.totalHa;
+  for (const wo of source) {
+    const ha = workOrderTotalHa(wo);
+    total += ha;
+    if (wo.status === 'Izvedeno') izvedeno += ha;
+    else if (wo.status === 'Plan') plan += ha;
   }
-  woHaSummary.textContent = `Skupaj: ${total.toFixed(2)} ha · Izvedeno: ${izvedeno.toFixed(2)} ha · Plan: ${plan.toFixed(2)} ha`;
+  woHaChipTotal.textContent = `${selectedWorkOrderIds.size ? 'Izbrano' : 'Skupaj'}: ${total.toFixed(2)} ha`;
+  woHaChipIzvedeno.textContent = `Izvedeno: ${izvedeno.toFixed(2)} ha`;
+  woHaChipPlan.textContent = `Plan: ${plan.toFixed(2)} ha`;
 }
 
 function renderWorkOrders() {
@@ -3849,7 +3865,7 @@ function renderWorkOrders() {
       : (isAdminView() && woShowDeletedActive ? 'Ni arhiviranih nalogov.' : 'Ni delovnih nalogov.');
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     updateWoSelectionBar();
-    updateWoHaSummary([]);
+    updateWoHaSummary();
     return;
   }
 
@@ -3872,7 +3888,7 @@ function renderWorkOrders() {
       stranka:      wo.customers?.naziv || wo.customers?.company_name || '—',
       totalMinutes: workOrderDurations[wo.id] || 0,
       gerkCount:    gerks.length,
-      totalHa:      gerks.reduce((s, g) => s + (g.kolicina_ha || 0), 0),
+      totalHa:      workOrderTotalHa(wo),
       izvajalec:    wo.profiles?.full_name || '—',
       status:       wo.status,
       deleted:      !!wo.deleted_at,
@@ -3918,7 +3934,7 @@ function renderWorkOrders() {
   workOrdersList.innerHTML = header + rows;
   wireWorkOrderButtons();
   updateWoSelectionBar();
-  updateWoHaSummary(rowData);
+  updateWoHaSummary();
   renderWoMapOverview();
 }
 
@@ -3949,6 +3965,7 @@ function wireWorkOrderButtons() {
       if (cb.checked) selectedWorkOrderIds.add(cb.dataset.id);
       else selectedWorkOrderIds.delete(cb.dataset.id);
       updateWoSelectionBar();
+      updateWoHaSummary();
       renderWoMapOverview();
     });
   });
@@ -4217,6 +4234,7 @@ function clearWoSelection() {
   selectedWorkOrderIds = new Set();
   workOrdersList.querySelectorAll('.wo-select-checkbox').forEach(cb => { cb.checked = false; });
   updateWoSelectionBar();
+  updateWoHaSummary();
   renderWoMapOverview();
 }
 
