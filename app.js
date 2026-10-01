@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.48';
+const APP_VERSION = 'v3.49';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -210,6 +210,7 @@ const addCustomerModalClose = document.getElementById('addCustomerModalClose');
 const addCustomerForm       = document.getElementById('addCustomerForm');
 const newCustomerNazivInput = document.getElementById('newCustomerNaziv');
 const newCustomerKrajInput  = document.getElementById('newCustomerKraj');
+const newCustomerCountryInput = document.getElementById('newCustomerCountry');
 const addCustomerErrorEl    = document.getElementById('addCustomerError');
 const addCustomerCancelBtn  = document.getElementById('addCustomerCancelBtn');
 const addCustomerSaveBtn    = document.getElementById('addCustomerSaveBtn');
@@ -3544,8 +3545,9 @@ function closeAddCustomerModal() {
 
 addCustomerForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const naziv = newCustomerNazivInput.value.trim();
-  const kraj  = newCustomerKrajInput.value.trim();
+  const naziv   = newCustomerNazivInput.value.trim();
+  const kraj    = newCustomerKrajInput.value.trim();
+  const country = newCustomerCountryInput.value;
   if (!naziv) {
     addCustomerErrorEl.textContent = 'Naziv je obvezen.';
     addCustomerErrorEl.hidden = false;
@@ -3557,9 +3559,14 @@ addCustomerForm.addEventListener('submit', async (e) => {
   addCustomerSaveBtn.querySelector('.btn-label').hidden = true;
   addCustomerSaveBtn.querySelector('.btn-spinner').hidden = false;
   try {
+    // country drives two downstream things: the SI/HR registry lookup
+    // when resolving a GERK code's map location (see
+    // migration_gerk_country_match.sql), and create_field_declaration_link's
+    // automatic sl/hr form-language pick — both already keyed off this
+    // same column, just never had a UI to set it on creation before.
     const { data, error } = await supabase
       .from('customers')
-      .insert({ naziv, company_name: naziv, address_city: kraj || null })
+      .insert({ naziv, company_name: naziv, address_city: kraj || null, country })
       .select('id, naziv, company_name, contact_name, email')
       .single();
     if (error) throw error;
