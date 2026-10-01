@@ -89,6 +89,11 @@
         <div class="section-header">
           <h2 class="section-title">Delovni Nalogi</h2>
           <div class="wo-toolbar">
+            <!-- Sum of the currently filtered/visible rows' ha, split by
+                 status — recomputed by renderWorkOrders() on every filter
+                 change (status checkboxes, search, map-click, archived
+                 toggle), see updateWoHaSummary() in app.js. -->
+            <div id="woHaSummary" class="wo-ha-summary"></div>
             <div class="wo-status-filter-wrap">
               <button type="button" id="woStatusFilterBtn" class="btn btn-secondary btn-sm wo-status-filter-btn">Vsi statusi</button>
               <div id="woStatusFilterMenu" class="wo-status-filter-menu" hidden>

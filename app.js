@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.49';
+const APP_VERSION = 'v3.50';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -122,6 +122,7 @@ const panelEvidenca   = document.getElementById('panelEvidenca');
 const panelNalogi     = document.getElementById('panelNalogi');
 const panelPlaniranje = document.getElementById('panelPlaniranje');
 const workOrdersList = document.getElementById('workOrdersList');
+const woHaSummary = document.getElementById('woHaSummary');
 const woSearchStranka = document.getElementById('woSearchStranka');
 const woStatusFilterBtn  = document.getElementById('woStatusFilterBtn');
 const woStatusFilterMenu = document.getElementById('woStatusFilterMenu');
@@ -3820,6 +3821,19 @@ function filteredWorkOrders() {
   });
 }
 
+// Sum of ha across whatever's currently filtered/visible, split by
+// status — same totalHa source as the list's own HA column
+// (kolicina_ha), so this always agrees with what's shown row by row.
+function updateWoHaSummary(rowData) {
+  let total = 0, izvedeno = 0, plan = 0;
+  for (const r of rowData) {
+    total += r.totalHa;
+    if (r.status === 'Izvedeno') izvedeno += r.totalHa;
+    else if (r.status === 'Plan') plan += r.totalHa;
+  }
+  woHaSummary.textContent = `Skupaj: ${total.toFixed(2)} ha · Izvedeno: ${izvedeno.toFixed(2)} ha · Plan: ${plan.toFixed(2)} ha`;
+}
+
 function renderWorkOrders() {
   const fwo = filteredWorkOrders();
 
@@ -3835,6 +3849,7 @@ function renderWorkOrders() {
       : (isAdminView() && woShowDeletedActive ? 'Ni arhiviranih nalogov.' : 'Ni delovnih nalogov.');
     workOrdersList.innerHTML = `<div class="state-empty"><p>${msg}</p></div>`;
     updateWoSelectionBar();
+    updateWoHaSummary([]);
     return;
   }
 
@@ -3903,6 +3918,7 @@ function renderWorkOrders() {
   workOrdersList.innerHTML = header + rows;
   wireWorkOrderButtons();
   updateWoSelectionBar();
+  updateWoHaSummary(rowData);
   renderWoMapOverview();
 }
 
