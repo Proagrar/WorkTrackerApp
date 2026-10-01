@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.55';
+const APP_VERSION = 'v3.56';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3975,17 +3975,20 @@ function wireWorkOrderButtons() {
     });
   });
   // Header checkbox — selects/deselects every currently filtered row at
-  // once. Decides direction from selectedWorkOrderIds itself (not the
-  // checkbox's own post-click .checked/.indeterminate, which the browser
-  // sets per its own indeterminate-click rules) — simplest to reason
-  // about, and a full re-render right after keeps every row checkbox and
-  // this one in sync regardless.
+  // once. Any row already selected (full or partial/indeterminate) means
+  // the next click clears the selection, not extends it to the rest —
+  // "deselect all" is the default once anything is picked. Decides
+  // direction from selectedWorkOrderIds itself (not the checkbox's own
+  // post-click .checked/.indeterminate, which the browser sets per its
+  // own indeterminate-click rules) — simplest to reason about, and a
+  // full re-render right after keeps every row checkbox and this one in
+  // sync regardless.
   const selectAllCb = workOrdersList.querySelector('#woSelectAllCheckbox');
   if (selectAllCb) {
     selectAllCb.addEventListener('click', () => {
       const fwo = filteredWorkOrders();
-      const allSelected = fwo.length > 0 && fwo.every(wo => selectedWorkOrderIds.has(wo.id));
-      if (allSelected) fwo.forEach(wo => selectedWorkOrderIds.delete(wo.id));
+      const anySelected = fwo.some(wo => selectedWorkOrderIds.has(wo.id));
+      if (anySelected) fwo.forEach(wo => selectedWorkOrderIds.delete(wo.id));
       else fwo.forEach(wo => selectedWorkOrderIds.add(wo.id));
       renderWorkOrders();
     });
