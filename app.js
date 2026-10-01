@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 // Bump alongside sw.js's CACHE constant on every push to GitHub.
-const APP_VERSION = 'v3.54';
+const APP_VERSION = 'v3.55';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 document.getElementById('appVersion').textContent = APP_VERSION;
@@ -3903,7 +3903,7 @@ function renderWorkOrders() {
 
   const header = `
     <div class="lc-header wo-lc-header ${headMod}">
-      ${selectable ? '<span class="wo-th" aria-hidden="true"></span>' : ''}
+      ${selectable ? '<span class="wo-th wo-select-cell"><input type="checkbox" id="woSelectAllCheckbox" aria-label="Izberi vse"></span>' : ''}
       ${WO_SORT_COLUMNS.map(col => {
         const active = woSortKey === col.key;
         const arrow  = active ? (woSortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -3970,9 +3970,40 @@ function wireWorkOrderButtons() {
       else selectedWorkOrderIds.delete(cb.dataset.id);
       updateWoSelectionBar();
       updateWoHaSummary();
+      updateSelectAllCheckboxState();
       renderWoMapOverview();
     });
   });
+  // Header checkbox — selects/deselects every currently filtered row at
+  // once. Decides direction from selectedWorkOrderIds itself (not the
+  // checkbox's own post-click .checked/.indeterminate, which the browser
+  // sets per its own indeterminate-click rules) — simplest to reason
+  // about, and a full re-render right after keeps every row checkbox and
+  // this one in sync regardless.
+  const selectAllCb = workOrdersList.querySelector('#woSelectAllCheckbox');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('click', () => {
+      const fwo = filteredWorkOrders();
+      const allSelected = fwo.length > 0 && fwo.every(wo => selectedWorkOrderIds.has(wo.id));
+      if (allSelected) fwo.forEach(wo => selectedWorkOrderIds.delete(wo.id));
+      else fwo.forEach(wo => selectedWorkOrderIds.add(wo.id));
+      renderWorkOrders();
+    });
+  }
+  updateSelectAllCheckboxState();
+}
+
+// Keeps the header checkbox's checked/indeterminate state matching
+// selectedWorkOrderIds vs. the currently filtered set — called after any
+// render and after every individual row checkbox toggle, since the
+// header isn't rebuilt on the latter.
+function updateSelectAllCheckboxState() {
+  const cb = workOrdersList.querySelector('#woSelectAllCheckbox');
+  if (!cb) return;
+  const fwo = filteredWorkOrders();
+  const selectedCount = fwo.filter(wo => selectedWorkOrderIds.has(wo.id)).length;
+  cb.checked = fwo.length > 0 && selectedCount === fwo.length;
+  cb.indeterminate = selectedCount > 0 && selectedCount < fwo.length;
 }
 
 function getAvailableStranke() {
@@ -4239,6 +4270,7 @@ function clearWoSelection() {
   workOrdersList.querySelectorAll('.wo-select-checkbox').forEach(cb => { cb.checked = false; });
   updateWoSelectionBar();
   updateWoHaSummary();
+  updateSelectAllCheckboxState();
   renderWoMapOverview();
 }
 
